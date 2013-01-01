@@ -59,15 +59,10 @@ public:
 	C4Real GetTargetX() const;
 	C4Real GetTargetY() const;
 
-	C4Real GetPrevLinkX() const { assert(Prev); return LastLink ? LastLink->x : Prev->oldx; }
-	C4Real GetPrevLinkY() const { assert(Prev); return LastLink ? LastLink->y : Prev->oldy; }
-	C4Real GetNextLinkX() const { assert(Next); return FirstLink ? FirstLink->x : Next->oldx; }
-	C4Real GetNextLinkY() const { assert(Next); return FirstLink ? FirstLink->y : Next->oldy; }
-
 	void AddForce(C4Real x, C4Real y);
 	void Execute(const C4Rope* rope, C4Real dt);
 private:
-	bool InsertLinkPosition(int from_x, int from_y, int to_x, int to_y, int link_x, int link_y, int& insert_x, int& insert_y);
+	void ScanAndInsertLinks(C4RopeElement* from, C4RopeElement* to, int from_x, int from_y, int to_x, int to_y, int link_x, int link_y);
 	void InsertLink(C4RopeElement* from, C4RopeElement* to, int insert_x, int insert_y);
 	void RemoveFirstLink();
 	void RemoveLastLink();
@@ -124,6 +119,11 @@ public:
 
 	void PullFront(C4Real f) { FrontPull = f; }
 	void PullBack(C4Real f) { BackPull = f; }
+
+	// Check whether the rope is stuck at one point. The rope physics works
+	// such that this never happens as long as the landscape remains
+	// unchanged.
+	bool IsStuck() const;
 private:
 	C4Real GetL(const C4RopeElement* prev, const C4RopeElement* next) const;
 

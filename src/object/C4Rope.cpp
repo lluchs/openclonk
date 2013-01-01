@@ -15,6 +15,8 @@
  * See clonk_trademark_license.txt for full license.
  */
 
+#include <queue>
+
 #include <C4Include.h>
 #include <C4Landscape.h>
 #include <C4Rope.h>
@@ -101,49 +103,247 @@ namespace
 		return true;
 	}
 
-	// PathFinder callback function. This saves the first and last waypoint which
-	// determine the direction toward which to pull.
-	struct PullPathInfo
-	{
-		bool FirstSeg;
-		const int32_t bx, by;
-		const int32_t ex, ey;
-		int32_t px, py;
-		int32_t nx, ny;
-		C4Real d;
+	struct point_t { point_t(int x_, int y_): x(x_), y(y_) {} int x, y; };
+	struct point_p { point_p(int x_, int y_, unsigned int f_): x(x_), y(y_), f(f_) {} int x, y; unsigned int f; };
+	struct grid_t { int x, y; int pix, piy; unsigned int g; };
+
+	// priority queue ordering for point_p class
+	struct priority_cmp {
+		bool operator()(const point_p& first, const point_p& second) { return first.f > second.f; }
 	};
 
-	bool PullPathAccumulator(int32_t iX, int32_t iY, intptr_t iTransferTarget, intptr_t PathInfoPtr)
+	// strict weak ordering for point_t class
+	struct closed_point_cmp {
+		bool operator()(const point_t& first, const point_t& second) { if(first.x != second.x) return first.x < second.x; return first.y < second.y; }
+	};
+
+	// Finds a way via pathfinder and stores all waypoints in the given vector
+	bool FindWay(int from_x, int from_y, int to_x, int to_y,
+	             std::vector<point_t>& waypoints)
 	{
-		PullPathInfo* Info = (PullPathInfo*)PathInfoPtr;
+		assert(!GBackSolid(from_x, from_y) && !GBackSolid(to_x, to_y));
 
-		// Ignore points which are very close (~7 pixels) to start or end. Such
-		// points are often misleading because the PathFinder first pulls away a
-		// bit from the ground before actually moving toward the destination.
-		if(Info->px != iX || Info->py != iY)
+		// OK, so this is not using the C4PathFinder because it gives funny results at times, such as:
+		// Node 0: 269 - 198
+		// Node 1: 0 - 63
+		// Node 2: 271 - 199
+		// The result is also not optimal, such as this one:
+		// Node 0: 219 - 197
+		// Node 1: 227 - 198
+		// Node 2: 221 - 198
+		// Where going to 222,198 would have been enough for Node 1.
+
+		// Instead, we use an path finding algorithm on a small grid. This is
+		// good enough for our case, since distances we search are
+		// usually very small.
+		int min_x = Min(from_x, to_x) - abs(to_x - from_x) / 2;
+		int max_x = Max(from_x, to_x) + abs(to_x - from_x) / 2;
+		int min_y = Min(from_y, to_y) - abs(to_y - from_y) / 2;
+		int max_y = Max(from_y, to_y) + abs(to_y - from_y) / 2;
+
+		// Make a grid of at least 21x21 pixels
+		static const unsigned int GRID_N = 21u;
+		if(static_cast<unsigned int>(max_x - min_x) < GRID_N) { min_x -= (GRID_N - (max_x - min_x))/2; max_x += (GRID_N - (max_x - min_x))/2; }
+		if(static_cast<unsigned int>(max_y - min_y) < GRID_N) { min_y -= (GRID_N - (max_y - min_y))/2; max_y += (GRID_N - (max_y - min_y))/2; }
+		assert(min_x < from_x && max_x > from_x);
+		assert(min_y < from_y && max_y > from_y);
+
+		// Build the list of X and Y positions, inserting two more
+		// pixels for the start and end point (can be same as existing pixels).
+		int xs[GRID_N + 2], ys[GRID_N + 2];
+		int xi = 0, yi = 0;
+		int fxi = -1, fyi = -1, txi = -1, tyi = -1;
+		for(unsigned int i = 0; i < GRID_N; ++i)
 		{
-			if(Info->FirstSeg)
-			{
-				if( (Info->ex - iX) * (Info->ex - iX) + (Info->ey - iY) * (Info->ey - iY) > 50)
-				{
-					Info->nx = iX;
-					Info->ny = iY;
-					Info->FirstSeg = false;
-				}
-			}
+			const int x = min_x + i * (max_x - min_x) / (GRID_N - 1);
+			if(fxi == -1 && x >= from_x) { fxi = xi; xs[xi++] = from_x; }
+			if(txi == -1 && x >= to_x) { txi = xi; xs[xi++] = to_x; }
+			xs[xi++] = x;
 
-			if( (Info->bx - iX) * (Info->bx - iX) + (Info->by - iY) * (Info->by - iY) > 50)
+			const int y = min_y + i * (max_y - min_y) / (GRID_N - 1);
+			if(fyi == -1 && y >= from_y) { fyi = yi; ys[yi++] = from_y; }
+			if(tyi == -1 && y >= to_y) { tyi = yi; ys[yi++] = to_y; }
+			ys[yi++] = y;
+		}
+
+		// Build the grid itself
+		grid_t grid[GRID_N + 2][GRID_N + 2];
+		for(unsigned int x = 0; x < GRID_N + 2; ++x)
+		{
+			for(unsigned int y = 0; y < GRID_N + 2; ++y)
 			{
-				C4Real dx = itofix(Info->px - iX);
-				C4Real dy = itofix(Info->py - iY);
-				Info->px = iX;
-				Info->py = iY;
-				Info->d += Len(dx, dy);
+				grid[x][y].x = xs[x];
+				grid[x][y].y = ys[y];
+				grid[x][y].pix = -1;
+				grid[x][y].piy = -1;
+				grid[x][y].g = 0;
 			}
 		}
 
-		return true; // note return value is ignored
+		assert(grid[fxi][fyi].x == from_x && grid[fxi][fyi].y == from_y);
+		assert(grid[txi][tyi].x == to_x && grid[txi][tyi].y == to_y);
+
+		// Now scan the pixel grid which is (almost) evenly distributed in the
+		// rectangle min_x,min_y/max_x,max_y for a path from from_x,from_y to to_x,to_y.
+		// This is an A* implementation.
+		const grid_t& target = grid[txi][tyi];
+		std::priority_queue<point_p, std::vector<point_p>, priority_cmp> open;
+		std::set<point_t, closed_point_cmp> closed; // Note the point_t entries are used as indices into the grid
+		open.push(point_p(fxi, fyi, 0 /* irrelevant */));
+		while(!open.empty())
+		{
+			point_p cur = open.top();
+			open.pop();
+
+			// Avoid seeing one node twice in a suboptimal way
+			if(closed.find(point_t(cur.x, cur.y)) != closed.end())
+				continue;
+
+			// Found destination
+			if(cur.x == txi && cur.y == tyi) break;
+
+			// current point in grid
+			const grid_t& cur_grid = grid[cur.x][cur.y];
+
+			// expand
+			const int adj_c[8][2] = { { cur.x - 1, cur.y - 1 },
+			                        { cur.x + 0, cur.y - 1 },
+			                        { cur.x + 1, cur.y - 1 },
+			                        { cur.x - 1, cur.y + 0 },
+			                        { cur.x + 1, cur.y + 0 },
+			                        { cur.x - 1, cur.y + 1 },
+			                        { cur.x + 0, cur.y + 1 },
+			                        { cur.x + 1, cur.y + 1 } };
+			for(int n = 0; n < 8; ++n)
+			{
+				const point_t adj(adj_c[n][0], adj_c[n][1]);
+				if(adj.x < 0 || static_cast<unsigned int>(adj.x) > GRID_N+1 ||
+				   adj.y < 0 || static_cast<unsigned int>(adj.y) > GRID_N+1) continue;
+				if(closed.find(adj) != closed.end()) continue;
+				grid_t& adj_grid = grid[adj.x][adj.y];
+				if(!PathFree(cur_grid.x, cur_grid.y, adj_grid.x, adj_grid.y)) continue;
+
+				const unsigned int tentative_g = cur_grid.g + Distance(cur_grid.x, cur_grid.y, adj_grid.x, adj_grid.y);
+				if(adj_grid.pix != -1 && adj_grid.piy != -1 && tentative_g >= adj_grid.g) continue; 
+
+				// Note that we might insert the element twice into the open list
+				// here if there is already a less optimal way to adj. That's OK,
+				// we ignore the second time at the beginning of the outer loop.
+				adj_grid.pix = cur.x;
+				adj_grid.piy = cur.y;
+				adj_grid.g = tentative_g;
+				open.push(point_p(adj.x, adj.y, tentative_g + Distance(adj_grid.x, adj_grid.y, target.x, target.y)));
+			}
+
+			closed.insert(point_t(cur.x, cur.y));
+		}
+
+		if(target.pix == -1 || target.piy == -1) return false;
+
+		// Now reconstruct the path, omitting intermediate points
+		// where possible
+		std::vector<point_t> points;
+		points.push_back(point_t(target.x, target.y));
+		const grid_t* grid_p = &target;
+		while(grid_p->pix != -1 && grid_p->piy != -1)
+		{
+			const grid_t* old_p = grid_p;
+			grid_p = &grid[grid_p->pix][grid_p->piy];
+
+			if(!PathFree(points.back().x, points.back().y, grid_p->x, grid_p->y))
+			{
+				assert(points.back().x != old_p->x || points.back().y != old_p->y);
+				points.push_back(point_t(old_p->x, old_p->y));
+			}
+		}
+		assert(grid_p == &grid[fxi][fyi]);
+		assert(PathFree(points.back().x, points.back().y, grid_p->x, grid_p->y));
+		points.push_back(point_t(grid_p->x, grid_p->y));
+
+		// Reverse and attach to output
+		for(std::vector<point_t>::const_reverse_iterator iter = points.rbegin(); iter != points.rend(); ++iter)
+			waypoints.push_back(*iter);
+		return true;
 	}
+
+	// Find a point on a line, with some tolerance to account for
+	// rounding intermediate pixel positions. prev_x,prev_y is set to
+	// the point just before the found point, and coll_x,coll_y is set
+	// to the first point fulfilling the stopper condition.
+	enum { STOP_AND, STOP_OR };
+	template<typename StopperT>
+	bool FindPointOnLine(int from_x, int from_y, int to_x, int to_y,
+                             int* prev_x, int* prev_y, int* coll_x, int* coll_y,
+	                     const StopperT& Stopper = StopperT())
+	{
+		int px = from_x;
+		int py = from_y;
+		const int max_p = Max(abs(to_x - from_x), abs(to_y - from_y));
+		for(int i = 1; i <= max_p; ++i)
+		{
+			const int inter_x = from_x + i * (to_x - from_x) / max_p;
+			const int inter_y = from_y + i * (to_y - from_y) / max_p;
+
+			const int inter2_x = (abs(to_x - from_x) < abs(to_y - from_y) && i * (to_x - from_x) % max_p != 0) ? inter_x + Sign(to_x - from_x) : inter_x;
+			const int inter2_y = (abs(to_x - from_x) > abs(to_y - from_y) && i * (to_y - from_y) % max_p != 0) ? inter_y + Sign(to_y - from_y) : inter_y;
+
+			// The first and last point must be fixed
+			assert( (inter_x == inter2_x && inter_y == inter2_y) || (i != 0 && i != max_p));
+
+			if(Stopper(inter_x, inter_y))
+			{
+				if(StopperT::policy == STOP_OR || Stopper(inter2_x, inter2_y))
+				{
+					if(coll_x) *coll_x = inter_x;
+					if(coll_y) *coll_y = inter_y;
+					if(prev_x) *prev_x = px;
+					if(prev_y) *prev_y = py;
+					return true;
+				}
+
+				px = inter2_x;
+				py = inter2_y;
+			}
+			else
+			{
+				if(StopperT::policy == STOP_OR && Stopper(inter2_x, inter2_y))
+				{
+					if(coll_x) *coll_x = inter2_x;
+					if(coll_y) *coll_y = inter2_y;
+					if(prev_x) *prev_x = px;
+					if(prev_y) *prev_y = py;
+					return true;
+				}
+
+				px = inter_x;
+				py = inter_y;
+			}
+		}
+
+		return false;
+	}
+
+	struct StopAtSolid {
+		static const int policy = STOP_AND;
+		bool operator()(int x, int y) const { return GBackSolid(x, y); }
+	};
+
+	struct StopAtPathBlocked {
+		static const int policy = STOP_OR;
+		StopAtPathBlocked(int to_x, int to_y): tox(to_x), toy(to_y) {}
+		bool operator()(int x, int y) const { return !GBackSolid(x, y) && !PathFree(x, y, tox, toy); }
+		const int tox, toy;
+	};
+
+	struct StopAt3PathFree {
+		static const int policy = STOP_OR;
+		StopAt3PathFree(int to1_x, int to1_y, int to2_x, int to2_y, int to3_x, int to3_y):
+			to1x(to1_x), to1y(to1_y), to2x(to2_x), to2y(to2_y), to3x(to3_x), to3y(to3_y) {}
+		bool operator()(int x, int y) const {
+			return PathFree(x, y, to1x, to1y) && PathFree(x, y, to2x, to2y) && PathFree(x, y, to3x, to3y);
+		}
+		const int to1x, to1y, to2x, to2y, to3x, to3y;
+	};
 }
 
 C4RopeElement::C4RopeElement(C4Object* obj, bool fixed):
@@ -206,82 +406,130 @@ C4Real C4RopeElement::GetTargetY() const
 	return obj->fix_y + itofix(obj->Shape.VtxY[LastContactVertex]);
 }
 
-bool C4RopeElement::InsertLinkPosition(int from_x, int from_y, int to_x, int to_y, int link_x, int link_y, int& insert_x, int& insert_y)
+void C4RopeElement::ScanAndInsertLinks(C4RopeElement* from, C4RopeElement* to, int from_x, int from_y, int to_x, int to_y, int link_x, int link_y)
 {
-	if(PathFree(to_x, to_y, link_x, link_y)) return false;
+	// Rope buried
+	if(GBackSolid(from_x, from_y) || GBackSolid(to_x, to_y)) return;
 
-	// Sanity check, these might be violated if the landscape changed.
+	// Nothing to do
+	if(PathFree(to_x, to_y, link_x, link_y)) return;
+
+	// Sanity check, this might be violated if the landscape changed.
 	// In that case the rope might end up buried in earth, in which case we
 	// do not want to do any maneuvering around, but the rope is just stuck.
-	if(!PathFree(from_x, from_y, link_x, link_y)) return false;
-
-	// If the element has been moved through solid material, only take the part
-	// of the way into account that is free.
-	int stop_x, stop_y;
-	if(!PathFree(from_x, from_y, to_x, to_y, &stop_x, &stop_y))
-	{
-		to_x = stop_x;
-		to_y = stop_y;
-	}
+	// note that this should never fail as long as the landscape remains unchanged.
+	if(!PathFree(from_x, from_y, link_x, link_y)) return;
 
 	// Find the position between from_x,from_y, and to_x,to_y
 	// where there is no path free to link_x,link_y anymore.
-	int prev_x = from_x;
-	int prev_y = from_y;
-	int coll_x = -1;
-	int coll_y = -1;
-	int max_p = Max(abs(to_x - from_x), abs(to_y - from_y));
-	for(int i = 1; i <= max_p; ++i)
+	std::vector<point_t> remaining_waypoints;
+	if(PathFree(from_x, from_y, to_x, to_y))
 	{
-		int inter_x = from_x + i * (to_x - from_x) / max_p;
-		int inter_y = from_y + i * (to_y - from_y) / max_p;
-		if(!PathFree(inter_x, inter_y, link_x, link_y))
+		remaining_waypoints.push_back(point_t(from_x, from_y));
+		remaining_waypoints.push_back(point_t(to_x, to_y));
+	}
+	else
+	{
+		// This does not necessarily mean that the rope element moved
+		// through solid wall, it can also be one of the following:
+		// * object movement behaving slightly differently from rope
+		// movement, especially for attached movement.
+		// * for non-object rope elements, more than one movement
+		// iteration is being performed per frame, whereas link
+		// scanning is only being performed once per frame. So the
+		// element might have moved around a corner within one frame.
+		// * note that this is likely not caused by changes to the
+		// landscape, because this would already cause the
+		// "sanity check" above to fail, which is a precondition to
+		// the algorithm.
+
+		// The idea is to run a pathfinder to find a path. This
+		// should work well for around-the-corner movement. If the
+		// path found turns out to be ridicilously long, we bail.
+		if(!FindWay(from_x, from_y, to_x, to_y, remaining_waypoints))
+			return;
+
+		unsigned int len = 0;
+		const unsigned int direct_len = Distance(from_x, from_y, to_x, to_y);
+		for(unsigned int i = 1; i < remaining_waypoints.size(); ++i)
 		{
-			coll_x = inter_x;
-			coll_y = inter_y;
-			break;
+			const int wp1_x = remaining_waypoints[i-1].x;
+			const int wp1_y = remaining_waypoints[i-1].y;
+			const int wp2_x = remaining_waypoints[i].x;
+			const int wp2_y = remaining_waypoints[i].y;
+
+			assert(PathFree(wp1_x, wp1_y, wp2_x, wp2_y));
+			len += Distance(wp1_x, wp1_y, wp2_x, wp2_y);
 		}
 
-		prev_x = inter_x;
-		prev_y = inter_y;
+		// Way too long...
+		if(len > Max(15u, 2*direct_len)) return;
 	}
 
-	// Such a position must have been found, because of the initial
-	// PathFree(to_x, to_y, link_x, link_y) check.
-	assert(coll_x != -1 && coll_y != -1);
+	assert(remaining_waypoints.size() >= 2);
+	assert(remaining_waypoints.begin()->x == from_x);
+	assert(remaining_waypoints.begin()->y == from_y);
+	assert(remaining_waypoints.rbegin()->x == to_x);
+	assert(remaining_waypoints.rbegin()->y == to_y);
+
+	// Now, the path between all waypoints (in the easiest case a straight
+	// line from from_x,from_y to to_x,to_y) for the point at which the
+	// path to link_x,link_y is lost.
+	int prev_x = -1, prev_y = -1;
+	int coll_x = -1, coll_y = -1;
+	for(unsigned int i = 1; i < remaining_waypoints.size(); ++i)
+	{
+		const int wp1_x = remaining_waypoints[i-1].x;
+		const int wp1_y = remaining_waypoints[i-1].y;
+		const int wp2_x = remaining_waypoints[i].x;
+		const int wp2_y = remaining_waypoints[i].y;
+		assert(PathFree(wp1_x, wp1_y, wp2_x, wp2_y));
+
+		if(FindPointOnLine(wp1_x, wp1_y, wp2_x, wp2_y,
+	                           &prev_x, &prev_y, &coll_x, &coll_y,
+	                           StopAtPathBlocked(link_x, link_y)))
+		{
+			// The waypoints are constructed such that the paths between them are free:
+			assert(!GBackSolid(coll_x, coll_y));
+			remaining_waypoints.erase(remaining_waypoints.begin(), remaining_waypoints.begin() + i);
+			break;
+		}
+	}
+
+	// Such a point must exist, since one precondition of this algorithm is
+	// that PathFree(to_x, to_y, link_x, link_y) is false.
+	assert(prev_x != -1 || prev_y != -1 || coll_x != -1 || coll_y != -1);
 
 	// Now we have:
 	// prev_x,prev_y: Last position between from_x,from_y and to_x,to_y
 	// where the path to link_x,link_y is still free.
 	// coll_x,coll_y: First position between from_x,from_y and to_x,to_y
 	// where the path to link_x,link_y is no longer free.
-	// prev_x,prev_y and coll_x,coll_y are 1 pixel apart from each other.
 
 	// Now the idea is to insert a new link somewhere on the line from
-	// prev_x,prev_y to link_x,link_y such that
+	// link_x,link_y to prev_x,prev_y (which is free!) such that
 	// PathFree(coll_x, coll_y, insert_x, insert_y) holds and the point is
-	// as close to link_x, link_y as possible.
-	max_p = Max(abs(link_x - prev_x), abs(link_y - prev_y));
-	for(int i = 1; i <= max_p; ++i)
+	// as close to link_x, link_y as possible. We check
+	// PathFree(wp_x,wp_y,insert_x,insert_y) in addition since we didn't
+	// do so before, and we also explicitely check
+	// PathFree(link_x, link_y, insert_x, insert_y) to make sure that due
+	// to the finite pixel grid the PathFree condition still holds.
+	int insert_x, insert_y;
+	const bool haveInsert = FindPointOnLine(link_x, link_y, prev_x, prev_y,
+	                                        NULL, NULL, &insert_x, &insert_y,
+	                                        StopAt3PathFree(link_x, link_y, remaining_waypoints[0].x, remaining_waypoints[0].y, coll_x, coll_y));
+	if(!haveInsert)
 	{
-		int inter_x = link_x + i * (prev_x - link_x) / max_p;
-		int inter_y = link_y + i * (prev_y - link_y) / max_p;
-
-		// Again a sanity check, to account for pixel rounding mismatches
-		if(!PathFree(inter_x, inter_y, link_x, link_y)) continue;
-
-		if(PathFree(coll_x, coll_y, inter_x, inter_y))
-		{
-			insert_x = inter_x;
-			insert_y = inter_y;
-			return true;
-		}
+		// TODO: Note that even without changing landscape this can happen
+		// when maneuvering around corners in the landscape. It would be
+		// good if we could fix this -- in theory it should not happen.
 	}
-
-	// The final point in the loop is prev_x, prev_y, and there should be a
-	// free path from it, as per the sanity check precondition.
-	assert(false);
-	return false;
+	else
+	{
+		InsertLink(from, to, insert_x, insert_y);
+		for(unsigned int i = 0; i < remaining_waypoints.size() - 1; ++i)
+			InsertLink(from, to, remaining_waypoints[i].x, remaining_waypoints[i].y);
+	}
 }
 
 void C4RopeElement::InsertLink(C4RopeElement* from, C4RopeElement* to, int insert_x, int insert_y)
@@ -297,6 +545,8 @@ void C4RopeElement::InsertLink(C4RopeElement* from, C4RopeElement* to, int inser
 		assert(from->Next == to);
 
 		Link->Next = from->FirstLink;
+		if(from->FirstLink)
+			from->FirstLink->Prev = Link;
 		from->FirstLink = Link;
 		Link->Prev = NULL;
 
@@ -308,6 +558,8 @@ void C4RopeElement::InsertLink(C4RopeElement* from, C4RopeElement* to, int inser
 		assert(to->Prev == from);
 
 		Link->Prev = to->LastLink;
+		if(to->LastLink)
+			to->LastLink->Next = Link;
 		to->LastLink = Link;
 		Link->Next = NULL;
 
@@ -324,6 +576,8 @@ void C4RopeElement::RemoveFirstLink()
 	FirstLink = link->Next;
 	if(Next && link->Next == NULL)
 		Next->LastLink = NULL;
+	if(FirstLink)
+		FirstLink->Prev = NULL;
 
 	delete link;
 }
@@ -336,6 +590,8 @@ void C4RopeElement::RemoveLastLink()
 	LastLink = link->Prev;
 	if(Prev && link->Prev == NULL)
 		Prev->FirstLink = NULL;
+	if(LastLink)
+		LastLink->Next = NULL;
 
 	delete link;
 }
@@ -395,45 +651,29 @@ void C4RopeElement::Execute(const C4Rope* rope, C4Real dt)
 	if(!Target)
 	{
 		// Compute old and new coordinates
-		int old_x = fixtoi(x);
-		int old_y = fixtoi(y);
-		int new_x = fixtoi(x + dt * vx);
-		int new_y = fixtoi(y + dt * vy);
-		// Maximum distance in pixels in either X or Y
-		int max_p = Max(abs(new_x - old_x), abs(new_y - old_y));
+		const int old_x = fixtoi(x);
+		const int old_y = fixtoi(y);
+		const int new_x = fixtoi(x + dt * vx);
+		const int new_y = fixtoi(y + dt * vy);
 
-		// Check all pixels between old and new position
-		int prev_x = old_x;
-		int prev_y = old_y;
-		bool hit = false;
-		for(int i = 1; i <= max_p; ++i)
+		int prev_x, prev_y;
+		const bool haveColl = FindPointOnLine(old_x, old_y, new_x, new_y,
+		                                      &prev_x, &prev_y, NULL, NULL,
+		                                      StopAtSolid());
+		if(haveColl)
 		{
-			// Intermediate pixel position
-			int inter_x = old_x + i * (new_x - old_x) / max_p;
-			int inter_y = old_y + i * (new_y - old_y) / max_p;
+			x = itofix(prev_x);
+			y = itofix(prev_y);
 
-			// Collision check
-			if(GBackSolid(inter_x, inter_y))
-			{
-				x = itofix(prev_x);
-				y = itofix(prev_y);
-				hit = true;
-
-				// Apply friction force
-				fx -= rope->GetOuterFriction() * vx; fy -= rope->GetOuterFriction() * vy; 
-
-				// Force redirection so that not every single pixel on a
-				// chunky landscape is an obstacle for the rope.
-				SetForceRedirection(rope, 0, 0);
-				break;
-			}
-
-			prev_x = inter_x;
-			prev_y = inter_y;
+			// Apply friction force
+			fx -= rope->GetOuterFriction() * vx; fy -= rope->GetOuterFriction() * vy;
+			// Force redirection so that not every single pixel on a
+			// chunky landscape is an obstacle for the rope.
+			SetForceRedirection(rope, 0, 0);
 		}
-
-		if(!hit)
+		else
 		{
+			// Don't use new_x to keep subpixel precision
 			x += dt * vx;
 			y += dt * vy;
 		}
@@ -564,6 +804,30 @@ C4Rope::~C4Rope()
 	}
 }
 
+bool C4Rope::IsStuck() const
+{
+	int prevx, prevy;
+	for(C4RopeElement* elem = Front; elem != NULL; elem = elem->Next)
+	{
+		const int x = fixtoi(elem->GetX());
+		const int y = fixtoi(elem->GetY());
+		if((elem != Front) && !PathFree(prevx, prevy, x, y))
+			return true;
+		prevx = x; prevy = y;
+
+		for(C4RopeLink* link = elem->FirstLink; link != NULL; link = link->Next)
+		{
+			const int x = fixtoi(link->x);
+			const int y = fixtoi(link->y);
+			if(!PathFree(prevx, prevy, x, y))
+				return true;
+			prevx = x; prevy = y;
+		}
+	}
+
+	return false;
+}
+
 C4Real C4Rope::GetL(const C4RopeElement* prev, const C4RopeElement* next) const
 {
 	// Normally the segment length is fixed at l, however if auto segmentation
@@ -683,102 +947,47 @@ void C4Rope::Solve(C4RopeElement* prev, C4RopeElement* next)
 	{
 		// Get segment length between prev and next
 		const C4Real l = GetL(prev, next);
-
-		// Compute forces between these points. If there is no material between the
-		// rope segments, this is just a straight line. Otherwise, run the
-		// pathfinder to find out in which direction to pull.
-		// If the PathFinder doesn't find a path... then well.. no idea. Maybe
-		// the rope got buried by an earthquake, or someone built a loam bridge
-		// over a rope segment. In that case just apply the normal "straight"
-		// forces and hope the best...
-
-		// TODO: Avoid any of these expensive computations if both prev and next
-		// have force redirection active
-
-		int pix = fixtoi(prev->GetX());
-		int piy = fixtoi(prev->GetY());
-		int nix = fixtoi(next->GetX());
-		int niy = fixtoi(next->GetY());
-
-		// We only run the PathFinder when the distance between the two segments
-		// is at least twice the nominal distance. 
-
+		// Compute forces between these points.
 		C4Real dx1, dy1, dx2, dy2, d;
-		PullPathInfo Info = { true, pix, piy, nix, niy, nix, niy, pix, piy, Fix0 };
-		if(false && (Abs(dx) > l*2 || Abs(dy) > l*2 || dx*dx+dy*dy > l*l*4) && // The first two checks exist to avoid an overflow in the dx*dx+dy*dy expression
-		   !PathFree(pix, piy, nix, niy) &&
-		   Game.PathFinder.Find(pix, piy, nix, niy, PullPathAccumulator, (intptr_t)&Info))
+		if(prev->FirstLink)
 		{
-			C4Real dpx = itofix(Info.px - pix);
-			C4Real dpy = itofix(Info.py - piy);
-			C4Real dp = Len(dpx, dpy); // TODO: Could be computed in accumulator
+			const C4Real l1x = prev->FirstLink->x;
+			const C4Real l1y = prev->FirstLink->y;
+			const C4Real l2x = next->LastLink->x;
+			const C4Real l2y = next->LastLink->y;
 
-			C4Real dnx = itofix(Info.nx - nix);
-			C4Real dny = itofix(Info.ny - niy);
-			C4Real dn = Len(dnx, dny); // TODO: Could be computed in accumulator
+			d = Len(prev->GetX() - l1x, prev->GetY() - l1y)
+			  + Len(next->GetX() - l2x, next->GetY() - l2y);
+			for(C4RopeLink* l = prev->FirstLink; l->Next != NULL; l = l->Next)
+				d += Len(l->x - l->Next->x, l->y - l->Next->y);
 
-			if(dp != Fix0)
-				{ dx1 = dpx / dp; dy1 = dpy / dp; }
+			dx1 = l1x - prev->GetX();
+			dy1 = l1y - prev->GetY();
+			dx2 = l2x - next->GetX();
+			dy2 = l2y - next->GetY();
+
+			const C4Real d1 = Len(dx1, dy1);
+			const C4Real d2 = Len(dx2, dy2);
+			if(d1 != Fix0)
+				{ dx1 /= d1; dy1 /= d1; }
 			else
-				{ dx1 = Fix0; dy1 = Fix0; }
+				{ dx1 = dy1 = Fix0; }
 
-			if(dn != Fix0)
-				{ dx2 = dnx / dn; dy2 = dny / dn; }
+			if(d2 != Fix0)
+				{ dx2 /= d2; dy2 /= d2; }
 			else
-				{ dx2 = Fix0; dy2 = Fix0; }
-
-			d = Info.d + dp;
-
-			/*int index = 0;
-			C4RopeElement* prev2 = prev;
-			while(prev2 != Front) { prev2 = prev2->Prev; ++index; }
-
-			printf("Solved %p(index=%d) via PathFinder, from %d/%d to %d/%d\n", this, index, pix, piy, nix, niy);
-			printf(" --> p to %d/%d, n to %d/%d\n", Info.px, Info.py, Info.nx, Info.ny);
-			printf(" --> vec_p=%f/%f, vec_n=%f/%f, d(pathfinder)=%f, d(direct)=%f\n", fixtof(dx1), fixtof(dy1), fixtof(dx2), fixtof(dy2), fixtof(d), fixtof(Len(dx,dy)));*/
+				{ dx2 = dy2 = Fix0; }
 		}
 		else
 		{
-			if(prev->FirstLink)
-			{
-				const C4Real l1x = prev->FirstLink->x;
-				const C4Real l1y = prev->FirstLink->y;
-				const C4Real l2x = next->LastLink->x;
-				const C4Real l2y = next->LastLink->y;
-
-				d = Len(prev->GetX() - l1x, prev->GetY() - l1y)
-				  + Len(next->GetX() - l2x, next->GetY() - l2y);
-				for(C4RopeLink* l = prev->FirstLink; l->Next != NULL; l = l->Next)
-					d += Len(l->x - l->Next->x, l->y - l->Next->y);
-
-				dx1 = l1x - prev->GetX();
-				dy1 = l1y - prev->GetY();
-				dx2 = l2x - next->GetX();
-				dy2 = l2y - next->GetY();
-
-				const C4Real d1 = Len(dx1, dy1);
-				const C4Real d2 = Len(dx2, dy2);
-				if(d1 != Fix0)
-					{ dx1 /= d1; dy1 /= d1; }
-				else
-					{ dx1 = dy1 = Fix0; }
-
-				if(d2 != Fix0)
-					{ dx2 /= d2; dy2 /= d2; }
-				else
-					{ dx2 = dy2 = Fix0; }
-			}
+			d = Len(dx, dy);
+			if(d != Fix0)
+				{ dx1 = -(dx / d); dy1 = -(dy / d); }
 			else
-			{
-				d = Len(dx, dy);
-				if(d != Fix0)
-					{ dx1 = -(dx / d); dy1 = -(dy / d); }
-				else
-					{ dx1 = 0; dx2 = 0; }
+				{ dx1 = 0; dx2 = 0; }
 
-				dx2 = -dx1;
-				dy2 = -dy1;
-			}
+			dx2 = -dx1;
+			dy2 = -dy1;
 		}
 
 		if(ApplyRepulsive || d > l)
@@ -873,11 +1082,12 @@ void C4Rope::Execute()
 	// sync with C4Game::Execute().
 	for(C4RopeElement* cur = Front; cur != NULL; cur = cur->Next)
 	{
-		int insert_x, insert_y;
-		if(cur->Prev && cur->InsertLinkPosition(fixtoi(cur->oldx), fixtoi(cur->oldy), fixtoi(cur->GetX()), fixtoi(cur->GetY()), fixtoi(cur->GetPrevLinkX()), fixtoi(cur->GetPrevLinkY()), insert_x, insert_y))
-			cur->InsertLink(cur->Prev, cur, insert_x, insert_y);
-		if(cur->Next && cur->InsertLinkPosition(fixtoi(cur->oldx), fixtoi(cur->oldy), fixtoi(cur->GetX()), fixtoi(cur->GetY()), fixtoi(cur->GetNextLinkX()), fixtoi(cur->GetNextLinkY()), insert_x, insert_y))
-			cur->InsertLink(cur, cur->Next, insert_x, insert_y);
+		// Note that for the previous link we use the new coordinates, but for following links the new coordinates.
+		// This guarantees that we will find a free path everytime.
+		if(cur->Prev)
+			cur->ScanAndInsertLinks(cur->Prev, cur, fixtoi(cur->oldx), fixtoi(cur->oldy), fixtoi(cur->GetX()), fixtoi(cur->GetY()), fixtoi(cur->LastLink ? cur->LastLink->x : cur->Prev->GetX()), fixtoi(cur->LastLink ? cur->LastLink->y : cur->Prev->GetY()));
+		if(cur->Next)
+			cur->ScanAndInsertLinks(cur, cur->Next, fixtoi(cur->oldx), fixtoi(cur->oldy), fixtoi(cur->GetX()), fixtoi(cur->GetY()), fixtoi(cur->FirstLink ? cur->FirstLink->x : cur->Next->oldx), fixtoi(cur->FirstLink ? cur->FirstLink->y : cur->Next->oldy));
 
 		while(cur->Prev && cur->LastLink && PathFree(fixtoi(cur->GetX()), fixtoi(cur->GetY()), fixtoi(cur->LastLink->Prev ? cur->LastLink->Prev->x : cur->Prev->GetX()), fixtoi(cur->LastLink->Prev ? cur->LastLink->Prev->y : cur->Prev->GetY())))
 			cur->RemoveLastLink();
@@ -885,8 +1095,7 @@ void C4Rope::Execute()
 			cur->RemoveFirstLink();
 	}
 
-	// Update old coordinates for next iteration. Don't do this in the loop above,
-	// so that GetPrevLinkX/GetPrevLinkY still return the old values.
+	// Update old coordinates for next iteration.
 	for(C4RopeElement* cur = Front; cur != NULL; cur = cur->Next)
 	{
 		cur->oldx = cur->GetX();
@@ -1110,6 +1319,9 @@ void C4RopeList::RemoveRope(C4Rope* rope)
 
 void C4RopeList::Execute()
 {
+	// TODO: Note that Rope execution is completely independent from
+	// each other -- if it turns out to be a bottleneck it could very
+	// easily be run in parallel!
 	for(unsigned int i = 0; i < Ropes.size(); ++i)
 		Ropes[i]->Execute();
 }
