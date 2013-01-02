@@ -347,7 +347,8 @@ namespace
 }
 
 C4RopeElement::C4RopeElement(C4Object* obj, bool fixed):
-	Fixed(fixed), oldx(obj->fix_x), oldy(obj->fix_y), fx(Fix0), fy(Fix0),
+	Fixed(fixed), x(Fix0), y(Fix0), oldx(obj->fix_x), oldy(obj->fix_y),
+	vx(Fix0), vy(Fix0), fx(Fix0), fy(Fix0),
 	rx(Fix0), ry(Fix0), rdt(Fix0), fcx(Fix0), fcy(Fix0),
 	Next(NULL), Prev(NULL), FirstLink(NULL), LastLink(NULL),
 	Object(obj), LastContactVertex(-1)
@@ -386,24 +387,24 @@ C4Real C4RopeElement::GetTargetX() const
 {
 	// TODO: Prevent against object changes: Reset when Target changes wrt
 	// to the object LastContactVertex refers to.
-	if(LastContactVertex == -1) return Object->fix_x;
+	if(LastContactVertex == -1) return GetX();
 
 	C4Object* obj = Object;
 	while(obj->Contained)
 		obj = obj->Contained;
-	return obj->fix_x + itofix(obj->Shape.VtxX[LastContactVertex]);
+	return GetX() + itofix(obj->Shape.VtxX[LastContactVertex]);
 }
 
 C4Real C4RopeElement::GetTargetY() const
 {
 	// TODO: Prevent against object changes: Reset when Target changes wrt
 	// to the object LastContactVertex refers to.
-	if(LastContactVertex == -1) return Object->fix_y;
+	if(LastContactVertex == -1) return GetY();
 
 	C4Object* obj = Object;
 	while(obj->Contained)
 		obj = obj->Contained;
-	return obj->fix_y + itofix(obj->Shape.VtxY[LastContactVertex]);
+	return GetY() + itofix(obj->Shape.VtxY[LastContactVertex]);
 }
 
 void C4RopeElement::ScanAndInsertLinks(C4RopeElement* from, C4RopeElement* to, int from_x, int from_y, int to_x, int to_y, int link_x, int link_y)
@@ -648,13 +649,13 @@ void C4RopeElement::Execute(const C4Rope* rope, C4Real dt)
 	fx = fy = Fix0;
 
 	// Execute movement
-	if(!Target)
+	if(!Fixed)
 	{
 		// Compute old and new coordinates
-		const int old_x = fixtoi(x);
-		const int old_y = fixtoi(y);
-		const int new_x = fixtoi(x + dt * vx);
-		const int new_y = fixtoi(y + dt * vy);
+		const int old_x = fixtoi(GetX());
+		const int old_y = fixtoi(GetY());
+		const int new_x = fixtoi(GetX() + dt * vx);
+		const int new_y = fixtoi(GetY() + dt * vy);
 
 		int prev_x, prev_y;
 		const bool haveColl = FindPointOnLine(old_x, old_y, new_x, new_y,
@@ -662,8 +663,20 @@ void C4RopeElement::Execute(const C4Rope* rope, C4Real dt)
 		                                      StopAtSolid());
 		if(haveColl)
 		{
-			x = itofix(prev_x);
-			y = itofix(prev_y);
+			if(!Target)
+			{
+				x = itofix(prev_x);
+				y = itofix(prev_y);
+			}
+			else
+			{
+				// For objects, x/y is only an offset to the
+				// object position used for sub-frame movement,
+				// since objects are otherwise only executed
+				// once a frame.
+				x = itofix(prev_x) - oldx;
+				y = itofix(prev_y) - oldy;
+			}
 
 			// Apply friction force
 			fx -= rope->GetOuterFriction() * vx; fy -= rope->GetOuterFriction() * vy;
@@ -678,28 +691,26 @@ void C4RopeElement::Execute(const C4Rope* rope, C4Real dt)
 			y += dt * vy;
 		}
 	}
-	else
-	{
-		if(!Fixed)
-		{
-			// Object Force redirection if object has no contact attachment (if it
-			// has then the procedure takes care of moving the object around
-			// O(pixel) obstacles in the landscape).
-			if(!Target->Action.t_attach && Target->xdir*Target->xdir + Target->ydir*Target->ydir >= Fix1)
-			{
-				// Check if the object has contact to the landscape
-				//long iResult = 0;
-				const DWORD dwCNATCheck = CNAT_Left | CNAT_Right | CNAT_Top | CNAT_Bottom;
-				int iContactVertex = -1;
-				for (int i = 0; i < Target->Shape.VtxNum; ++i)
-					if(Target->Shape.GetVertexContact(i, dwCNATCheck, Target->GetX(), Target->GetY()))
-						iContactVertex = i;
 
-				if(iContactVertex != -1)
-				{
-					LastContactVertex = iContactVertex;
-					SetForceRedirection(rope, Target->Shape.VtxX[iContactVertex], Target->Shape.VtxY[iContactVertex]);
-				}
+	if(Target)
+	{
+		// Object Force redirection if object has no contact attachment (if it
+		// has then the procedure takes care of moving the object around
+		// O(pixel) obstacles in the landscape).
+		if(!Target->Action.t_attach && Target->xdir*Target->xdir + Target->ydir*Target->ydir >= Fix1)
+		{
+			// Check if the object has contact to the landscape
+			//long iResult = 0;
+			const DWORD dwCNATCheck = CNAT_Left | CNAT_Right | CNAT_Top | CNAT_Bottom;
+			int iContactVertex = -1;
+			for (int i = 0; i < Target->Shape.VtxNum; ++i)
+				if(Target->Shape.GetVertexContact(i, dwCNATCheck, Target->GetX(), Target->GetY()))
+					iContactVertex = i;
+
+			if(iContactVertex != -1)
+			{
+				LastContactVertex = iContactVertex;
+				SetForceRedirection(rope, Target->Shape.VtxX[iContactVertex], Target->Shape.VtxY[iContactVertex]);
 			}
 		}
 	}
@@ -774,7 +785,7 @@ C4Rope::C4Rope(C4PropList* Prototype, C4Object* first_obj, C4Object* second_obj,
 	Front = new C4RopeElement(first_obj, false);
 	Back = new C4RopeElement(second_obj, false);
 
-	const C4Real m(Fix1); // TODO: This should be a property
+	const C4Real m(Fix1*1); // TODO: This should be a property
 
 	C4RopeElement* prev_seg = Front;
 	for(int32_t i = 0; i < SegmentCount; ++i)
@@ -1098,8 +1109,21 @@ void C4Rope::Execute()
 	// Update old coordinates for next iteration.
 	for(C4RopeElement* cur = Front; cur != NULL; cur = cur->Next)
 	{
-		cur->oldx = cur->GetX();
-		cur->oldy = cur->GetY();
+		if(cur->Object != NULL)
+		{
+			cur->oldx = cur->Object->fix_x;
+			cur->oldy = cur->Object->fix_y;
+			// Reset offset
+			cur->x = Fix0;
+			cur->y = Fix0;
+			cur->vx = Fix0;
+			cur->vy = Fix0;
+		}
+		else
+		{
+			cur->oldx = cur->x;
+			cur->oldy = cur->y;
+		}
 	}
 }
 

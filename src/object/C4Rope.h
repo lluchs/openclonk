@@ -49,10 +49,10 @@ public:
 	C4RopeElement(C4Real x, C4Real y, C4Real m, bool fixed);
 	~C4RopeElement();
 
-	C4Real GetX() const { return Object ? GetTargetX() : x; }
-	C4Real GetY() const { return Object ? GetTargetY() : y; }
-	C4Real GetVx() const { return Object ? Object->xdir : vx; }
-	C4Real GetVy() const { return Object ? Object->ydir : vy; }
+	C4Real GetX() const { return Object ? oldx + x : x; }
+	C4Real GetY() const { return Object ? oldy + y : y; }
+	C4Real GetVx() const { return Object ? Object->xdir + vx : vx; }
+	C4Real GetVy() const { return Object ? Object->ydir + vy : vy; }
 	C4Real GetMass() const { return Object ? itofix(Object->Mass) : m; }
 	C4Object* GetObject() const { return Object; }
 
@@ -72,9 +72,9 @@ private:
 	bool SetForceRedirectionByLookAround(const C4Rope* rope, int ox, int oy, C4Real dx, C4Real dy, C4Real l, C4Real angle);
 
 	bool Fixed; // Apply rope forces to this element?
-	C4Real x, y; // pos; ignored if Object != NULL
-	C4Real oldx, oldy; // position in the previous frame. Used for linking
-	C4Real vx, vy; // velocity; ignored if Object != NULL
+	C4Real x, y; // pos; offset to Object pos if Object != NULL
+	C4Real oldx, oldy; // position in the previous frame. Used for linking, and for object x/y, since rope execution comes after object execution
+	C4Real vx, vy; // velocity; offset to Object dirx/diry if Object != NULL
 	C4Real m; // mass; ignored if Object != NULL
 	C4Real fx, fy; // force
 	C4Real rx, ry; // force redirection
