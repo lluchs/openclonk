@@ -26,6 +26,20 @@
 #include <random>
 #include <stdexcept>
 
+namespace std
+{
+	template<> struct hash<C4NetIO::addr_t>
+	{
+		typedef C4NetIO::addr_t argument_type;
+		typedef size_t result_type;
+		result_type operator()(argument_type const& addr) const
+		{
+			// TODO: Hashing the address directly would be more efficient.
+			return std::hash<std::string>{}(addr.ToString().getData());
+		}
+	};
+}
+
 class C4PuncherServer : public C4NetIOUDP, private C4NetIO::CBClass
 {
 public:
@@ -48,7 +62,7 @@ private:
 		peer_ids.emplace(AddrPeer, nid);
 		peer_addrs.emplace(nid, AddrPeer);
 		Send(C4NetpuncherPacketAssID(nid).PackTo(AddrPeer));
-		printf("Punched %s:%d... #%u\n", inet_ntoa(AddrPeer.sin_addr), htons(AddrPeer.sin_port), nid);
+		printf("Punched %s... #%u\n", AddrPeer.ToString().getData(), nid);
 		return true;
 	}
 	virtual void OnPacket(const class C4NetIOPacket &rPacket, C4NetIO *pNetIO) {
@@ -63,12 +77,12 @@ private:
 	virtual void OnDisconn(const addr_t &AddrPeer, C4NetIO *pNetIO, const char *szReason) {
 		auto it = peer_ids.find(AddrPeer);
 		if (it == peer_ids.end()) {
-			printf("ERROR: closing connection for %s:%d: (%s) but no connection is known\n", inet_ntoa(AddrPeer.sin_addr), htons(AddrPeer.sin_port), szReason);
+			printf("ERROR: closing connection for %s: (%s) but no connection is known\n", AddrPeer.ToString().getData(), szReason);
 			return;
 		}
 		peer_addrs.erase(it->second);
 		peer_ids.erase(it);
-		printf("Stopped punching %s:%d: %s...\n", inet_ntoa(AddrPeer.sin_addr), htons(AddrPeer.sin_port), szReason);
+		printf("Stopped punching %s: %s...\n", AddrPeer.ToString().getData(), szReason);
 	};
 } Puncher;
 
