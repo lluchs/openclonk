@@ -36,6 +36,13 @@ protected func FxIntEarthquakeControlTimer(object target, proplist effect, int t
 	return FX_OK;
 }
 
+// Scenario saving
+func FxIntEarthquakeControlSaveScen(obj, fx, props)
+{
+	props->Add("Earthquake", "Earthquake->SetChance(%d)", fx.chance);
+	return true;
+}
+
 // Launches an earthquake with epicenter (x,y).
 global func LaunchEarthquake(int x, int y, int strength)
 {
@@ -67,6 +74,7 @@ protected func FxIntEarthquakeStop(object target, effect)
 {
 	// Stop sound.
 	Sound("Earthquake", true, 100, nil, -1);
+	Sound("EarthquakeEnd",true);
 	return FX_OK;
 }
 
@@ -110,7 +118,7 @@ protected func FxIntEarthquakeTimer(object target, effect, int time)
 		dx = Random(str * 4 + 1) - str * 2;
 		dy = Random(str * 4 + 1) - str * 2;
 		cnt++;
-	} while (!GBackSemiSolid(x + dx, y + dy) && cnt < 10)
+	} while (!GBackSemiSolid(x + dx, y + dy) && cnt < 10);
 	// No continuation.
 	if (cnt >= 10)
 		return FX_Execute_Kill;

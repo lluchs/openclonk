@@ -1,22 +1,17 @@
 /*
  * OpenClonk, http://www.openclonk.org
  *
- * Copyright (c) 2005-2007, 2011  Sven Eberhardt
- * Copyright (c) 2006-2007, 2009-2011  Günther Brammer
- * Copyright (c) 2007  Matthes Bender
- * Copyright (c) 2010  Benjamin Herr
- * Copyright (c) 2005-2009, RedWolf Design GmbH, http://www.clonk.de
+ * Copyright (c) 2005-2009, RedWolf Design GmbH, http://www.clonk.de/
+ * Copyright (c) 2009-2013, The OpenClonk Team and contributors
  *
- * Portions might be copyrighted by other authors who have contributed
- * to OpenClonk.
+ * Distributed under the terms of the ISC license; see accompanying file
+ * "COPYING" for details.
  *
- * Permission to use, copy, modify, and/or distribute this software for any
- * purpose with or without fee is hereby granted, provided that the above
- * copyright notice and this permission notice appear in all copies.
- * See isc_license.txt for full license and disclaimer.
+ * "Clonk" is a registered trademark of Matthes Bender, used with permission.
+ * See accompanying file "TRADEMARK" for details.
  *
- * "Clonk" is a registered trademark of Matthes Bender.
- * See clonk_trademark_license.txt for full license.
+ * To redistribute this file separately, substitute the full license texts
+ * for the above references.
  */
 // Startup screen for non-parameterized engine start
 
@@ -46,14 +41,16 @@ bool C4StartupGraphics::Init()
 	::GraphicsResource.ProgressStart = 50;
 	::GraphicsResource.ProgressIncrement = 8;
 	// load startup specific graphics from gfxsys groupset
-	fctScenSelBG.GetFace().SetBackground();
 	Game.SetInitProgress(38.0f);
+#if 0
 	if (!LoadFile(fctScenSelBG, "StartupScenSelBG")) return false;
 	if (!LoadFile(fctPlrSelBG, "StartupPlrSelBG")) return false;
-	if (!LoadFile(fctPlrPropBG, "StartupPlrPropBG")) return false;
 	if (!LoadFile(fctNetBG, "StartupNetworkBG")) return false;
+#endif
+	if (!LoadFile(fctDlgPaper, "StartupDlgPaper")) return false;
+	if (!LoadFile(fctPlrPropBG, "StartupPlrPropBG")) return false;
 	if (!LoadFile(fctAboutBG, "StartupAboutBG")) return false;
-	if (!LoadFile(fctOptionsDlgPaper, "StartupDlgPaper")) return false;
+	fctAboutBG.GetFace().SetBackground();
 	if (!LoadFile(fctStartupLogo, "StartupLogo")) return false;
 	::GraphicsResource.ProgressStart = 92;
 	::GraphicsResource.ProgressIncrement = 0.5;
@@ -66,14 +63,6 @@ bool C4StartupGraphics::Init()
 	sfctBookScrollR.Set(fctBookScroll, 1);
 	sfctBookScrollG.Set(fctBookScroll, 2);
 	sfctBookScrollB.Set(fctBookScroll, 3);
-	/*  if (!LoadFile(fctCrew, "StartupCrew")) return false; - currently unused
-	  if (fctCrew.idSourceGroup != fctCrewClr.idSourceGroup)
-	    {
-	    if (!fctCrewClr.CreateClrByOwner(fctCrew.Surface)) { LogFatal("ClrByOwner error! (11)"); return false; }
-	    fctCrewClr.Wdt=fctCrew.Wdt;
-	    fctCrewClr.Hgt=fctCrew.Hgt;
-	    fctCrewClr.idSourceGroup = fctCrew.idSourceGroup;
-	    }*/
 	if (!LoadFile(fctContext, "StartupContext")) return false;
 	fctContext.Set(fctContext.Surface,0,0,fctContext.Hgt,fctContext.Hgt);
 	if (!LoadFile(fctScenSelIcons, "StartupScenSelIcons")) return false;

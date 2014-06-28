@@ -1,24 +1,17 @@
 /*
  * OpenClonk, http://www.openclonk.org
  *
- * Copyright (c) 2004-2009  Sven Eberhardt
- * Copyright (c) 2005-2006, 2009-2010  Günther Brammer
- * Copyright (c) 2005, 2007  Peter Wortmann
- * Copyright (c) 2006  Florian Groß
- * Copyright (c) 2007  Matthes Bender
- * Copyright (c) 2010  Benjamin Herr
- * Copyright (c) 2004-2009, RedWolf Design GmbH, http://www.clonk.de
+ * Copyright (c) 2004-2009, RedWolf Design GmbH, http://www.clonk.de/
+ * Copyright (c) 2009-2013, The OpenClonk Team and contributors
  *
- * Portions might be copyrighted by other authors who have contributed
- * to OpenClonk.
+ * Distributed under the terms of the ISC license; see accompanying file
+ * "COPYING" for details.
  *
- * Permission to use, copy, modify, and/or distribute this software for any
- * purpose with or without fee is hereby granted, provided that the above
- * copyright notice and this permission notice appear in all copies.
- * See isc_license.txt for full license and disclaimer.
+ * "Clonk" is a registered trademark of Matthes Bender, used with permission.
+ * See accompanying file "TRADEMARK" for details.
  *
- * "Clonk" is a registered trademark of Matthes Bender.
- * See clonk_trademark_license.txt for full license.
+ * To redistribute this file separately, substitute the full license texts
+ * for the above references.
  */
 // dialogs for network information
 
@@ -614,11 +607,11 @@ C4GameOptionButtons::C4GameOptionButtons(const C4Rect &rcBounds, bool fNetwork, 
 		btnInternet->SetToolTip(LoadResStr("IDS_DLGTIP_STARTINTERNETGAME"));
 		btnInternet->SetEnabled(!fIsDisabled);
 		AddElement(btnInternet);
-	}
+	}	
 	else btnInternet = NULL;
 	bool fIsLeague = false;
-	// League button disabled (#479, re-enable when an OC league exists)
-	if (0 && fNetwork)
+	// League button disabled by default, but enabled if a custom league server is set (#479, re-enable completely when an OC league exists)
+	if (fNetwork && ::Config.Network.UseAlternateServer)
 	{
 		C4GUI::Icons eLeagueIcon;
 		fIsLeague = fLobby ? Game.Parameters.isLeague() : !!Config.Network.LeagueServerSignUp;

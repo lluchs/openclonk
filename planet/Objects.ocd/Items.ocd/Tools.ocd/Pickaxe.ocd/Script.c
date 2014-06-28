@@ -112,21 +112,37 @@ protected func DoSwing(object clonk, int ix, int iy)
 		if(is_solid && GetMaterialVal("DigFree","Material",mat))
 		{
 			var clr = GetAverageTextureColor(tex);
-			var a = 80;
-			CreateParticle("Dust",x2,y2,RandomX(-3,3),RandomX(-3,3),RandomX(10,250),DoRGBaValue(clr,-255+a,0));
+			var particles =
+			{
+				Prototype = Particles_Dust(),
+				R = (clr >> 16) & 0xff,
+				G = (clr >> 8) & 0xff,
+				B = clr & 0xff,
+				Size = PV_KeyFrames(0, 0, 0, 200, PV_Random(2, 50), 1000, 0),
+			};
+			CreateParticle("Dust", x2, y2, PV_Random(-3, 3), PV_Random(-3, -3), PV_Random(18, 1 * 36), particles, 3);
 			Sound("Dig?");
 		}
 		//It's solid, but not diggable. So it is a hard mineral.
 		else
 		{
-			CastParticles("Spark",RandomX(3,9),35,x2*9/10,y2*9/10,10,30,RGB(255,255,150),RGB(255,255,200));
+			CreateParticle("StarSpark", x2*9/10,y2*9/10, PV_Random(-20, 20), PV_Random(-20, 20), PV_Random(10, 20), Particles_Glimmer(), 10);
 			Sound("Clang?");
 		}
 		
-		//Do blastfree after landscape checks are made. Otherwise, mat always returns as "tunnel"
-		BlastFree(GetX()+x2,GetY()+y2,5,GetController());
+		// Do blastfree after landscape checks are made. Otherwise, mat always returns as "tunnel"
+		BlastFree(GetX()+x2,GetY()+y2,5,GetController(),MaxPickDensity);
 	}
 
+}
+
+// Reroute callback to clonk context to ensure DigOutObject callback is done in Clonk
+public func DigOutObject(object obj)
+{
+	// TODO: it would be nice if the method of finding the clonk does not rely on it to be the container of the pickaxe
+	var clonk = Contained();
+	if (clonk)
+		clonk->~DigOutObject(obj);
 }
 
 func FxIntPickaxeTimer(clonk, effect, time)
@@ -176,3 +192,4 @@ local Name = "$Name$";
 local Description = "$Description$";
 local UsageHelp = "$UsageHelp$";
 local Rebuy = true;
+local MaxPickDensity = 70; // can't pick granite

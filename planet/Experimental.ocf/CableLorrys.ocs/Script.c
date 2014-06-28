@@ -16,13 +16,13 @@ protected func Initialize()
 	var c3 = CreateObject(CableCrossing, 585, 415);
 	var c4 = CreateObject(CableCrossing, 555, 385);
 	var cabin = CreateObject(WoodenCabin, 490, 390);
-	CreateObject(LiftTower, 935, 360);
+//	CreateObject(LiftTower, 935, 360);
 
-	CreateObject(CableLine)->SetConnectedObjects(workshop, c1);
+//	CreateObject(CableLine)->SetConnectedObjects(workshop, c1);
 	CreateObject(CableLine)->SetConnectedObjects(c1, c2);
 	CreateObject(CableLine)->SetConnectedObjects(c2, c3);
 	CreateObject(CableLine)->SetConnectedObjects(c3, c4);
-	CreateObject(CableLine)->SetConnectedObjects(c4, cabin);
+//	CreateObject(CableLine)->SetConnectedObjects(c4, cabin);
 
 	CreateObject(Lorry, 835, 360);
 
@@ -100,7 +100,7 @@ protected func Initialize()
 	CreateObject(CableLine)->SetConnectedObjects(cross_ore3, cross_ore4);
 	CreateObject(CableLine)->SetConnectedObjects(cross_ore4, cross_ore5);
 	
-	// A departure into the sulphur mine.
+	// A departure into the firestone mine.
 	var cross_sulph1 = CreateObject(CableCrossing, 290, 670);
 	var cross_sulph2 = CreateObject(CableCrossing, 250, 700);
 	CreateObject(CableLine)->SetConnectedObjects(cross_ore3, cross_sulph1);
@@ -113,7 +113,7 @@ protected func Initialize()
 	// Some resources are already available in the mines.
 	cross_ore5->CreateContents(Ore, 10);
 	cross_coal1->CreateContents(Coal, 10);
-	cross_sulph2->CreateContents(Sulphur, 10);*/
+	cross_sulph2->CreateContents(Firestone, 10);*/
 
 /*	DrawMaterialQuad("Earth-earth", 235, 250, 265, 250, 265, 255, 235, 255);
 	DrawMaterialQuad("Earth-earth", 185, 250, 215, 250, 215, 255, 185, 255);

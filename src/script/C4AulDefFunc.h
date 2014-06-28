@@ -1,21 +1,17 @@
 /*
  * OpenClonk, http://www.openclonk.org
  *
- * Copyright (c) 2004-2006, 2010  Peter Wortmann
- * Copyright (c) 2006-2007, 2009-2011  Günther Brammer
- * Copyright (c) 2009  Nicolas Hake
- * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de
+ * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
+ * Copyright (c) 2009-2013, The OpenClonk Team and contributors
  *
- * Portions might be copyrighted by other authors who have contributed
- * to OpenClonk.
+ * Distributed under the terms of the ISC license; see accompanying file
+ * "COPYING" for details.
  *
- * Permission to use, copy, modify, and/or distribute this software for any
- * purpose with or without fee is hereby granted, provided that the above
- * copyright notice and this permission notice appear in all copies.
- * See isc_license.txt for full license and disclaimer.
+ * "Clonk" is a registered trademark of Matthes Bender, used with permission.
+ * See accompanying file "TRADEMARK" for details.
  *
- * "Clonk" is a registered trademark of Matthes Bender.
- * See clonk_trademark_license.txt for full license.
+ * To redistribute this file separately, substitute the full license texts
+ * for the above references.
  */
 // Template helper to export C++ functions to C4Script
 
@@ -150,7 +146,7 @@ template <> struct C4ValueConv<bool>
 template <> struct C4ValueConv<C4ID>
 {
 	inline static C4V_Type Type() { return C4V_PropList; }
-	inline static C4ID FromC4V(C4Value &v) { return v.getC4ID(); }
+	inline static C4ID FromC4V(C4Value &v) { C4Def * def = v.getDef(); return def ? def->id : C4ID::None; }
 	inline static C4ID _FromC4V(C4Value &v) { return FromC4V(v); }
 	inline static C4Value ToC4V(C4ID v) { return C4VPropList(C4Id2Def(v)); }
 };
@@ -199,8 +195,8 @@ template <> struct C4ValueConv<C4Effect *>
 template <> struct C4ValueConv<C4Def *>
 {
 	inline static C4V_Type Type() { return C4V_Def; }
-	inline static C4Def *FromC4V(C4Value &v) { C4PropList * p = v.getPropList(); return p ? p->GetDef() : 0; }
-	inline static C4Def *_FromC4V(C4Value &v) { C4PropList * p = v._getPropList(); return p ? p->GetDef() : 0; }
+	inline static C4Def *FromC4V(C4Value &v) { return v.getDef(); }
+	inline static C4Def *_FromC4V(C4Value &v) { return v._getDef(); }
 	inline static C4Value ToC4V(C4Def *v) { return C4VPropList(v); }
 };
 template <> struct C4ValueConv<const C4Value &>
@@ -249,8 +245,8 @@ public:
 	~C4AulDefFuncHelper()
 	{
 	}
-	virtual C4V_Type* GetParType() { return ParType; }
-	virtual bool GetPublic() { return Public; }
+	virtual const C4V_Type* GetParType() const { return ParType; }
+	virtual bool GetPublic() const { return Public; }
 protected:
 	C4V_Type ParType[10];// type of the parameters
 	bool Public;
@@ -288,8 +284,8 @@ public C4AulDefFuncHelper {                   \
   public:                                     \
 /* A pointer to the function which this class wraps */ \
     typedef RType (*Func)(C4PropList * LIST(N, PARS)); \
-    virtual int GetParCount() { return N; }   \
-    virtual C4V_Type GetRetType()             \
+    virtual int GetParCount() const { return N; } \
+    virtual C4V_Type GetRetType() const       \
     { return C4ValueConv<RType>::Type(); }    \
 /* Constructor, using the base class to create the ParType array */ \
     C4AulDefFunc##N(C4AulScript *pOwner, const char *pName, Func pFunc, bool Public): \
@@ -306,8 +302,8 @@ public C4AulDefFuncHelper {                   \
   public:                                     \
 /* A pointer to the function which this class wraps */ \
     typedef RType (*Func)(C4Object * LIST(N, PARS)); \
-    virtual int GetParCount() { return N; }   \
-    virtual C4V_Type GetRetType()             \
+    virtual int GetParCount() const { return N; } \
+    virtual C4V_Type GetRetType() const       \
     { return C4ValueConv<RType>::Type(); }    \
 /* Constructor, using the base class to create the ParType array */ \
     C4AulDefObjectFunc##N(C4AulScript *pOwner, const char *pName, Func pFunc, bool Public): \
@@ -410,9 +406,9 @@ public:
 	C4AulDefFunc(C4AulScript *pOwner, C4ScriptFnDef* pDef);
 	~C4AulDefFunc();
 
-	virtual bool GetPublic() { return !!Def->Public; }
-	virtual C4V_Type* GetParType() { return Def->ParType; }
-	virtual C4V_Type GetRetType() { return Def->RetType; }
+	virtual bool GetPublic() const { return !!Def->Public; }
+	virtual const C4V_Type* GetParType() const { return Def->ParType; }
+	virtual C4V_Type GetRetType() const { return Def->RetType; }
 
 	virtual C4Value Exec(C4PropList * p, C4Value pPars[], bool fPassErrors=false);
 };

@@ -1,21 +1,17 @@
 /*
  * OpenClonk, http://www.openclonk.org
  *
- * Copyright (c) 2004-2008  Sven Eberhardt
- * Copyright (c) 2005-2007  Peter Wortmann
- * Copyright (c) 2010  Benjamin Herr
- * Copyright (c) 2004-2009, RedWolf Design GmbH, http://www.clonk.de
+ * Copyright (c) 2004-2009, RedWolf Design GmbH, http://www.clonk.de/
+ * Copyright (c) 2009-2013, The OpenClonk Team and contributors
  *
- * Portions might be copyrighted by other authors who have contributed
- * to OpenClonk.
+ * Distributed under the terms of the ISC license; see accompanying file
+ * "COPYING" for details.
  *
- * Permission to use, copy, modify, and/or distribute this software for any
- * purpose with or without fee is hereby granted, provided that the above
- * copyright notice and this permission notice appear in all copies.
- * See isc_license.txt for full license and disclaimer.
+ * "Clonk" is a registered trademark of Matthes Bender, used with permission.
+ * See accompanying file "TRADEMARK" for details.
  *
- * "Clonk" is a registered trademark of Matthes Bender.
- * See clonk_trademark_license.txt for full license.
+ * To redistribute this file separately, substitute the full license texts
+ * for the above references.
  */
 // permanent player information management
 //
@@ -99,13 +95,15 @@ private:
 	int32_t iLeagueScoreProjected;// score on league server in case of win
 	int32_t iLeagueProjectedGain; // projected league score increase if game is won - -1 for unknown; valid values always positive
 	ValidatedStdCopyStrBuf<C4InVal::VAL_NameAllowEmpty> sClanTag; // clan ("team") tag
+	int32_t iLeaguePerformance; // script-set league performance value, only set temporarily for masterserver end reference
+	StdCopyStrBuf sLeagueProgressData; // level progress data as reported by league
 
 public:
 	C4PlayerInfo()                           // construct empty
 			:  dwFlags(0), eType(C4PT_User), iID(0), pRes(0), szFilename(), dwColor(0xffffffff),
 			dwOriginalColor(0xffffffff), dwAlternateColor(0), idSavegamePlayer(0), idTeam(0), iInGameNumber(-1),
 			iInGameJoinFrame(-1), iInGamePartFrame(-1), idExtraData(C4ID::None), sLeagueAccount(""),
-			iLeagueScore(0), iLeagueRank(0), iLeagueRankSymbol(0), iLeagueProjectedGain(-1) { }
+			iLeagueScore(0), iLeagueRank(0), iLeagueRankSymbol(0), iLeagueProjectedGain(-1), iLeaguePerformance(0) { }
 
 	void Clear();                            // clear fields
 
@@ -136,8 +134,12 @@ public:
 	bool SetSavegameResume(C4PlayerInfo *pSavegameInfo);   // take over savegame player data to do resume
 	void SetAuthID(const char *sznAuthID)
 	{ szAuthID = sznAuthID; }
-	void SetLeagueData(const char *szAccount, const char *szNewClanTag, int32_t iScore, int32_t iRank, int32_t iRankSymbol)
-	{ sLeagueAccount.CopyValidated(szAccount); sClanTag.CopyValidated(szNewClanTag); iLeagueScore = iScore; iLeagueRank = iRank; iLeagueRankSymbol = iRankSymbol; }
+	void SetLeagueData(const char *szAccount, const char *szNewClanTag, int32_t iScore, int32_t iRank, int32_t iRankSymbol, const char *szProgressData)
+	{ sLeagueAccount.CopyValidated(szAccount); sClanTag.CopyValidated(szNewClanTag); iLeagueScore = iScore; iLeagueRank = iRank; iLeagueRankSymbol = iRankSymbol; sLeagueProgressData.Copy(szProgressData); }
+	void SetLeaguePerformance(int32_t iNewPerf)
+		{ iLeaguePerformance = iNewPerf; }
+	void SetLeagueProgressData(const char *szNewProgressData)
+		{ if (szNewProgressData) sLeagueProgressData.Copy(szNewProgressData); else sLeagueProgressData.Clear(); }
 	void SetVotedOut()
 	{ dwFlags |= PIF_VotedOut; }
 	void SetLeagueProjectedGain(int32_t iProjectedGain)
@@ -187,6 +189,7 @@ public:
 	int32_t GetInGameNumber() const { return iInGameNumber; } // returns player number the player had in the game
 	bool IsLeagueProjectedGainValid() const { return iLeagueProjectedGain>=0; }
 	int32_t GetLeagueProjectedGain() const { return iLeagueProjectedGain; } // get score gain in primary league if this player's team wins
+	const char *GetLeagueProgressData() const { return sLeagueProgressData.getData(); } 
 
 	int32_t GetID() const { return iID; }                    // get unique ID, if assigned
 	int32_t GetTeam() const { return idTeam; }

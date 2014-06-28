@@ -4,9 +4,10 @@ autom4te.cache
 .deps
 deps
 *.o
-./clonk
-./netpuncher
-./c4group
+/openclonk
+/netpuncher
+/c4group
+/c4script
 .dirstamp
 *.a
 *.c4p
@@ -39,6 +40,8 @@ planet/CMakeCache.txt
 CPackConfig.cmake
 CPackSourceConfig.cmake
 *.rule
+editor-icons.h
+oc-icon.h
 
 # Documentation
 *.pyc
@@ -83,6 +86,7 @@ openclonk.ilk
 *.vcproj
 *.vcxproj
 *.vcxproj.filters
+/ipch
 
 # Temporary files created by Microsoft Visual Studio
 *.ncb
@@ -107,24 +111,35 @@ BuildLog.htm
 xcode/build
 *.xcodeproj
 
-.anjuta*
-
 # Binaries
 *.app
 *.exe
 
 # Development files explicitely excluded
 planet/nohg*
+*.nohg*
 
 # Eclipse project file
 planet/.project
 
 # Code::Blocks files
-clonk.layout
-clonk.sdf
-clonk.cbp
+openclonk.layout
+openclonk.sdf
+openclonk.cbp
+tests/openclonk_unittest.cbp
 
 # MacOSX saved searches
 *.savedSearch
 planet/OpenClonk.bat
 planet/openclonk.sln
+WindowsGamesExplorer.xml
+
+# Mape
+mape
+mape-icons.h
+
+
+tests/openclonk_unittest.sln
+
+# Packed groups created directly in root path
+/*.oc*

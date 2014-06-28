@@ -1,6 +1,3 @@
-/* Activate DebugRecs */
-#cmakedefine DEBUGREC 1
-
 /* Generate minidumps on crash */
 #cmakedefine HAVE_DBGHELP 1
 
@@ -12,9 +9,6 @@
 
 /* Whether FMOD shall be used */
 #cmakedefine HAVE_FMOD 1
-
-/* Define to 1 if you have FreeType2. */
-#cmakedefine HAVE_FREETYPE 1
 
 /* Define to 1 if you have the <history.h> header file. */
 #cmakedefine HAVE_HISTORY_H 1
@@ -118,6 +112,9 @@
 /* Define to 1 if you have the `vasprintf' function. */
 #cmakedefine HAVE_VASPRINTF 1
 
+/* Define to 1 if you have the `__mingw_vasprintf' function. */
+#cmakedefine HAVE___MINGW_VASPRINTF 1
+
 #cmakedefine HAVE_VFW32
 
 /* Define to 1 if you have the <X11/extensions/Xrandr.h> header file. */
@@ -127,7 +124,7 @@
 #cmakedefine HAVE_X11_KEYSYM_H 1
 
 /* Define as const if the declaration of iconv() needs const. */
-#cmakedefine ICONV_CONST
+#define ICONV_CONST @ICONV_CONST@
 
 /* compile without debug options */
 #cmakedefine NDEBUG 1
@@ -160,12 +157,6 @@
 /* dedicated server mode */
 #cmakedefine USE_CONSOLE 1
 
-/* DirectX graphics */
-#cmakedefine USE_DIRECTX 1
-
-/* OpenGL graphics */
-#cmakedefine USE_GL 1
-
 /* MP3 music */
 #cmakedefine USE_MP3 1
 
@@ -183,6 +174,9 @@
 
 /* Developer mode */
 #cmakedefine WITH_DEVELOPER_MODE 1
+
+/* Define to 1 if you want to use Boost.Regex instead of <regex>. */
+#cmakedefine USE_BOOST_REGEX 1
 
 /* Glib */
 #cmakedefine WITH_GLIB 1

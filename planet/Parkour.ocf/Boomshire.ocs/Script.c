@@ -91,7 +91,7 @@ global func FxAutoOpenTimer(object pTarget, effect, int timer)
 
 global func FxSparklingAttentionTimer(object pTarget, effect, int timer)
 {
-	CastParticles("Flash",Random(10)+10,60,pTarget->GetX(),pTarget->GetY(),100,120,RGBa(255,235,200,80+Random(36)));
+	CreateParticle("Flash", 0, 0, PV_Random(-20, 20), PV_Random(-20, 20), PV_Random(8, 15), {Prototype = Particles_Flash(), Size = 10}, 10);
 }
 
 protected func Decoration()
@@ -137,8 +137,13 @@ global func FxPlaneResetTimer(object target, effect, int time)
 	
 	if(effect.count<4) return 1;
 	
-	DrawParticleLine("AirIntake",target->GetX()+3,target->GetY(),3030,315,1,40);
-	DrawParticleLine("MagicSpark",target->GetX()-3,target->GetY(),3030,315,2,40);
+	var particles =
+	{
+		Prototype = Particles_Air(),
+		Size = PV_Linear(4, 0)
+	};
+	DrawParticleLine("Air", target->GetX()+3, target->GetY(), 3030, 315, 1, PV_Random(-2, 2), PV_Random(-2, 2), PV_Random(10, 30), particles);
+	
 	target->SetPosition(3030,315);
 	target->SetR(-90);
 	target->SetDir(0);
@@ -190,13 +195,13 @@ protected func Doors()
 	gate->CloseDoor();
 	AddEffect("SparklingAttention",wheel,100,100);
 	
-	var gate = CreateObject(StoneDoor, 1935, 550, NO_OWNER);
+	var gate = CreateObject(StoneDoor, 1935, 558, NO_OWNER);
 	var wheel = CreateObject(SpinWheel, 1900, 565, NO_OWNER);
 	wheel->SetStoneDoor(gate);
 	gate->CloseDoor();
 	AddEffect("SparklingAttention",wheel,100,100);
 	
-	var gate = CreateObject(StoneDoor, 2965, 310, NO_OWNER);
+	var gate = CreateObject(StoneDoor, 2965, 316, NO_OWNER);
 	var wheel = CreateObject(SpinWheel, 3260, 328, NO_OWNER);
 	wheel->SetStoneDoor(gate);
 	gate->CloseDoor();
@@ -228,7 +233,7 @@ global func PlaceEdges()
 protected func OnPlayerRespawn(int iPlr, object cp)
 {
 	var clonk = GetCrew(iPlr);
-	clonk->CreateContents(JarOfWinds);
+	clonk->CreateContents(WindBag);
 	return;
 }
 

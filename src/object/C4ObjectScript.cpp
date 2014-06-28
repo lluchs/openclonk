@@ -1,25 +1,18 @@
 /*
  * OpenClonk, http://www.openclonk.org
  *
- * Copyright (c) 1998-2000, 2004  Matthes Bender
- * Copyright (c) 2001, 2006  Peter Wortmann
- * Copyright (c) 2001-2002, 2004-2007, 2010  Sven Eberhardt
- * Copyright (c) 2004, 2006-2007, 2009-2011  Günther Brammer
- * Copyright (c) 2005, 2009-2010  Armin Burgmeier
- * Copyright (c) 2009-2010  Nicolas Hake
- * Copyright (c) 2010  Benjamin Herr
- * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de
+ * Copyright (c) 1998-2000, Matthes Bender
+ * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
+ * Copyright (c) 2009-2013, The OpenClonk Team and contributors
  *
- * Portions might be copyrighted by other authors who have contributed
- * to OpenClonk.
+ * Distributed under the terms of the ISC license; see accompanying file
+ * "COPYING" for details.
  *
- * Permission to use, copy, modify, and/or distribute this software for any
- * purpose with or without fee is hereby granted, provided that the above
- * copyright notice and this permission notice appear in all copies.
- * See isc_license.txt for full license and disclaimer.
+ * "Clonk" is a registered trademark of Matthes Bender, used with permission.
+ * See accompanying file "TRADEMARK" for details.
  *
- * "Clonk" is a registered trademark of Matthes Bender.
- * See clonk_trademark_license.txt for full license.
+ * To redistribute this file separately, substitute the full license texts
+ * for the above references.
  */
 
 #include <C4Include.h>
@@ -311,7 +304,7 @@ static C4Void FnDoDamage(C4Object *Obj, long iChange, Nillable<long> iDmgType, N
 		//  iCausedBy = cthr->Caller->Obj->Controller;
 		//else
 		iCausedBy = NO_OWNER;
-	Obj->DoDamage(iChange,iCausedBy, iDmgType);
+	Obj->DoDamage(iChange, iCausedBy, iDmgType);
 	return C4Void();
 }
 
@@ -613,9 +606,9 @@ static long FnGetYDir(C4Object *Obj, long iPrec)
 static long FnGetR(C4Object *Obj)
 {
 	// Adjust range
-	long iR = Obj->r;
-	while (iR>180) iR-=360;
-	while (iR<-180) iR+=360;
+	long iR = Obj->GetR();
+	while (iR > 180) iR -= 360;
+	while (iR < -180) iR += 360;
 	return iR;
 }
 
@@ -793,10 +786,10 @@ static long FnGetActTime(C4Object *Obj)
 	return Obj->Action.Time;
 }
 
-static C4ID FnGetID(C4Object *Obj)
+static C4PropList* FnGetID(C4Object *Obj)
 {
 	// return id of object
-	return Obj->Def->id;
+	return Obj->GetPrototype();
 }
 
 static Nillable<C4ID> FnGetMenu(C4Object *Obj)
@@ -1163,7 +1156,7 @@ static C4Object *FnContents(C4Object *Obj, long index)
 	return NULL;
 }
 
-static bool FnShiftContents(C4Object *Obj, bool fShiftBack, C4ID idTarget, bool fDoCalls)
+static bool FnShiftContents(C4Object *Obj, bool fShiftBack, C4Def * idTarget, bool fDoCalls)
 {
 	// regular shift
 	if (!idTarget) return !!Obj->ShiftContents(fShiftBack, fDoCalls);
@@ -1193,7 +1186,7 @@ static long FnContentsCount(C4Object *Obj, C4ID id)
 	return Obj->Contents.ObjectCount(id);
 }
 
-static C4Object *FnFindContents(C4Object *Obj, C4ID c_id)
+static C4Object *FnFindContents(C4Object *Obj, C4Def * c_id)
 {
 	return Obj->Contents.Find(c_id);
 }
@@ -1511,8 +1504,16 @@ static long FnGetDefBottom(C4PropList * _this)
 	if (!_this || !_this->GetDef())
 		throw new NeedNonGlobalContext("GetDefBottom");
 
-	assert(!Object(_this) || Object(_this)->Def == _this->GetDef());
-	return _this->GetDef()->Shape.y+_this->GetDef()->Shape.Hgt + (Object(_this) ? Object(_this)->GetY() : 0);
+	C4Object *obj = Object(_this);
+	C4Def *def = _this->GetDef();
+	assert(!obj || obj->Def == def);
+	
+	if (obj)
+		return obj->GetY() + obj->Shape.GetBottom();
+	else if (def)
+		return def->Shape.GetBottom();
+	else
+		return 0;
 }
 
 static bool FnSetMenuSize(C4Object *Obj, long iCols, long iRows)
@@ -1830,6 +1831,56 @@ static Nillable<int> FnPlayAnimation(C4Object *Obj, C4String *szAnimation, int i
 	return n_node->GetNumber();
 }
 
+static Nillable<int> FnTransformBone(C4Object *Obj, C4String *szBoneName, C4ValueArray* Transformation, int iSlot, C4ValueArray* WeightProvider, Nillable<int> iSibling, Nillable<int> iAttachNumber)
+{
+	if (!Obj) return C4Void();
+	if (!Obj->pMeshInstance) return C4Void();
+	if (iSlot == 0) return C4Void(); // Reserved for ActMap animations
+	if (!Transformation) return C4Void();
+	if (!WeightProvider) return C4Void();
+
+	StdMeshInstance* Instance = Obj->pMeshInstance;
+	if (!iAttachNumber.IsNil())
+	{
+		const StdMeshInstance::AttachedMesh* Attached = Instance->GetAttachedMeshByNumber(iAttachNumber);
+		// OwnChild is set if an object's instance is attached. In that case the animation should be set directly on that object.
+		if (!Attached || !Attached->OwnChild) return C4Void();
+		Instance = Attached->Child;
+	}
+
+	StdMeshInstance::AnimationNode* s_node = NULL;
+	if (!iSibling.IsNil())
+	{
+		s_node = Instance->GetAnimationNodeByNumber(iSibling);
+		if (!s_node || s_node->GetSlot() != iSlot) return C4Void();
+	}
+
+	const StdMeshBone* bone = Instance->GetMesh().GetBoneByName(szBoneName->GetData());
+	if(!bone) return C4Void();
+
+	StdMeshInstance::ValueProvider* w_provider = CreateValueProviderFromArray(Obj, *WeightProvider);
+	if (!w_provider) return C4Void();
+
+	StdMeshMatrix matrix;
+	if (!C4ValueToMatrix(*Transformation, &matrix))
+		throw new C4AulExecError("TransformBone: Transformation is not a valid 3x4 matrix");
+
+	// For bone transformations we cannot use general matrix transformations, but we use decomposed
+	// translate, scale and rotation components (represented by the StdMeshTransformation class). This
+	// is less generic since it does not support skewing.
+	// Still, in the script API we want to expose a matrix parameter so that the convenient Trans_*
+	// functions can be used. We decompose the passed matrix at this point. If the matrix indeed has
+	// skewing components, the results will probably look strange since the decomposition would yield
+	// bogus values, however I don't think that's a practical use case. In the worst case we could add
+	// a check here and return nil if the matrix cannot be decomposed.
+	StdMeshTransformation trans = matrix.Decompose();
+
+	StdMeshInstance::AnimationNode* n_node = Instance->PlayAnimation(bone, trans, iSlot, s_node, w_provider);
+	if (!n_node) return C4Void();
+
+	return n_node->GetNumber();
+}
+
 static bool FnStopAnimation(C4Object *Obj, Nillable<int> iAnimationNumber, Nillable<int> iAttachNumber)
 {
 	if (!Obj) return false;
@@ -1974,6 +2025,35 @@ static bool FnSetAnimationPosition(C4Object *Obj, Nillable<int> iAnimationNumber
 	return true;
 }
 
+static bool FnSetAnimationBoneTransform(C4Object *Obj, Nillable<int> iAnimationNumber, C4ValueArray* Transformation, Nillable<int> iAttachNumber)
+{
+	if (!Obj) return false;
+	if (!Obj->pMeshInstance) return false;
+	if (iAnimationNumber.IsNil()) return false; // distinguish nil from 0
+
+	StdMeshInstance* Instance = Obj->pMeshInstance;
+	if (!iAttachNumber.IsNil())
+	{
+		const StdMeshInstance::AttachedMesh* Attached = Instance->GetAttachedMeshByNumber(iAttachNumber);
+		// OwnChild is set if an object's instance is attached. In that case the animation should be set directly on that object.
+		if (!Attached || !Attached->OwnChild) return false;
+		Instance = Attached->Child;
+	}
+
+	StdMeshInstance::AnimationNode* node = Instance->GetAnimationNodeByNumber(iAnimationNumber);
+	// slot 0 is reserved for ActMap animations
+	if (!node || node->GetSlot() == 0 || node->GetType() != StdMeshInstance::AnimationNode::CustomNode) return false;
+
+	StdMeshMatrix matrix;
+	if (!C4ValueToMatrix(*Transformation, &matrix))
+		throw new C4AulExecError("TransformBone: Transformation is not a valid 3x4 matrix");
+	// Here the same remark applies as in FnTransformBone
+	StdMeshTransformation trans = matrix.Decompose();
+
+	Instance->SetAnimationBoneTransform(node, trans);
+	return true;
+}
+
 static bool FnSetAnimationWeight(C4Object *Obj, Nillable<int> iAnimationNumber, C4ValueArray* WeightProvider, Nillable<int> iAttachNumber)
 {
 	if (!Obj) return false;
@@ -2070,13 +2150,28 @@ static bool FnSetAttachTransform(C4Object *Obj, long iAttachNumber, C4ValueArray
 	return true;
 }
 
-static Nillable<C4String*> FnGetMeshMaterial(C4Object *Obj, int iSubMesh)
+static Nillable<C4String*> FnGetMeshMaterial(C4PropList * _this, int iSubMesh)
 {
-	if (!Obj || !Obj->pMeshInstance) return C4Void();
-	if (iSubMesh < 0 || (unsigned int)iSubMesh >= Obj->pMeshInstance->GetNumSubMeshes()) return C4Void();
-
-	StdSubMeshInstance& submesh = Obj->pMeshInstance->GetSubMesh(iSubMesh);
-	return String(submesh.GetMaterial().Name.getData());
+	// Called in object or definition context?
+	C4Object *Obj = Object(_this);
+	if (!Obj)
+	{
+		if (!_this || !_this->GetDef()) throw new NeedNonGlobalContext("GetMeshMaterial");
+		// Called in definition context: Get definition default mesh material
+		C4Def *def = _this->GetDef();
+		if (!def->Graphics.IsMesh()) return C4Void();
+		if (iSubMesh < 0 || (unsigned int)iSubMesh >= def->Graphics.Mesh->GetNumSubMeshes()) return C4Void();
+		const StdSubMesh &submesh = def->Graphics.Mesh->GetSubMesh(iSubMesh);
+		return String(submesh.GetMaterial().Name.getData());
+	}
+	else
+	{
+		// Called in object context: Get material of mesh instance
+		if (!Obj->pMeshInstance) return C4Void();
+		if (iSubMesh < 0 || (unsigned int)iSubMesh >= Obj->pMeshInstance->GetNumSubMeshes()) return C4Void();
+		StdSubMeshInstance& submesh = Obj->pMeshInstance->GetSubMesh(iSubMesh);
+		return String(submesh.GetMaterial().Name.getData());
+	}
 }
 
 static bool FnSetMeshMaterial(C4Object *Obj, C4String* Material, int iSubMesh)
@@ -2093,15 +2188,20 @@ static bool FnSetMeshMaterial(C4Object *Obj, C4String* Material, int iSubMesh)
 	return true;
 }
 
-static bool FnCreateParticleAtBone(C4Object* Obj, C4String* szName, C4String* szBoneName, C4ValueArray* Pos, C4ValueArray* Dir, long a, long b, C4Object* pTarget, bool fBehindTarget)
+
+static bool FnCreateParticleAtBone(C4Object* Obj, C4String* szName, C4String* szBoneName, C4ValueArray* Pos, C4ValueArray* Dir, C4Value lifetime, C4PropList *properties, int amount)
 {
 	// safety
-	if(pTarget && !pTarget->Status) return false;
+	if(!Obj || !Obj->Status) return false;
 	// Get bone
 	if(!Obj->pMeshInstance) return false;
 	const StdMesh& mesh = Obj->pMeshInstance->GetMesh();
 	const StdMeshBone* bone = mesh.GetBoneByName(szBoneName->GetData());
 	if(!bone) return false;
+	// get particle
+	C4ParticleDef *pDef=::Particles.definitions.GetDef(FnStringPar(szName));
+	if (!pDef) return false;
+#ifndef USE_CONSOLE
 	// Get transform
 	Obj->pMeshInstance->UpdateBoneTransforms();
 	const StdMeshMatrix transform = Obj->pMeshInstance->GetBoneTransform(bone->Index) * StdMeshMatrix::Transform(bone->Transformation);
@@ -2197,11 +2297,18 @@ static bool FnCreateParticleAtBone(C4Object* Obj, C4String* szName, C4String* sz
 	x.x += DrawTransform(0,3);
 	x.y += DrawTransform(1,3);
 	x.z += DrawTransform(2,3);
-	// get particle
-	C4ParticleDef *pDef=::Particles.GetDef(FnStringPar(szName));
-	if (!pDef) return false;
+
+	// construct data
+	C4ParticleValueProvider valueX, valueY, valueSpeedX, valueSpeedY, valueLifetime;
+	valueX.Set(x.x);
+	valueY.Set(x.y);
+	valueSpeedX.Set(dir.x);
+	valueSpeedY.Set(dir.y);
+	valueLifetime.Set(lifetime);
+
 	// cast
-	::Particles.Create(pDef, x.x, x.y, dir.x, dir.y, (float) a/10.0f, b, pTarget ? (fBehindTarget ? &pTarget->BackParticles : &pTarget->FrontParticles) : NULL, pTarget);
+	::Particles.Create(pDef, valueX, valueY, valueSpeedX, valueSpeedY, valueLifetime, properties, amount, Obj);
+#endif
 	// success, even if not created
 	return true;
 
@@ -2513,6 +2620,7 @@ void InitObjectFunctionMap(C4AulScriptEngine *pEngine)
 	AddFunc(pEngine, "ExecuteCommand", FnExecuteCommand);
 
 	AddFunc(pEngine, "PlayAnimation", FnPlayAnimation);
+	AddFunc(pEngine, "TransformBone", FnTransformBone);
 	AddFunc(pEngine, "StopAnimation", FnStopAnimation);
 	AddFunc(pEngine, "GetRootAnimation", FnGetRootAnimation);
 	AddFunc(pEngine, "GetAnimationLength", FnGetAnimationLength);
@@ -2520,6 +2628,7 @@ void InitObjectFunctionMap(C4AulScriptEngine *pEngine)
 	AddFunc(pEngine, "GetAnimationPosition", FnGetAnimationPosition);
 	AddFunc(pEngine, "GetAnimationWeight", FnGetAnimationWeight);
 	AddFunc(pEngine, "SetAnimationPosition", FnSetAnimationPosition);
+	AddFunc(pEngine, "SetAnimationBoneTransform", FnSetAnimationBoneTransform);
 	AddFunc(pEngine, "SetAnimationWeight", FnSetAnimationWeight);
 	AddFunc(pEngine, "AttachMesh", FnAttachMesh);
 	AddFunc(pEngine, "DetachMesh", FnDetachMesh);

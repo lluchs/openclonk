@@ -76,7 +76,7 @@
 {
 	NSString* pathExtension = [[filename pathExtension] lowercaseString];
     
-	NSArray* clonkFileNameExtensions = [NSArray arrayWithObjects:@"ocd", @"ocs", @"ocf", @"ocg", nil];
+	NSArray* clonkFileNameExtensions = @[@"ocd", @"ocs", @"ocf", @"ocg"];
 	if ([clonkFileNameExtensions containsObject:pathExtension])
 	{
 		// later decide whether to install or run
@@ -149,20 +149,22 @@
 #ifdef USE_COCOA
 - (void) delayedRun:(id)sender
 {
+	Application.StartOnCurrentThread();
 	running = YES;
-	while (!Application.fQuitMsgReceived)
-		Application.ScheduleProcs();
-	[NSApp replyToApplicationShouldTerminate:YES];
-	running = NO;
-	[self quitAndMaybeRestart];
-	[NSApp terminate:self];
+	//while (!Application.fQuitMsgReceived)
+	//	Application.ScheduleProcs();
+	//[NSApp replyToApplicationShouldTerminate:YES];
+	//running = NO;
+	//[self quitAndMaybeRestart];
+	//[NSApp terminate:self];
 }
 #endif
 
 - (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication*)application
 {
-	[self suggestQuitting:self];
-	return running ? NSTerminateCancel : NSTerminateNow;
+	if (!Application.fQuitMsgReceived)
+		[self suggestQuitting:self];
+	return NSTerminateNow;
 }
 
 - (void)terminate:(NSApplication*)sender

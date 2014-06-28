@@ -35,6 +35,14 @@ public func GetExpansionGoal()
 	return expansion_goal;
 }
 
+// Scenario saving
+public func SaveScenarioObject(props)
+{
+	if (!inherited(props, ...)) return false;
+	if (expansion_goal) props->AddCall("Goal", this, "SetExpansionGoal", expansion_goal);
+	return true;
+}
+
 /*-- Goal interface --*/
 
 // The goal is fulfilled if the expansio goal is covered by flags.
@@ -101,6 +109,17 @@ private func CoveredByFlag(int x, int y)
 	return false;
 }
 
+// Return the description of this goal.
+public func GetDescription(int plr)
+{
+	var message;
+	if (GetExpansionArea() >= GetExpansionGoal() || GetExpansionGoal() == 0)
+		message = Format("$MsgGoalFulfilled$");	
+	else
+		message = Format("$MsgGoalUnFulfilled$", 100 * GetExpansionArea() / GetExpansionGoal());
+	return message;
+}
+
 // Shows or hides a message window with information.
 public func Activate(int plr)
 {
@@ -114,7 +133,7 @@ public func Activate(int plr)
 	// Otherwise open a new message.
 	AddEffect("GoalMessage", this, 100, 0, this);
 	var message;
-	if (GetExpansionArea() >= GetExpansionGoal())
+	if (GetExpansionArea() >= GetExpansionGoal() || GetExpansionGoal() == 0)
 		message = Format("@$MsgGoalFulfilled$");	
 	else
 		message = Format("@$MsgGoalUnFulfilled$", 100 * GetExpansionArea() / GetExpansionGoal());
@@ -128,7 +147,9 @@ protected func FxGoalMessageStart() {}
 public func GetShortDescription(int plr)
 {
 	// Show expansion percentage.
-	var perc = Min(100, 100 * GetExpansionArea() / GetExpansionGoal());
+	var perc = 0;
+	if (GetExpansionGoal())
+		perc = Min(100, 100 * GetExpansionArea() / GetExpansionGoal());
 	var clr = RGB(255, 0, 0);
 	if (perc >= 100)
 		clr = RGB(0, 255, 0);

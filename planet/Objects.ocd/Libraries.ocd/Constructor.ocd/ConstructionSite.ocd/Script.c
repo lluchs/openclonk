@@ -40,24 +40,37 @@ public func Set(id def, int dir, object stick)
 	direction = dir;
 	stick_to = stick;
 
-	var xw = (1-dir*2)*1000;
-	
-	var w,h;
+	var xw = (1 - dir * 2) * 1000;
+	var w, h;
 	w = def->GetDefWidth();
 	h = def->GetDefHeight();
-	
+	// Draw the building with a wired frame and large alpha.
 	SetGraphics(nil, def, 1, GFXOV_MODE_Base);
 	SetClrModulation(RGBa(255,255,255,50), 1);
 	SetObjDrawTransform(xw,0,0,0,1000, -h*500,1);
 	SetGraphics(nil, def, 2, GFXOV_MODE_Base, nil, GFX_BLIT_Wireframe);
 	SetObjDrawTransform(xw,0,0,0,1000, -h*500,2);
+	// Height of construction site needs to exceed 12 pixels for the clonk to be able to add materials.
+	h = Max(12, h);
 	SetShape(-w/2, -h, w, h);
+	// Increase shape for below surface constructions to allow for adding materials.
+	if (definition->~IsBelowSurfaceConstruction())
+		SetShape(-w/2, -2 * h, w, 2 * h);
 	
-	SetName(Format("TxtConstruction",def->GetName()));
+	SetName(Translate(Format("TxtConstruction",def->GetName())));
 	
 	this.visibility = VIS_Owner | VIS_Allies;
 	
 	ShowMissingComponents();
+}
+
+// Scenario saving
+func SaveScenarioObject(props)
+{
+	if (!inherited(props, ...)) return false;
+	props->Remove("Name");
+	if (definition) props->AddCall("Definition", this, "Set", definition, direction, stick_to);
+	return true;
 }
 
 // only allow collection if needed
@@ -166,12 +179,18 @@ private func StartConstructing()
 	// find all objects on the bottom of the area that are not stuck
 	var wdt = GetObjWidth();
 	var hgt = GetObjHeight();
-	var lying_around = FindObjects(Find_Or(Find_Category(C4D_Vehicle), Find_Category(C4D_Object), Find_Category(C4D_Living)),Find_InRect(-wdt/2 - 2, -hgt, wdt + 2, hgt + 12), Find_OCF(OCF_InFree));
+	var lying_around = FindObjects(Find_Or(Find_Category(C4D_Vehicle), Find_Category(C4D_Object), Find_Category(C4D_Living)),Find_InRect(-wdt/2 - 2, -hgt, wdt + 2, hgt + 12), Find_Not(Find_OCF(OCF_InFree)));
 	
-	// create the construction
+	// create the construction, below surface constructions don't perform any checks.
 	var site;
-	if(!(site = CreateConstruction(definition, 0, 0, GetOwner(), 1, 1, 1)))
+	var checks = !definition->~IsBelowSurfaceConstruction();
+	if(!(site = CreateConstruction(definition, 0, 0, GetOwner(), 1, checks, checks)))
 	{
+		// spit out error message. This could happen if the landscape changed in the meantime
+		// a little hack: the message would immediately vanish because this object is deleted. So, instead display the
+		// message on one of the contents.
+		if(Contents(0))
+			CustomMessage("$TxtNoConstructionHere$", Contents(0), GetOwner(), nil,nil, RGB(255,0,0));
 		Interact(nil, 1);
 		return;
 	}

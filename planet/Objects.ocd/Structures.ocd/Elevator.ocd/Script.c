@@ -19,6 +19,13 @@ func CreateShaft(int length)
 	case->SetPosition(case->GetX(), GetY()+20);
 }
 
+func SetCasePosition(int y)
+{
+	// Move case to specified absolute y position
+	if (case) return case->SetPosition(case->GetX(), y);
+	return false;
+}
+
 /* Initialization */
 
 func Construction(object creator)
@@ -39,7 +46,6 @@ func Initialize()
 		if (Inside(partner->GetY(), GetY()-3, GetY()+3))
 		{
 			partner->LetsBecomeFriends(this);
-			slave = true; // Note: This is liberal slavery
 			SetPosition(GetX(), partner->GetY());
 		}
 		else
@@ -58,6 +64,24 @@ func CreateCaseRope()
 {
 	rope = CreateObject(ElevatorRope, -19 * GetCalcDir(), -11, GetOwner());
 	rope->SetAction("Be", case.back);
+}
+
+/* Scenario saving */
+
+func SaveScenarioObject(props)
+{
+	if (!inherited(props, ...)) return false;
+	props->Remove("Category");
+	if (partner && slave)
+	{
+		props->AddCall("Friends", partner, "LetsBecomeFriends", this);
+	}
+	if (case && case->GetY() > GetY() + 20)
+	{
+		props->AddCall("Shaft", this, "CreateShaft", case->GetY() - GetY() - 20);
+		props->AddCall("Shaft", this, "SetCasePosition", case->GetY());
+	}
+	return true;
 }
 
 /* Destruction */
@@ -82,25 +106,26 @@ func LostCase()
 
 func StartEngine()
 {
-	Sound("ElevatorStart");
+	Sound("ElevatorStart", nil, nil, nil, nil, 400);
 	ScheduleCall(this, "EngineLoop", 34);
-	Sound("ElevatorMoving", nil, nil, nil, 1);
+	//Sound("ElevatorMoving", nil, nil, nil, 1);
 }
 func EngineLoop()
 {
-	Sound("ElevatorMoving", nil, nil, nil, 1);
+	Sound("ElevatorMoving", nil, nil, nil, 1, 400);
 }
 func StopEngine()
 {
 	Sound("ElevatorMoving", nil, nil, nil, -1);
 	ClearScheduleCall(this, "EngineLoop");
-	Sound("ElevatorStop");
+	Sound("ElevatorStop", nil, nil, nil, nil, 400);
 }
 
 /* Construction */
 
 // Sticking to other elevators
-func ConstructionCombineWith() { return "IsElevator"; }
+public func ConstructionCombineWith() { return "IsElevator"; }
+public func ConstructionCombineDirection() { return CONSTRUCTION_STICK_Left | CONSTRUCTION_STICK_Right; }
 
 // Called to determine if sticking is possible
 func IsElevator(object previewer)
@@ -132,6 +157,7 @@ func CombineWith(object other)
 func LetsBecomeFriends(object other)
 {
 	partner = other;
+	other.slave = true; // Note: This is liberal slavery
 	if (case) case->StartConnection(other.case);
 }
 
@@ -152,6 +178,13 @@ func CheckSlavery()
 		LoseCombination();
 		partner->LoseCombination();
 	}
+}
+
+// Forward config to case
+func SetNoPowerNeed(bool to_val)
+{
+	if (case) return case->SetNoPowerNeed(to_val);
+	return false;
 }
 
 local ActMap = {

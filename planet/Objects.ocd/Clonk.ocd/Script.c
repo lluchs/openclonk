@@ -196,14 +196,41 @@ public func Eat(object food)
 	}
 }
 
+func DigOutObject(object obj)
+{
+	// Collect fragile objects when dug out
+	if (obj->GetDefFragile())
+		return Collect(obj,nil,nil,true);
+	return false;
+}
+
+// Building material bridges (like loam bridge)
+func Bridge()
+{
+	var proc = GetProcedure();
+	// Clonk must stand on ground. Allow during SCALE; but Clonk won't keep animation if he's not actually near the ground
+	if (proc != "WALK" && proc != "SCALE")
+		return false;
+	if (proc == "WALK")
+		SetAction("BridgeStand");
+	else
+		SetAction("BridgeScale");
+	SetComDir(COMD_Stop);
+	SetXDir(0);
+	SetYDir(0);
+	return true;
+}
+
 /* Status */
 
 // TODO: Make this more sophisticated, readd turn animation and other
 // adaptions
 public func IsClonk() { return true; }
+public func IsPrey() { return true; }
 
 public func IsJumping(){return WildcardMatch(GetAction(), "*Jump*");}
 public func IsWalking(){return GetProcedure() == "WALK";}
+public func IsBridging(){return WildcardMatch(GetAction(), "Bridge*");}
 
 /* Carry items on the clonk */
 
@@ -303,8 +330,6 @@ func DoUpdateAttach(bool sec)
 			iHandMesh[sec] = AttachMesh(obj, pos_hand, bone, trans);
 			PlayAnimation(closehand, 6, Anim_Const(GetAnimationLength(closehand)), Anim_Const(1000));
 		}
-		else
-			; // Don't display
 	}
 	else if(iAttachMode == CARRY_HandBack)
 	{
@@ -334,8 +359,6 @@ func DoUpdateAttach(bool sec)
 			PlayAnimation("CarryArms", 6, Anim_Const(obj->~GetCarryPhase(this)), Anim_Const(1000));
 			fBothHanded = 1;
 		}
-		else
-			; // Don't display
 	}
 	else if(iAttachMode == CARRY_Spear)
 	{
@@ -408,7 +431,7 @@ func HasHandAction(sec, just_wear)
 func HasActionProcedure()
 {
 	var action = GetAction();
-	if (action == "Walk" || action == "Jump" || action == "WallJump" || action == "Kneel" || action == "Ride")
+	if (action == "Walk" || action == "Jump" || action == "WallJump" || action == "Kneel" || action == "Ride" || action == "BridgeStand")
 		return true;
 	return false;
 }
@@ -491,7 +514,7 @@ func OnMaterialChanged(int new, int old)
 	var oldliquid = (olddens >= C4M_Liquid) && (olddens < C4M_Solid);
 	// into water
 	if(newliquid && !oldliquid)
-		AddEffect("Bubble", this, 1, 52, this);
+		AddEffect("Bubble", this, 1, 8, this);
 	// out of water
 	else if(!newliquid && oldliquid)
 		RemoveEffect("Bubble", this);
@@ -501,8 +524,21 @@ func FxBubbleTimer(pTarget, effect, iTime)
 {
 	if(GBackLiquid(0,-5))
 	{
+		var mouth_off = GetCon()/11;
 		var iRot = GetSwimRotation();
-		Bubble(1, +Sin(iRot, 9), Cos(iRot, 9));
+		var mouth_off_x = Sin(iRot, mouth_off), mouth_off_y = Cos(iRot, mouth_off);
+		// Search for bubbles to breath from
+		var bubble = FindObject(Find_Func("CanBeBreathed", this), Find_AtRect(mouth_off_x-mouth_off/2, mouth_off_y, mouth_off, mouth_off/3));
+		if (bubble)
+		{
+			bubble->~OnClonkBreath(this);
+		}
+		else if (!Random(6))
+		{
+			// Make your own bubbles
+			
+			Bubble(1, mouth_off_x, mouth_off_y);
+		}
 	}
 }
 
@@ -511,6 +547,12 @@ func QueryCatchBlow(object obj)
 	var r=0;
 	var e=0;
 	var i=0;
+	// Blocked by object effects?
+	while(e=GetEffect("*", obj, i++))
+		if(EffectCall(obj, e, "QueryHitClonk", this))
+			return true;
+	// Blocked by Clonk effects?
+	i=0;
 	while(e=GetEffect("*Control*", this, i++))
 	{
 		if(EffectCall(this, e, "QueryCatchBlow", obj))
@@ -521,6 +563,7 @@ func QueryCatchBlow(object obj)
 		
 	}
 	if(r) return r;
+	// No blocking
 	return _inherited(obj, ...);
 }
 
@@ -555,6 +598,36 @@ func SetSkin(int skin)
 	return skin;
 }
 func GetSkinCount() { return 4; }
+
+/* Scenario saving */
+
+func SaveScenarioObject(props)
+{
+	if (!inherited(props, ...)) return false;
+	// Direction is randomized at creation and there's no good way to find
+	// out if the user wanted that specific direction. So just always save
+	// it, because that's what scenario designer usually wants.
+	if (!props->HasProp("Dir")) props->AddCall("Dir", this, "SetDir", GetConstantNameByValueSafe(GetDir(),"DIR_"));
+	return true;
+}
+
+
+/* AI editor helper */
+
+func EditCursorSelection()
+{
+	var ai = S2AI->GetAI(this);
+	if (ai) Call(S2AI.EditCursorSelection, ai);
+	return _inherited(...);
+}
+
+func EditCursorDeselection()
+{
+	var ai = S2AI->GetAI(this);
+	if (ai) Call(S2AI.EditCursorDeselection, ai);
+	return _inherited(...);
+}
+
 
 /* Act Map */
 
@@ -681,9 +754,9 @@ Dig = {
 //	InLiquidAction = "Swim",
 	Attach = CNAT_Left | CNAT_Right | CNAT_Bottom,
 },
-Bridge = {
+BridgeStand = {
 	Prototype = Action,
-	Name = "Bridge",
+	Name = "BridgeStand",
 	Procedure = DFA_THROW,
 	Directions = 2,
 	Length = 16,
@@ -692,7 +765,22 @@ Bridge = {
 	Y = 60,
 	Wdt = 8,
 	Hgt = 20,
-	NextAction = "Bridge",
+	NextAction = "BridgeStand",
+	StartCall = "StartStand",
+	InLiquidAction = "Swim",
+},
+BridgeScale = {
+	Prototype = Action,
+	Name = "BridgeScale",
+	Procedure = DFA_THROW,
+	Directions = 2,
+	Length = 16,
+	Delay = 1,
+	X = 0,
+	Y = 60,
+	Wdt = 8,
+	Hgt = 20,
+	NextAction = "BridgeScale",
 	InLiquidAction = "Swim",
 },
 Swim = {
@@ -881,7 +969,7 @@ Eat = {
 };
 local Name = "Clonk";
 local MaxEnergy = 50000;
-local MaxBreath = 252; // Clonk can breathe for 7 seconds under water.
+local MaxBreath = 720; // Clonk can breathe for 20 seconds under water.
 local JumpSpeed = 400;
 local ThrowSpeed = 294;
 local NoBurnDecay = 1;

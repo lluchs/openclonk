@@ -108,7 +108,7 @@ public func ControlUse(object clonk, int x, int y)
 	magic_number = ObjectNumber();
 	StartWeaponHitCheckEffect(clonk, length, 1);
 	
-	this->Sound("WeaponSwing?", false, nil, nil, nil);
+	this->Sound("WeaponSwing?");
 	return true;
 }
 
@@ -225,6 +225,9 @@ func CheckStrike(iTime)
 				if(shield == 100)
 					continue;
 					
+				// Sound before damage to prevent null pointer access if callbacks delete this
+				Sound("WeaponHit?", false);
+				
 				// fixed damage (9)
 				var damage = SwordDamage(shield);
 				ProjectileHit(obj, damage, ProjectileHit_no_query_catch_blow_callback | ProjectileHit_exact_damage | ProjectileHit_no_on_projectile_hit_callback, FX_Call_EngGetPunched);
@@ -242,18 +245,22 @@ func CheckStrike(iTime)
 							DoWeaponSlow(obj, 300);
 					
 					// Particle effect
-					var x=-1;
-					var p="Slice2";
-					if(Contained()->GetDir() == DIR_Right)
+					var particle =
 					{
-						x=1;
-						p="Slice1";
+						Size = 20,
+						BlitMode = GFX_BLIT_Additive,
+						Attach = ATTACH_Front | ATTACH_MoveRelative,
+						Phase = PV_Linear(0, 3)
+					};
+
+					if(Contained()->GetDir() == DIR_Left)
+					{
+						particle.Phase = PV_Linear(4, 7);
 					} 
-					CreateParticle(p, AbsX(obj->GetX())+RandomX(-1,1), AbsY(obj->GetY())+RandomX(-1,1), 0, 0, 100, RGB(255,255,255), obj);
+					obj->CreateParticle("SwordSlice", RandomX(-1,1), RandomX(-1,1), 0, 0, 6, particle);
 				}
 				
-				// sound and done. We can only hit one target
-				Sound("WeaponHit?", false);
+				// and done. We can only hit one target
 				break;
 			}
 		}

@@ -1,26 +1,18 @@
 /*
  * OpenClonk, http://www.openclonk.org
  *
- * Copyright (c) 1998-2000, 2004-2005, 2007-2008  Matthes Bender
- * Copyright (c) 2004-2008  Sven Eberhardt
- * Copyright (c) 2005-2006, 2008-2011  Günther Brammer
- * Copyright (c) 2005-2006, 2009  Peter Wortmann
- * Copyright (c) 2009, 2011  Nicolas Hake
- * Copyright (c) 2010  Benjamin Herr
- * Copyright (c) 2011  Armin Burgmeier
- * Copyright (c) 2011  Julius Michaelis
- * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de
+ * Copyright (c) 1998-2000, Matthes Bender
+ * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
+ * Copyright (c) 2009-2013, The OpenClonk Team and contributors
  *
- * Portions might be copyrighted by other authors who have contributed
- * to OpenClonk.
+ * Distributed under the terms of the ISC license; see accompanying file
+ * "COPYING" for details.
  *
- * Permission to use, copy, modify, and/or distribute this software for any
- * purpose with or without fee is hereby granted, provided that the above
- * copyright notice and this permission notice appear in all copies.
- * See isc_license.txt for full license and disclaimer.
+ * "Clonk" is a registered trademark of Matthes Bender, used with permission.
+ * See accompanying file "TRADEMARK" for details.
  *
- * "Clonk" is a registered trademark of Matthes Bender.
- * See clonk_trademark_license.txt for full license.
+ * To redistribute this file separately, substitute the full license texts
+ * for the above references.
  */
 
 /* Main class to initialize configuration and execute the game */
@@ -46,6 +38,7 @@
 #include <C4GameLobby.h>
 #include <C4Network2.h>
 #include <C4Network2IRC.h>
+#include <C4Particles.h>
 
 #include <getopt.h>
 
@@ -102,15 +95,23 @@ bool C4Application::DoInit(int argc, char * argv[])
 			Config.Load();
 		}
 	}
+	// Open log
+	OpenLog();
+
+	Revision.Ref(C4REVISION);
+
+	// Engine header message
+	Log(C4ENGINEINFOLONG);
+	LogF("Version: %s %s (%s)", C4VERSION, C4_OS, Revision.getData());
+	LogF("ExePath: \"%s\"", Config.General.ExePath.getData());
+	LogF("SystemDataPath: \"%s\"", Config.General.SystemDataPath);
+	LogF("UserDataPath: \"%s\"", Config.General.UserDataPath);
+
 	// Init C4Group
 	C4Group_SetProcessCallback(&ProcessCallback);
 	C4Group_SetTempPath(Config.General.TempPath.getData());
 	C4Group_SetSortList(C4CFN_FLS);
 
-	// Open log
-	OpenLog();
-
-	Revision.Ref(C4REVISION);
 
 	// Initialize game data paths
 	Reloc.Init();
@@ -135,7 +136,7 @@ bool C4Application::DoInit(int argc, char * argv[])
 	// Load language string table
 	if (!Languages.LoadLanguage(Config.General.LanguageEx))
 		// No language table was loaded - bad luck...
-		if (!IsResStrTableLoaded())
+		if (!Languages.HasStringTable())
 			Log("WARNING: No language string table loaded!");
 
 #if defined(WIN32) && defined(WITH_AUTOMATIC_UPDATE)
@@ -168,12 +169,8 @@ bool C4Application::DoInit(int argc, char * argv[])
 	// init timers (needs window)
 	Add(pGameTimer = new C4ApplicationGameTimer());
 
-	// Engine header message
-	Log(C4ENGINEINFOLONG);
-	LogF("Version: %s %s (%s)", C4VERSION, C4_OS, Revision.getData());
-
-	// Initialize D3D/OpenGL
-	bool success = DDrawInit(this, !!isEditor, false, GetConfigWidth(), GetConfigHeight(), Config.Graphics.BitDepth, Config.Graphics.Engine, Config.Graphics.Monitor);
+	// Initialize OpenGL
+	bool success = DDrawInit(this, !!isEditor, false, GetConfigWidth(), GetConfigHeight(), Config.Graphics.BitDepth, Config.Graphics.Monitor);
 	if (!success) { LogFatal(LoadResStr("IDS_ERR_DDRAW")); Clear(); ShowGfxErrorDialog(); return false; }
 
 	if (!isEditor)
@@ -181,6 +178,9 @@ bool C4Application::DoInit(int argc, char * argv[])
 		if (!SetVideoMode(Application.GetConfigWidth(), Application.GetConfigHeight(), Config.Graphics.BitDepth, Config.Graphics.RefreshRate, Config.Graphics.Monitor, !Config.Graphics.Windowed))
 			pWindow->SetSize(Config.Graphics.WindowX, Config.Graphics.WindowY);
 	}
+
+	// after initializing graphics, the particle system can check for compatibility
+	::Particles.DoInit();
 
 	// Initialize gamepad
 	if (!pGamePadControl && Config.General.GamepadEnabled)
@@ -227,6 +227,9 @@ void C4Application::ParseCommandLine(int argc, char * argv[])
 			{"league", no_argument, &Config.Network.LeagueServerSignUp, 1},
 			{"nosignup", no_argument, &Config.Network.MasterServerSignUp, 0},
 			{"signup", no_argument, &Config.Network.MasterServerSignUp, 1},
+			
+			{"debugrecread", required_argument, 0, 'K'},
+			{"debugrecwrite", required_argument, 0, 'w'},
 
 			{"client", required_argument, 0, 'c'},
 			{"host", no_argument, 0, 'h'},
@@ -288,6 +291,28 @@ void C4Application::ParseCommandLine(int argc, char * argv[])
 		case 'j':
 			Game.NetworkActive = true;
 			SCopy(optarg, Game.DirectJoinAddress, _MAX_PATH);
+			break;
+		case 'K':
+			if (optarg && optarg[0])
+			{
+				LogF("Reading from DebugRec file '%s'", optarg);
+				SCopy(optarg, Config.General.DebugRecExternalFile, _MAX_PATH);
+			}
+			else
+				Log("Reading DebugRec from CtrlRec file in scenario record");
+			Config.General.DebugRec = 1;
+			Config.General.DebugRecWrite = 0;
+			break;
+		case 'w':
+			if (optarg && optarg[0])
+			{
+				LogF("Writing to DebugRec file '%s'", optarg);
+				SCopy(optarg, Config.General.DebugRecExternalFile, _MAX_PATH);
+			}
+			else
+				Log("Writing DebugRec to CtrlRec file in scenario record");
+			Config.General.DebugRec = 1;
+			Config.General.DebugRecWrite = 1;
 			break;
 		case 'r': Game.Record = true; break;
 		case 'n': Game.NetworkActive = true; break;
@@ -533,14 +558,17 @@ void C4Application::Clear()
 	Game.Clear();
 	NextMission.Clear();
 	// stop timer
-	Remove(pGameTimer);
-	delete pGameTimer; pGameTimer = NULL;
+	if (pGameTimer)
+	{
+		Remove(pGameTimer);
+		delete pGameTimer; pGameTimer = NULL;
+	}
 	// quit irc
 	IRCClient.Close();
 	// close system group (System.ocg)
 	SystemGroup.Close();
 	// Log
-	if (IsResStrTableLoaded()) // Avoid (double and undefined) message on (second?) shutdown...
+	if (::Languages.HasStringTable()) // Avoid (double and undefined) message on (second?) shutdown...
 		Log(LoadResStr("IDS_PRC_DEINIT"));
 	// Clear external language packs and string table
 	Languages.Clear();
@@ -618,6 +646,7 @@ void C4Application::GameTick()
 		if (!PreInit()) Quit();
 		break;
 	case C4AS_Startup:
+		SoundSystem.Execute();
 		// wait for the user to start a game
 		break;
 	case C4AS_StartGame:
@@ -656,7 +685,6 @@ void C4Application::GameTick()
 		// Game
 		if (Game.IsRunning)
 			Game.Execute();
-		Game.DoSkipFrame = false;
 		// Sound
 		SoundSystem.Execute();
 		// Gamepad
@@ -668,15 +696,13 @@ void C4Application::GameTick()
 void C4Application::Draw()
 {
 	// Graphics
-	if (!Game.DoSkipFrame)
-	{
-		// Fullscreen mode
-		if (!isEditor)
-			FullScreen.Execute();
-		// Console mode
-		else
-			Console.Execute();
-	}
+
+	// Fullscreen mode
+	if (!isEditor)
+		FullScreen.Execute();
+	// Console mode
+	else
+		Console.Execute();
 }
 
 void C4Application::SetGameTickDelay(int iDelay)
@@ -811,26 +837,28 @@ bool C4Application::FullScreenMode()
 
 C4ApplicationGameTimer::C4ApplicationGameTimer()
 		: CStdMultimediaTimerProc(26),
-		iLastGameTick(0), iGameTickDelay(0)
+		tLastGameTick(C4TimeMilliseconds::NegativeInfinity), iGameTickDelay(28), iExtraGameTickDelay(0)
 {
 }
 
 void C4ApplicationGameTimer::SetGameTickDelay(uint32_t iDelay)
 {
+	// Remember delay
+	iGameTickDelay = iDelay;
 	// Smaller than minimum refresh delay?
 	if (iDelay < uint32_t(Config.Graphics.MaxRefreshDelay))
 	{
 		// Set critical timer
 		SetDelay(iDelay);
 		// No additional breaking needed
-		iGameTickDelay = 0;
+		iExtraGameTickDelay = 0;
 	}
 	else
 	{
 		// Set critical timer
 		SetDelay(Config.Graphics.MaxRefreshDelay);
 		// Slow down game tick
-		iGameTickDelay = iDelay;
+		iExtraGameTickDelay = iDelay;
 	}
 }
 
@@ -838,23 +866,33 @@ bool C4ApplicationGameTimer::Execute(int iTimeout, pollfd *)
 {
 	// Check timer and reset
 	if (!CheckAndReset()) return true;
-	unsigned int Now = GetTime();
+	C4TimeMilliseconds tNow = C4TimeMilliseconds::Now();
 	// Execute
-	if (Now >= iLastGameTick + iGameTickDelay || Game.GameGo)
+	if (tNow >= tLastGameTick + iExtraGameTickDelay || Game.GameGo)
 	{
-		if(iGameTickDelay)
-			iLastGameTick += iGameTickDelay;
+		if (iGameTickDelay)
+			tLastGameTick += iGameTickDelay;
 		else
-			iLastGameTick = Now;
+			tLastGameTick = tNow;
 
 		// Compensate if things get too slow
-		if (Now > iLastGameTick + iGameTickDelay)
-			iLastGameTick += (Now - iLastGameTick) / 2;
+		if (tNow > tLastGameTick + iGameTickDelay)
+			tLastGameTick += (tNow - tLastGameTick) / 2;
 
 		Application.GameTick();
 	}
-	// Draw always
-	Application.Draw();
+	// Draw
+	if (!Game.DoSkipFrame)
+	{
+		C4TimeMilliseconds tPreGfxTime = C4TimeMilliseconds::Now();
+
+		Application.Draw();
+
+		// Automatic frame skip if graphics are slowing down the game (skip max. every 2nd frame)
+		Game.DoSkipFrame = Game.Parameters.AutoFrameSkip && (tPreGfxTime + iGameTickDelay < C4TimeMilliseconds::Now());
+	} else {
+		Game.DoSkipFrame=false;
+	}
 	return true;
 }
 

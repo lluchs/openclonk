@@ -211,6 +211,21 @@ private func CheckForWinner()
 	return;
 }
 
+public func GetDescription(int plr)
+{
+	var teams=GetTeamPoints();
+	var lines=[];
+	
+	for(var i=0;i<GetLength(teams);++i)
+	{
+		lines[GetLength(lines)]=Format("%s: %d", teams[i]["player_names"], teams[i]["points"] );
+	}
+	
+	var msg=Format("$MsgGoalDesc$", GetPointLimit());
+	for(var i=0;i<GetLength(lines);++i)
+		msg=Format("%s|%s", msg, lines[i]);
+	return msg;
+}
 
 public func Activate(int byplr)
 {
@@ -279,6 +294,14 @@ private func GetTeamPoints()
 public func GetShortDescription(int plr)
 {
 	return ""; // TODO
+}
+
+public func SaveScenarioObject(props)
+{
+	if (!inherited(props, ...)) return false;
+	if (GetPointLimit() != 10) props->AddCall("Goal", this, "SetPointLimit", GetPointLimit());
+	if (GetRadius() != 300) props->AddCall("Goal", this, "SetRadius", GetRadius());
+	return true;
 }
 
 local Name = "$Name$";

@@ -198,9 +198,11 @@ global func FxTutorialEnergyTimer(object tg, e, tm) {
 }
 
 global func FxTutorialEnergyStop(object tg, e, tm) {
-	for(var building in [SteamEngine, ToolsWorkshop, Sawmill, Elevator, Pump, Compensator, Windmill, WoodenCabin])
+	for(var plan in [SteamEngine, ToolsWorkshop, Sawmill, Elevator, Pump, Compensator, Windmill, WoodenCabin,
+		Axe, Balloon, Barrel, Boompack, Bucket, Crate, DynamiteBox, Hammer, Pickaxe, Pipe, PowderKeg, Ropeladder, Shovel, Sickle,
+		Javelin, Sword, Shield, Club])
 		for(var i = GetPlayerCount(); i--;)
-			SetPlrKnowledge(GetPlayerByIndex(i), building);
+			SetPlrKnowledge(GetPlayerByIndex(i), plan);
 	guide->ClearGuideMessage();
 	GameOver();
 }
@@ -270,7 +272,7 @@ global func FxClonkRestoreStop(object target, effect, int reason, bool  temporar
 		clonk->GrabObjectInfo(target);
 		SetCursor(plr, clonk);
 		clonk->DoEnergy(100000);
-		restorer->SetRestoreObject(clonk, nil, to_x, to_y, "ClonkRestore");
+		restorer->SetRestoreObject(clonk, nil, to_x, to_y, 0, "ClonkRestore");
 	}
 	return 1;
 }
