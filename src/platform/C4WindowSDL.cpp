@@ -64,7 +64,10 @@ C4Window * C4Window::Init(WindowKind windowKind, C4AbstractApp * pApp, const cha
 		return 0;
 	}
 	Active = true;
+	// Set up the mouse: Don't show a system cursor and don't allow the mouse
+	// to escape the game window.
 	SDL_ShowCursor(SDL_DISABLE);
+	SDL_SetWindowGrab(window, SDL_TRUE);
 	return this;
 }
 
