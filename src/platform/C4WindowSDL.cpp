@@ -28,6 +28,12 @@
 #include <C4Rect.h>
 #include <C4Config.h>
 
+#include <SDL_syswm.h>
+
+#ifdef SDL_VIDEO_DRIVER_X11
+#include "X11Helpers.h"
+#endif
+
 /* C4Window */
 
 C4Window::C4Window ():
@@ -42,8 +48,6 @@ C4Window::~C4Window ()
 
 C4Window * C4Window::Init(WindowKind windowKind, C4AbstractApp * pApp, const char * Title, const C4Rect * size)
 {
-/*	    SDL_GL_MULTISAMPLEBUFFERS,
-	    SDL_GL_MULTISAMPLESAMPLES,*/
 	SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8);
 	SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 8);
 	SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8);
@@ -52,6 +56,8 @@ C4Window * C4Window::Init(WindowKind windowKind, C4AbstractApp * pApp, const cha
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, /*REQUESTED_GL_CTX_MINOR*/ 2);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, (Config.Graphics.DebugOpenGL ? SDL_GL_CONTEXT_DEBUG_FLAG : 0));
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+	SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, Config.Graphics.MultiSampling > 0 ? 1 : 0);
+	SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, Config.Graphics.MultiSampling);
 	uint32_t flags = SDL_WINDOW_OPENGL;
 	if (windowKind == W_Fullscreen && size->Wdt == -1)
 		flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
@@ -75,7 +81,8 @@ bool C4Window::ReInit(C4AbstractApp* pApp)
 {
 	// TODO: How do we enable multisampling with SDL?
 	// Maybe re-call SDL_SetVideoMode?
-	return false;
+	// Return true anyways to make the setting available on the next restart.
+	return true;
 }
 
 void C4Window::Clear()
@@ -86,7 +93,16 @@ void C4Window::Clear()
 
 void C4Window::EnumerateMultiSamples(std::vector<int>& samples) const
 {
-	// TODO: Enumerate multi samples
+#ifdef SDL_VIDEO_DRIVER_X11
+	SDL_SysWMinfo info;
+	SDL_VERSION(&info.version);
+	if (!SDL_GetWindowWMInfo(window, &info)) return;
+	Display * const dpy = info.info.x11.display;
+	::EnumerateMultiSamples(dpy, samples);
+#else
+	if(pGL && pGL->pMainCtx)
+		samples = pGL->pMainCtx->EnumerateMultiSamples();
+#endif
 }
 
 bool C4Window::StorePosition(const char *, const char *, bool) { return true; }
