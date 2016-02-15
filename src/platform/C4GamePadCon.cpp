@@ -74,16 +74,7 @@ void C4GamePadControl::Execute(bool)
 
 namespace
 {
-	const int deadZone = 13337;
-
-	int amplify(int i)
-	{
-		if (i < 0)
-			return -(deadZone + 1);
-		if (i > 0)
-			return deadZone + 1;
-		return 0;
-	}
+	const int deadZone = 8000;
 }
 
 void C4GamePadControl::FeedEvent(SDL_Event& event)
@@ -94,48 +85,31 @@ void C4GamePadControl::FeedEvent(SDL_Event& event)
 	{
 		C4KeyCode minCode = KEY_Gamepad(event.caxis.which, KEY_JOY_Axis(event.caxis.axis, false));
 		C4KeyCode maxCode = KEY_Gamepad(event.caxis.which, KEY_JOY_Axis(event.caxis.axis, true));
+		int32_t value = std::abs(event.caxis.value);
+		uint8_t which = event.caxis.which;
+		C4KeyCode keyCode = event.caxis.value >= 0 ? maxCode : minCode;
 
-		// FIXME: This assumes that the axis really rests around (0, 0) if it is not used, which is not always true.
-		if (event.caxis.value < -deadZone)
+		auto doInput = [&](C4KeyEventType event, int32_t strength)
 		{
-			if (PressedAxis.count(minCode) == 0)
-			{
-				Game.DoKeyboardInput(
-				  KEY_Gamepad(event.caxis.which, minCode),
-				  KEYEV_Down, false, false, false, false);
-				PressedAxis.insert(minCode);
-			}
-		}
-		else
+			Game.DoKeyboardInput(
+			  KEY_Gamepad(which, keyCode), event,
+			  false, false, false, false, NULL, false, strength);
+		};
+
+		// Also emulate button presses.
+		if (PressedAxis.count(keyCode) && value <= deadZone)
 		{
-			if (PressedAxis.count(minCode) != 0)
-			{
-				Game.DoKeyboardInput(
-				  KEY_Gamepad(event.caxis.which, minCode),
-				  KEYEV_Up, false, false, false, false);
-				PressedAxis.erase(minCode);
-			}
+			PressedAxis.erase(keyCode);
+			doInput(KEYEV_Up, -1);
 		}
-		if (event.caxis.value > +deadZone)
+		else if (!PressedAxis.count(keyCode) && value > deadZone)
 		{
-			if (PressedAxis.count(maxCode) == 0)
-			{
-				Game.DoKeyboardInput(
-				  KEY_Gamepad(event.caxis.which, maxCode),
-				  KEYEV_Down, false, false, false, false);
-				PressedAxis.insert(maxCode);
-			}
+			PressedAxis.insert(keyCode);
+			doInput(KEYEV_Down, -1);
 		}
-		else
-		{
-			if (PressedAxis.count(maxCode) != 0)
-			{
-				Game.DoKeyboardInput(
-				  KEY_Gamepad(event.caxis.which, maxCode),
-				  KEYEV_Up, false, false, false, false);
-				PressedAxis.erase(maxCode);
-			}
-		}
+
+		doInput(KEYEV_Moved, value);
+
 		break;
 	}
 	case SDL_CONTROLLERBUTTONDOWN:

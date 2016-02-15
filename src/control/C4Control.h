@@ -204,8 +204,8 @@ class C4ControlPlayerControl : public C4ControlPacket // sync
 {
 public:
 	C4ControlPlayerControl() : iPlr(-1), fRelease(false) {}
-	C4ControlPlayerControl(int32_t iPlr, bool fRelease, const C4KeyEventData &rExtraData)
-			: iPlr(iPlr), fRelease(fRelease), ExtraData(rExtraData) { }
+	C4ControlPlayerControl(int32_t iPlr, bool fRelease, const C4KeyEventData &rExtraData, bool fMoved = false)
+			: iPlr(iPlr), fRelease(fRelease), ExtraData(rExtraData), fMoved(fMoved) { }
 	C4ControlPlayerControl(int32_t iPlr, int32_t iControl, int32_t iExtraData) // old-style menu com emulation
 			: iPlr(iPlr), fRelease(false), ExtraData(iExtraData,0,0,0,0) { AddControl(iControl,0); }
 
@@ -221,7 +221,7 @@ public:
 	typedef std::vector<ControlItem> ControlItemVec;
 protected:
 	int32_t iPlr;
-	bool fRelease;
+	bool fRelease, fMoved = false;
 	C4KeyEventData ExtraData;
 	ControlItemVec ControlItems;
 public:
@@ -230,6 +230,7 @@ public:
 	{ ControlItems.push_back(ControlItem(iControl, iTriggerMode)); }
 	const ControlItemVec &GetControlItems() const { return ControlItems; }
 	bool IsReleaseControl() const { return fRelease; }
+	bool IsMovedControl() const { return fMoved; }
 	const C4KeyEventData &GetExtraData() const { return ExtraData; }
 	void SetExtraData(const C4KeyEventData &new_extra_data) { ExtraData = new_extra_data; }
 };

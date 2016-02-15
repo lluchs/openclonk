@@ -424,6 +424,7 @@ void C4ControlPlayerControl::CompileFunc(StdCompiler *pComp)
 {
 	pComp->Value(mkNamingAdapt(mkIntPackAdapt(iPlr), "Player", -1));
 	pComp->Value(mkNamingAdapt(fRelease, "Release", false));
+	pComp->Value(mkNamingAdapt(fMoved, "Moved", false));
 	pComp->Value(mkNamingAdapt(ExtraData, "ExtraData", C4KeyEventData()));
 	pComp->Value(mkNamingAdapt(mkSTLContainerAdapt(ControlItems), "Controls", ControlItemVec()));
 	C4ControlPacket::CompileFunc(pComp);
