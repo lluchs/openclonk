@@ -16,9 +16,9 @@ static g_player_cursor_pos; // array of [x,y] pos arrays; indexed by player. las
 // Return whether handled
 global func PlayerControl(int plr, int ctrl, id spec_id, int x, int y, int strength, bool repeat, int status)
 {
-	var release = status == 1;
-	/* Log("%d, %s, %i, %d, %d, %d, %v, %v", plr, GetPlayerControlName(ctrl), spec_id, x,y,strength, repeat, status); */
-	if (status == 2) return false;
+	var release = status == CONS_Up;
+	//Log("%d, %s, %i, %d, %d, %d, %v, %v", plr, GetPlayerControlName(ctrl), spec_id, x,y,strength, repeat, status);
+	if (status == CONS_Moved) return false;
 	// Control handled by definition? Forward
 	if (spec_id) return spec_id->PlayerControl(plr, ctrl, x, y, strength, repeat, release);
 
