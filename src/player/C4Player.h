@@ -28,6 +28,7 @@
 #include "C4PlayerControl.h"
 #include <C4Value.h>
 #include <set>
+#include <memory>
 
 const int32_t C4PVM_Cursor    = 0,
               C4PVM_Target    = 1,
@@ -130,7 +131,7 @@ public:
 	C4PlayerControl Control;
 	C4ObjectPtr Cursor, ViewCursor;
 	int32_t CursorFlash;
-	class C4GamePadOpener *pGamepad;
+	std::shared_ptr<class C4GamePadOpener> pGamepad;
 	// Message
 	int32_t MessageStatus;
 	char MessageBuf[256+1];

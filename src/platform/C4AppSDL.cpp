@@ -167,6 +167,10 @@ void C4AbstractApp::HandleSDLEvent(SDL_Event& e)
 	case SDL_CONTROLLERBUTTONUP:
 		Application.pGamePadControl->FeedEvent(e, C4GamePadControl::FEED_BUTTONS);
 		break;
+	case SDL_CONTROLLERDEVICEADDED:
+	case SDL_CONTROLLERDEVICEREMOVED:
+		Application.pGamePadControl->CheckGamePad(e);
+		break;
 	}
 }
 

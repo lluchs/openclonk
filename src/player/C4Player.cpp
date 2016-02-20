@@ -66,7 +66,6 @@ C4Player::C4Player() : C4PlayerInfoCore()
 	LastControlType = PCID_None;
 	LastControlID = 0;
 	pMsgBoardQuery = NULL;
-	pGamepad = NULL;
 	NoEliminationCheck = false;
 	Evaluated = false;
 	ZoomLimitMinWdt = ZoomLimitMinHgt = ZoomLimitMaxWdt = ZoomLimitMaxHgt = ZoomWdt = ZoomHgt = 0;
@@ -86,7 +85,6 @@ C4Player::~C4Player()
 		delete pMsgBoardQuery;
 		pMsgBoardQuery = pNext;
 	}
-	delete pGamepad; pGamepad = NULL;
 	ClearControl();
 }
 
@@ -210,6 +208,21 @@ void C4Player::Execute()
 	else if (Menu.IsActive() && Menu.GetIdentification() == C4MN_TeamSelection)
 	{
 		Menu.TryClose(false, false);
+	}
+
+	// Check whether the gamepad is still connected.
+	if (!pGamepad->IsAttached())
+	{
+		auto newPad = Application.pGamePadControl->GetReplacedGamePad(*pGamepad);
+		if (newPad)
+		{
+			pGamepad = newPad;
+		}
+		else
+		{
+			LogF("%s: Gamepad disconnected.", Name.getData());
+			::Game.Pause();
+		}
 	}
 
 	// Tick1
@@ -1349,7 +1362,6 @@ void C4Player::ClearControl()
 	LocalControl = false;
 	ControlSetName.Clear();
 	ControlSet=NULL;
-	if (pGamepad) { delete pGamepad; pGamepad=NULL; }
 	MouseControl = false;
 	// no controls issued yet
 	ControlCount = ActionCount = 0;
@@ -1382,7 +1394,7 @@ void C4Player::InitControl()
 		// init gamepad
 		if (ControlSet && ControlSet->HasGamepad())
 		{
-			pGamepad = new C4GamePadOpener(ControlSet->GetGamepadIndex());
+			pGamepad = Application.pGamePadControl->GetGamePad(ControlSet->GetGamepadIndex());
 		}
 		// Mouse
 		if (ControlSet && ControlSet->HasMouse() && PrefMouse)

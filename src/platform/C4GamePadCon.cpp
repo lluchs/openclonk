@@ -55,6 +55,10 @@ void C4GamePadControl::Execute()
 		case SDL_CONTROLLERBUTTONUP:
 			FeedEvent(event, FEED_BUTTONS);
 			break;
+		case SDL_CONTROLLERDEVICEADDED:
+		case SDL_CONTROLLERDEVICEREMOVED:
+			CheckGamePad(event);
+			break;
 		}
 	}
 #endif
@@ -120,6 +124,22 @@ void C4GamePadControl::FeedEvent(const SDL_Event& event, int feed)
 	}
 }
 
+void C4GamePadControl::CheckGamePad(const SDL_Event& e)
+{
+	switch (e.type)
+	{
+	case SDL_CONTROLLERDEVICEADDED:
+	{
+		auto device = std::make_shared<C4GamePadOpener>(e.cdevice.which);
+		Gamepads[device->GetID()] = device;
+		break;
+	}
+	case SDL_CONTROLLERDEVICEREMOVED:
+		Gamepads.erase(e.cdevice.which);
+		break;
+	}
+}
+
 void C4GamePadControl::DoAxisInput()
 {
 	for (auto const &e : AxisEvents)
@@ -137,6 +157,37 @@ int C4GamePadControl::GetGamePadCount()
 		if (SDL_IsGameController(i))
 			count++;
 	return count;
+}
+
+std::shared_ptr<C4GamePadOpener> C4GamePadControl::GetGamePad(int gamepad)
+{
+	if (gamepad >= 0)
+		for (const auto& p : Gamepads)
+			if (gamepad-- == 0)
+				return p.second;
+	return nullptr;
+}
+
+std::shared_ptr<C4GamePadOpener> C4GamePadControl::GetGamePadByID(int32_t id)
+{
+	auto it = Gamepads.find(id);
+	if (it != Gamepads.end())
+		return it->second;
+	return nullptr;
+}
+
+bool operator==(const SDL_JoystickGUID& guid1, const SDL_JoystickGUID& guid2)
+{
+	return memcmp(&guid1, &guid2, sizeof(SDL_JoystickGUID)) == 0;
+}
+
+std::shared_ptr<C4GamePadOpener> C4GamePadControl::GetReplacedGamePad(C4GamePadOpener& old)
+{
+	auto guid = old.GetGUID();
+	for (const auto& p : Gamepads)
+		if (guid == p.second->GetGUID())
+			return p.second;
+	return nullptr;
 }
 
 C4GamePadOpener::C4GamePadOpener(int iGamepad)
@@ -167,6 +218,16 @@ C4GamePadOpener::~C4GamePadOpener()
 	if (controller) SDL_GameControllerClose(controller);
 }
 
+int32_t C4GamePadOpener::GetID()
+{
+	return SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(controller));
+}
+
+bool C4GamePadOpener::IsAttached()
+{
+	return SDL_GameControllerGetAttached(controller);
+}
+
 void C4GamePadOpener::PlayRumble(float strength, uint32_t length)
 {
 	if (SDL_HapticRumbleSupported(haptic))
@@ -177,6 +238,11 @@ void C4GamePadOpener::StopRumble()
 {
 	if (SDL_HapticRumbleSupported(haptic))
 		SDL_HapticRumbleStop(haptic);
+}
+
+SDL_JoystickGUID C4GamePadOpener::GetGUID()
+{
+	return SDL_JoystickGetGUID(SDL_GameControllerGetJoystick(controller));
 }
 
 #else
