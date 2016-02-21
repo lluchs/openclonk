@@ -192,6 +192,14 @@ std::shared_ptr<C4GamePadOpener> C4GamePadControl::GetReplacedGamePad(C4GamePadO
 	return nullptr;
 }
 
+std::shared_ptr<C4GamePadOpener> C4GamePadControl::GetAvailableGamePad()
+{
+	for (const auto& p : Gamepads)
+		if (p.second->GetPlayer() < 0)
+			return p.second;
+	return nullptr;
+}
+
 C4GamePadOpener::C4GamePadOpener(int iGamepad)
 {
 	int n = iGamepad;
@@ -259,6 +267,7 @@ int C4GamePadControl::GetGamePadCount() { return 0; }
 std::shared_ptr<C4GamePadOpener> C4GamePadControl::GetGamePad(int gamepad) { return nullptr; }
 std::shared_ptr<C4GamePadOpener> C4GamePadControl::GetGamePadByID(int32_t id) { return nullptr; }
 std::shared_ptr<C4GamePadOpener> C4GamePadControl::GetReplacedGamePad(C4GamePadOpener& old) { return nullptr; }
+std::shared_ptr<C4GamePadOpener> C4GamePadControl::GetAvailableGamePad() { return nullptr; }
 
 C4GamePadOpener::C4GamePadOpener(int iGamepad) { }
 C4GamePadOpener::~C4GamePadOpener() {}

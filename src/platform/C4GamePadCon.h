@@ -59,13 +59,20 @@ public:
 	std::shared_ptr<C4GamePadOpener> GetGamePad(int gamepad); // Gets the nth gamepad.
 	std::shared_ptr<C4GamePadOpener> GetGamePadByID(int32_t id); // Gets a gamepad by its instance id.
 	std::shared_ptr<C4GamePadOpener> GetReplacedGamePad(C4GamePadOpener& old); // Looks for a gamepad with the same GUID.
+	std::shared_ptr<C4GamePadOpener> GetAvailableGamePad(); // Looks for a gamepad that doesn't have an assigned player.
 };
 
 class C4GamePadOpener
 {
+	int32_t player = -1;
+
 public:
 	C4GamePadOpener(int iGamePad);
 	~C4GamePadOpener();
+
+	// A gamepad can be assigned to a player.
+	int32_t GetPlayer() const { return player; }
+	void SetPlayer(int32_t plr) { player = plr; }
 
 	int32_t GetID(); // Returns the gamepad's instance id.
 	bool IsAttached(); // Returns whether the gamepad is currently attached.

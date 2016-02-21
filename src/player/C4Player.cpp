@@ -210,19 +210,37 @@ void C4Player::Execute()
 		Menu.TryClose(false, false);
 	}
 
-	// Check whether the gamepad is still connected.
-	if (!pGamepad->IsAttached())
+	// Do we have a gamepad?
+	if (pGamepad)
 	{
-		auto newPad = Application.pGamePadControl->GetReplacedGamePad(*pGamepad);
-		if (newPad)
+		// Check whether it's still connected.
+		if (!pGamepad->IsAttached())
 		{
-			pGamepad = newPad;
+			// Allow the player to plug the gamepad back in. To
+			// prevent confusion, the game will only allow exactly
+			// the same controller to continue playing. This allows
+			// battery replacement or plugging the controller back
+			// in after someone tripped over the wire.
+			auto newPad = Application.pGamePadControl->GetReplacedGamePad(*pGamepad);
+			if (newPad)
+			{
+				pGamepad = newPad;
+			}
+			else
+			{
+				LogF("%s: Gamepad disconnected.", Name.getData());
+				::Game.Pause();
+			}
 		}
-		else
-		{
-			LogF("%s: Gamepad disconnected.", Name.getData());
-			::Game.Pause();
-		}
+	}
+	// Should we have one? The player may have started the game
+	// without turning their controller on, only noticing this
+	// after the game started.
+	else if (LocalControl && ControlSet && ControlSet->HasGamepad())
+	{
+		pGamepad = Application.pGamePadControl->GetAvailableGamePad();
+		if (pGamepad)
+			pGamepad->SetPlayer(ID);
 	}
 
 	// Tick1
@@ -1363,6 +1381,11 @@ void C4Player::ClearControl()
 	ControlSetName.Clear();
 	ControlSet=NULL;
 	MouseControl = false;
+	if (pGamepad)
+	{
+		pGamepad->SetPlayer(NO_OWNER);
+		pGamepad.reset();
+	}
 	// no controls issued yet
 	ControlCount = ActionCount = 0;
 	LastControlType = PCID_None;
@@ -1394,7 +1417,16 @@ void C4Player::InitControl()
 		// init gamepad
 		if (ControlSet && ControlSet->HasGamepad())
 		{
-			pGamepad = Application.pGamePadControl->GetGamePad(ControlSet->GetGamepadIndex());
+			pGamepad = Application.pGamePadControl->GetAvailableGamePad();
+			if (!pGamepad)
+			{
+				LogF("No gamepad available for %s, please plug one in!", Name.getData());
+				::Game.Pause();
+			}
+			else
+			{
+				pGamepad->SetPlayer(ID);
+			}
 		}
 		// Mouse
 		if (ControlSet && ControlSet->HasMouse() && PrefMouse)
