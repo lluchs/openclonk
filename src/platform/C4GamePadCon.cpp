@@ -186,20 +186,6 @@ std::shared_ptr<C4GamePadOpener> C4GamePadControl::GetGamePadByID(int32_t id)
 	return nullptr;
 }
 
-bool operator==(const SDL_JoystickGUID& guid1, const SDL_JoystickGUID& guid2)
-{
-	return memcmp(&guid1, &guid2, sizeof(SDL_JoystickGUID)) == 0;
-}
-
-std::shared_ptr<C4GamePadOpener> C4GamePadControl::GetReplacedGamePad(C4GamePadOpener& old)
-{
-	auto guid = old.GetGUID();
-	for (const auto& p : Gamepads)
-		if (guid == p.second->GetGUID())
-			return p.second;
-	return nullptr;
-}
-
 std::shared_ptr<C4GamePadOpener> C4GamePadControl::GetAvailableGamePad()
 {
 	for (const auto& p : Gamepads)
@@ -256,11 +242,6 @@ void C4GamePadOpener::StopRumble()
 		SDL_HapticRumbleStop(haptic);
 }
 
-SDL_JoystickGUID C4GamePadOpener::GetGUID()
-{
-	return SDL_JoystickGetGUID(SDL_GameControllerGetJoystick(controller));
-}
-
 #else
 
 // Dedicated server and everything else with neither Win32 nor SDL.
@@ -272,7 +253,6 @@ void C4GamePadControl::DoAxisInput() { }
 int C4GamePadControl::GetGamePadCount() { return 0; }
 std::shared_ptr<C4GamePadOpener> C4GamePadControl::GetGamePad(int gamepad) { return nullptr; }
 std::shared_ptr<C4GamePadOpener> C4GamePadControl::GetGamePadByID(int32_t id) { return nullptr; }
-std::shared_ptr<C4GamePadOpener> C4GamePadControl::GetReplacedGamePad(C4GamePadOpener& old) { return nullptr; }
 std::shared_ptr<C4GamePadOpener> C4GamePadControl::GetAvailableGamePad() { return nullptr; }
 
 C4GamePadOpener::C4GamePadOpener(int iGamepad) { }

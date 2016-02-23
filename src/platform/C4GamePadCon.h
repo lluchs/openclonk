@@ -58,7 +58,6 @@ public:
 
 	std::shared_ptr<C4GamePadOpener> GetGamePad(int gamepad); // Gets the nth gamepad.
 	std::shared_ptr<C4GamePadOpener> GetGamePadByID(int32_t id); // Gets a gamepad by its instance id.
-	std::shared_ptr<C4GamePadOpener> GetReplacedGamePad(C4GamePadOpener& old); // Looks for a gamepad with the same GUID.
 	std::shared_ptr<C4GamePadOpener> GetAvailableGamePad(); // Looks for a gamepad that doesn't have an assigned player.
 };
 
@@ -82,8 +81,6 @@ public:
 	void StopRumble();
 
 #ifdef HAVE_SDL
-	SDL_JoystickGUID GetGUID();
-
 	SDL_GameController *controller;
 	SDL_Haptic *haptic;
 #endif

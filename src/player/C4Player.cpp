@@ -216,19 +216,12 @@ void C4Player::Execute()
 		// Check whether it's still connected.
 		if (!pGamepad->IsAttached())
 		{
-			// Allow the player to plug the gamepad back in. To
-			// prevent confusion, the game will only allow exactly
-			// the same controller to continue playing. This allows
+			// Allow the player to plug the gamepad back in. This allows
 			// battery replacement or plugging the controller back
 			// in after someone tripped over the wire.
-			auto newPad = Application.pGamePadControl->GetReplacedGamePad(*pGamepad);
-			if (newPad)
+			if (!FindGamepad())
 			{
-				pGamepad = newPad;
-			}
-			else
-			{
-				LogF("%s: Gamepad disconnected.", Name.getData());
+				LogF("%s: No gamepad available.", Name.getData());
 				::Game.Pause();
 			}
 		}
@@ -238,9 +231,7 @@ void C4Player::Execute()
 	// after the game started.
 	else if (LocalControl && ControlSet && ControlSet->HasGamepad())
 	{
-		pGamepad = Application.pGamePadControl->GetAvailableGamePad();
-		if (pGamepad)
-			pGamepad->SetPlayer(ID);
+		FindGamepad();
 	}
 
 	// Tick1
@@ -1417,15 +1408,10 @@ void C4Player::InitControl()
 		// init gamepad
 		if (ControlSet && ControlSet->HasGamepad())
 		{
-			pGamepad = Application.pGamePadControl->GetAvailableGamePad();
-			if (!pGamepad)
+			if (!FindGamepad())
 			{
 				LogF("No gamepad available for %s, please plug one in!", Name.getData());
 				::Game.Pause();
-			}
-			else
-			{
-				pGamepad->SetPlayer(ID);
 			}
 		}
 		// Mouse
@@ -1438,6 +1424,18 @@ void C4Player::InitControl()
 	}
 	// clear old control method and register new
 	Control.RegisterKeyset(Number, ControlSet);
+}
+
+bool C4Player::FindGamepad()
+{
+	auto newPad = Application.pGamePadControl->GetAvailableGamePad();
+	if (!newPad) return false;
+	newPad->SetPlayer(ID);
+	// Release the old gamepad.
+	if (pGamepad) pGamepad->SetPlayer(NO_OWNER);
+	pGamepad = newPad;
+	LogF("%s: Using gamepad #%d.", Name.getData(), pGamepad->GetID());
+	return true;
 }
 
 int igOffX, igOffY;
