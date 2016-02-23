@@ -57,6 +57,7 @@ void C4GamePadControl::Execute()
 		case SDL_CONTROLLERBUTTONUP:
 			FeedEvent(event, FEED_BUTTONS);
 			break;
+		case SDL_JOYDEVICEADDED:
 		case SDL_CONTROLLERDEVICEADDED:
 		case SDL_CONTROLLERDEVICEREMOVED:
 			CheckGamePad(event);
@@ -130,13 +131,20 @@ void C4GamePadControl::CheckGamePad(const SDL_Event& e)
 {
 	switch (e.type)
 	{
+	case SDL_JOYDEVICEADDED:
+		// Report that an unsupported joystick device has been detected, to help with controller issues.
+		if (!SDL_IsGameController(e.jdevice.which))
+			LogF("Gamepad %s isn't supported.", SDL_JoystickNameForIndex(e.jdevice.which));
+		break;
 	case SDL_CONTROLLERDEVICEADDED:
 	{
 		auto device = std::make_shared<C4GamePadOpener>(e.cdevice.which);
 		Gamepads[device->GetID()] = device;
+		LogF("Gamepad #%d connected: %s", device->GetID(), SDL_JoystickNameForIndex(e.cdevice.which));
 		break;
 	}
 	case SDL_CONTROLLERDEVICEREMOVED:
+		LogF("Gamepad #%d disconnected.", e.cdevice.which);
 		Gamepads.erase(e.cdevice.which);
 		break;
 	}
@@ -208,14 +216,12 @@ C4GamePadOpener::C4GamePadOpener(int iGamepad)
 		{
 			controller = SDL_GameControllerOpen(i);
 			if (!controller) LogF("SDL: %s", SDL_GetError());
-			haptic = SDL_HapticOpenFromJoystick(SDL_GameControllerGetJoystick(controller));
-			if (haptic)
-			{
-				if (SDL_HapticRumbleSupported(haptic))
-					SDL_HapticRumbleInit(haptic);
-			}
+			SDL_Joystick *joystick = SDL_GameControllerGetJoystick(controller);
+			haptic = SDL_HapticOpenFromJoystick(joystick);
+			if (haptic && SDL_HapticRumbleSupported(haptic))
+				SDL_HapticRumbleInit(haptic);
 			else
-				LogF("SDL: %s", SDL_GetError());
+				LogF("Gamepad #%d %s does not support rumbling.", SDL_JoystickInstanceID(joystick), SDL_JoystickName(joystick));
 			break;
 		}
 
