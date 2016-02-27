@@ -35,7 +35,7 @@
 
 #include "graphics/StdPNG.h"
 
-static const int MAX_BACKGROUND_FPS = 5;
+static const int MAX_BACKGROUND_FPS = 30;
 
 C4GraphicsSystem::C4GraphicsSystem()
 {
