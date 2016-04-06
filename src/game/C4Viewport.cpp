@@ -392,7 +392,7 @@ void C4Viewport::Execute()
 				if (::Game.PlayerInfos.GetJoinIssuedPlayerCount() > 0) // free scrolling allowed if the scenario was started explicitely without players to inspect the landscape
 					draw_game = false;
 	// Draw
-	Draw(cgo, draw_game, true);
+	Draw(cgo, true, true);
 	// Blit output
 	BlitOutput();
 }
