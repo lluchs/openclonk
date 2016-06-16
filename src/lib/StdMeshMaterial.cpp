@@ -97,6 +97,7 @@ namespace
 	{
 		{ "source1", StdMeshMaterialTextureUnit::BOX_Source1 },
 		{ "source2", StdMeshMaterialTextureUnit::BOX_Source2 },
+		{ "modulate3", StdMeshMaterialTextureUnit::BOX_Modulate3 },
 		{ "modulate", StdMeshMaterialTextureUnit::BOX_Modulate },
 		{ "modulate_x2", StdMeshMaterialTextureUnit::BOX_ModulateX2 },
 		{ "modulate_x4", StdMeshMaterialTextureUnit::BOX_ModulateX4 },
@@ -119,6 +120,7 @@ namespace
 		{ "src_texture", StdMeshMaterialTextureUnit::BOS_Texture },
 		{ "src_diffuse", StdMeshMaterialTextureUnit::BOS_Diffuse },
 		{ "src_specular", StdMeshMaterialTextureUnit::BOS_Specular },
+		{ "src_player_colors", StdMeshMaterialTextureUnit::BOS_PlayerColors },
 		{ "src_player_color", StdMeshMaterialTextureUnit::BOS_PlayerColor },
 		{ "src_player_colour", StdMeshMaterialTextureUnit::BOS_PlayerColor },
 		{ "src_manual", StdMeshMaterialTextureUnit::BOS_Manual },
@@ -871,7 +873,7 @@ bool StdMeshMaterialProgram::CompileShader(StdMeshMaterialLoader& loader, C4Shad
 	uniformNames[C4SSU_Gamma] = "gamma";
 	uniformNames[C4SSU_BaseTex] = "baseTex"; // unused
 	uniformNames[C4SSU_OverlayTex] = "overlayTex"; // unused
-	uniformNames[C4SSU_OverlayClr] = "oc_PlayerColor";
+	uniformNames[C4SSU_OverlayClr] = "oc_PlayerColors";
 	uniformNames[C4SSU_LightTex] = "lightTex";
 	uniformNames[C4SSU_LightTransform] = "lightTransform";
 	uniformNames[C4SSU_NormalTex] = "normalTex"; // unused

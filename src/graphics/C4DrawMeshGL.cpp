@@ -71,7 +71,8 @@ namespace
 		case StdMeshMaterialTextureUnit::BOS_Texture: return Texture2DToCode(index, hasTextureAnimation);
 		case StdMeshMaterialTextureUnit::BOS_Diffuse: return StdStrBuf("diffuse");
 		case StdMeshMaterialTextureUnit::BOS_Specular: return StdStrBuf("diffuse"); // TODO: Should be specular
-		case StdMeshMaterialTextureUnit::BOS_PlayerColor: return StdStrBuf("vec4(oc_PlayerColor, 1.0)");
+		case StdMeshMaterialTextureUnit::BOS_PlayerColor: return StdStrBuf("oc_PlayerColors[0]");
+		case StdMeshMaterialTextureUnit::BOS_PlayerColors: return StdStrBuf("oc_PlayerColors");
 		case StdMeshMaterialTextureUnit::BOS_Manual: return FormatString("vec4(%f, %f, %f, %f)", manualColor[0], manualColor[1], manualColor[2], manualAlpha);
 		default: assert(false); return StdStrBuf("vec4(0.0, 0.0, 0.0, 0.0)");
 		}
@@ -83,6 +84,7 @@ namespace
 		{
 		case StdMeshMaterialTextureUnit::BOX_Source1: return StdStrBuf(source1);
 		case StdMeshMaterialTextureUnit::BOX_Source2: return StdStrBuf(source2);
+		case StdMeshMaterialTextureUnit::BOX_Modulate3: return FormatString("Modulate3(%s, %s)", source1, source2);
 		case StdMeshMaterialTextureUnit::BOX_Modulate: return FormatString("%s * %s", source1, source2);
 		case StdMeshMaterialTextureUnit::BOX_ModulateX2: return FormatString("2.0 * %s * %s", source1, source2);
 		case StdMeshMaterialTextureUnit::BOX_ModulateX4: return FormatString("4.0 * %s * %s", source1, source2);
@@ -106,7 +108,9 @@ namespace
 		const bool hasTextureAnimation = texunit.HasTexCoordAnimation();
 
 		StdStrBuf color_source1 = FormatString("%s.rgb", TextureUnitSourceToCode(index, texunit.ColorOpSources[0], texunit.ColorOpManualColor1, texunit.AlphaOpManualAlpha1, hasTextureAnimation).getData());
-		StdStrBuf color_source2 = FormatString("%s.rgb", TextureUnitSourceToCode(index, texunit.ColorOpSources[1], texunit.ColorOpManualColor2, texunit.AlphaOpManualAlpha2, hasTextureAnimation).getData());
+		// Hack to pass an array to Modulate3()
+		const char *fmt = texunit.ColorOpSources[1] == StdMeshMaterialTextureUnit::BOS_PlayerColors ? "%s" : "%s.rgb";
+		StdStrBuf color_source2 = FormatString(fmt, TextureUnitSourceToCode(index, texunit.ColorOpSources[1], texunit.ColorOpManualColor2, texunit.AlphaOpManualAlpha2, hasTextureAnimation).getData());
 		StdStrBuf alpha_source1 = FormatString("%s.a", TextureUnitSourceToCode(index, texunit.AlphaOpSources[0], texunit.ColorOpManualColor1, texunit.AlphaOpManualAlpha1, hasTextureAnimation).getData());
 		StdStrBuf alpha_source2 = FormatString("%s.a", TextureUnitSourceToCode(index, texunit.AlphaOpSources[1], texunit.ColorOpManualColor2, texunit.AlphaOpManualAlpha2, hasTextureAnimation).getData());
 
@@ -234,7 +238,7 @@ namespace
 
 		return FormatString(
 			"%s\n" // Texture units with active textures, only if >0 texture units
-			"uniform vec3 oc_PlayerColor;\n" // This needs to be in-sync with the naming in StdMeshMaterialProgram::CompileShader()
+			"uniform vec3 oc_PlayerColors[3];\n" // This needs to be in-sync with the naming in StdMeshMaterialProgram::CompileShader()
 			"\n"
 			"slice(texture)\n"
 			"{\n"
@@ -512,12 +516,18 @@ namespace
 		call.SetUniform3fv(C4SSU_Gamma, 1, pDraw->gammaOut);
 
 		// Player color
-		const float fPlrClr[3] = {
+		const float fPlrClr[9] = {
+			((dwPlayerColor >> 16) & 0xff) / 255.0f,
+			((dwPlayerColor >>  8) & 0xff) / 255.0f,
+			((dwPlayerColor      ) & 0xff) / 255.0f,
+			((dwPlayerColor >> 16) & 0xff) / 255.0f,
+			((dwPlayerColor >>  8) & 0xff) / 255.0f,
+			((dwPlayerColor      ) & 0xff) / 255.0f,
 			((dwPlayerColor >> 16) & 0xff) / 255.0f,
 			((dwPlayerColor >>  8) & 0xff) / 255.0f,
 			((dwPlayerColor      ) & 0xff) / 255.0f,
 		};
-		call.SetUniform3fv(C4SSU_OverlayClr, 1, fPlrClr);
+		call.SetUniform3fv(C4SSU_OverlayClr, 3, fPlrClr);
 
 		// Backface culling flag
 		call.SetUniform1f(C4SSU_CullMode, cullFace ? 0.0f : 1.0f);

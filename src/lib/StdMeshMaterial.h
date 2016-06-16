@@ -223,6 +223,7 @@ public:
 	{
 		BOX_Source1,
 		BOX_Source2,
+		BOX_Modulate3, // for modulating three player colors
 		BOX_Modulate,
 		BOX_ModulateX2,
 		BOX_ModulateX4,
@@ -245,6 +246,7 @@ public:
 		BOS_Diffuse,
 		BOS_Specular,
 		BOS_PlayerColor, // not specified in ogre, added in OpenClonk
+		BOS_PlayerColors, // not specified in ogre, added in OpenClonk
 		BOS_Manual
 	};
 

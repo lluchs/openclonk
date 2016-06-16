@@ -16,7 +16,7 @@ uniform sampler2D normalTex;
 uniform vec4 clrMod;
 
 #ifdef OC_HAVE_OVERLAY
-uniform vec4 overlayClr;
+uniform vec4 overlayClr[3];
 uniform sampler2D overlayTex;
 #endif
 
@@ -34,6 +34,21 @@ in vec2 texcoord;
 #endif
 
 out vec4 fragColor;
+
+// Function for modulating three overlay colors.
+vec4 Modulate3(vec4 tex, vec4 color[3])
+{
+	return (color[0] * vec4(vec3(tex.r), tex.a)
+	      + color[1] * vec4(vec3(tex.g), tex.a)
+	      + color[2] * vec4(vec3(tex.b), tex.a));
+}
+
+vec3 Modulate3(vec3 tex, vec3 color[3])
+{
+	return (color[0] * vec3(tex.r)
+	      + color[1] * vec3(tex.g)
+	      + color[2] * vec3(tex.b));
+}
 
 slice(material)
 {
@@ -62,7 +77,7 @@ slice(texture)
 	fragColor = vtxColor * texture(baseTex, texcoord);
 #ifdef OC_HAVE_OVERLAY
 	// Get overlay color from overlay texture
-	vec4 overlay = vtxColor * overlayClr * texture(overlayTex, texcoord);
+	vec4 overlay = vtxColor * Modulate3(texture(overlayTex, texcoord), overlayClr);
 	// Mix overlay with texture
 	float alpha0 = 1.0 - (1.0 - fragColor.a) * (1.0 - overlay.a);
 	fragColor = vec4(mix(fragColor.rgb, overlay.rgb, overlay.a / alpha0), alpha0);

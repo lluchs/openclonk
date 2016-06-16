@@ -34,6 +34,7 @@
 #define _USE_MATH_DEFINES
 #endif  /* _MSC_VER */
 
+#include <array>
 #include <stdio.h>
 #include <math.h>
 
@@ -355,6 +356,16 @@ CStdGLCtx *CStdGL::CreateContext(C4Window * pWindow, C4AbstractApp *pApp)
 	return pCtx;
 }
 
+static std::array<float, 4> ColorToVec4(uint32_t clr)
+{
+	return {
+		((clr >> 16) & 0xff) / 255.0f,
+		((clr >>  8) & 0xff) / 255.0f,
+		((clr      ) & 0xff) / 255.0f,
+		((clr >> 24) & 0xff) / 255.0f
+	};
+}
+
 void CStdGL::SetupMultiBlt(C4ShaderCall& call, const C4BltTransform* pTransform, GLuint baseTex, GLuint overlayTex, GLuint normalTex, DWORD dwOverlayModClr, StdProjectionMatrix* out_modelview)
 {
 	// Initialize multi blit shader.
@@ -365,14 +376,8 @@ void CStdGL::SetupMultiBlt(C4ShaderCall& call, const C4BltTransform* pTransform,
 
 	// Upload uniforms
 	const DWORD dwModClr = BlitModulated ? BlitModulateClr : 0xffffffff;
-	const float fMod[4] = {
-		((dwModClr >> 16) & 0xff) / 255.0f,
-		((dwModClr >>  8) & 0xff) / 255.0f,
-		((dwModClr      ) & 0xff) / 255.0f,
-		((dwModClr >> 24) & 0xff) / 255.0f
-	};
 
-	call.SetUniform4fv(C4SSU_ClrMod, 1, fMod);
+	call.SetUniform4fv(C4SSU_ClrMod, 1, ColorToVec4(dwModClr).data());
 	call.SetUniform3fv(C4SSU_Gamma, 1, gammaOut);
 
 	if(baseTex != 0)
@@ -386,14 +391,13 @@ void CStdGL::SetupMultiBlt(C4ShaderCall& call, const C4BltTransform* pTransform,
 		call.AllocTexUnit(C4SSU_OverlayTex);
 		glBindTexture(GL_TEXTURE_2D, overlayTex);
 
-		const float fOverlayModClr[4] = {
-			((dwOverlayModClr >> 16) & 0xff) / 255.0f,
-			((dwOverlayModClr >>  8) & 0xff) / 255.0f,
-			((dwOverlayModClr      ) & 0xff) / 255.0f,
-			((dwOverlayModClr >> 24) & 0xff) / 255.0f
+		const float *fOverlayModClr[] = {
+			ColorToVec4(0).data(),
+			ColorToVec4(0).data(),
+			ColorToVec4(0).data()
 		};
 
-		call.SetUniform4fv(C4SSU_OverlayClr, 1, fOverlayModClr);
+		call.SetUniform4fv(C4SSU_OverlayClr, 3, (const float *) fOverlayModClr);
 	}
 
 	if(pFoW != NULL && normalTex != 0)
