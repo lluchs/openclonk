@@ -99,7 +99,7 @@ public:
 		Set(rSource.Surface == &rSource.Face ? &Face : rSource.Surface, rSource.X, rSource.Y, rSource.Wdt, rSource.Hgt);
 		rSource.Default();
 	}
-	bool CopyFromSfcMaxSize(C4Surface &srcSfc, int32_t iMaxSize, uint32_t dwColor=0u);
+	bool CopyFromSfcMaxSize(C4Surface &srcSfc, int32_t iMaxSize, PlayerColor Color={0,0,0});
 };
 
 // facet with source group ID; used to avoid doubled loading from same group

@@ -1289,12 +1289,31 @@ static void FnSetMass(C4Object *Obj, long iValue)
 
 static long FnGetColor(C4Object *Obj)
 {
-	return Obj->Color;
+	return Obj->Color[0];
 }
 
 static void FnSetColor(C4Object *Obj, long iValue)
 {
-	Obj->Color=iValue;
+	Obj->Color[0]=iValue;
+	Obj->UpdateGraphics(false);
+	Obj->UpdateFace(false);
+}
+
+static C4ValueArray* FnGetColors(C4Object *Obj)
+{
+	auto retval = new C4ValueArray(3);
+	(*retval)[0] = C4Value((long) Obj->Color[0]);
+	(*retval)[1] = C4Value((long) Obj->Color[1]);
+	(*retval)[2] = C4Value((long) Obj->Color[2]);
+	return retval;
+}
+
+static void FnSetColors(C4Object *Obj, C4ValueArray *colors)
+{
+	if (!colors) return;
+	Obj->Color[0] = colors->GetItem(0).getInt();
+	Obj->Color[1] = colors->GetItem(1).getInt();
+	Obj->Color[2] = colors->GetItem(2).getInt();
 	Obj->UpdateGraphics(false);
 	Obj->UpdateFace(false);
 }
@@ -2639,6 +2658,8 @@ void InitObjectFunctionMap(C4AulScriptEngine *pEngine)
 	F(SetMass);
 	F(GetColor);
 	F(SetColor);
+	F(GetColors);
+	F(SetColors);
 	F(SetLightRange);
 	F(GetLightColor);
 	F(SetLightColor);

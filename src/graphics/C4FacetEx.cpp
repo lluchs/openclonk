@@ -101,14 +101,14 @@ bool C4FacetSurface::Load(C4Group &hGroup, const char *szName, int iWdt, int iHg
 	return true;
 }
 
-bool C4FacetSurface::CopyFromSfcMaxSize(C4Surface &srcSfc, int32_t iMaxSize, uint32_t dwColor)
+bool C4FacetSurface::CopyFromSfcMaxSize(C4Surface &srcSfc, int32_t iMaxSize, PlayerColor Color)
 {
 	// safety
 	if (!srcSfc.Wdt || !srcSfc.Hgt) return false;
 	Clear();
 	// no scale?
 	bool fNeedsScale = !(srcSfc.Wdt <= iMaxSize && srcSfc.Hgt <= iMaxSize);
-	if (!fNeedsScale && !dwColor)
+	if (!fNeedsScale && !Color[0])
 	{
 		// no change necessary; just copy then
 		Face.Copy(srcSfc);
@@ -137,7 +137,7 @@ bool C4FacetSurface::CopyFromSfcMaxSize(C4Surface &srcSfc, int32_t iMaxSize, uin
 			iTargetWdt = fctSource.Wdt;
 			iTargetHgt = fctSource.Hgt;
 		}
-		if (dwColor) srcSfc.SetClr(dwColor);
+		if (Color[0]) srcSfc.SetClr(Color);
 		Create(iTargetWdt, iTargetHgt);
 		pDraw->Blit(&srcSfc, 0.0f,0.0f,float(fctSource.Wdt),float(fctSource.Hgt),
 		              &Face, 0,0,iTargetWdt,iTargetHgt);

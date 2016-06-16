@@ -29,7 +29,6 @@
 #include "graphics/Bitmap256.h"
 #include "graphics/StdPNG.h"
 #include "config/C4Config.h"
-#include "lib/StdColors.h"
 
 
 #ifdef HAVE_IO_H
@@ -92,7 +91,7 @@ void C4Surface::Default()
 	pCtx=NULL;
 #endif
 	pWindow=NULL;
-	ClrByOwnerClr=0;
+	ClrByOwnerClr.fill(0);
 	iTexSize=0;
 	fIsBackground=false;
 #ifdef _DEBUG
@@ -539,17 +538,18 @@ DWORD C4Surface::GetPixDw(int iX, int iY, bool fApplyModulation)
 		else
 		{
 			// otherwise, it's a ColorByOwner-pixel: adjust the color
+			// TODO: Three-color modulation
 			if (fApplyModulation)
 			{
 				if (pDraw->dwBlitMode & C4GFXBLIT_CLRSFC_MOD2)
-					ModulateClrMOD2(dwPix, ClrByOwnerClr);
+					ModulateClrMOD2(dwPix, ClrByOwnerClr[0]);
 				else
-					ModulateClr(dwPix, ClrByOwnerClr);
+					ModulateClr(dwPix, ClrByOwnerClr[0]);
 				if (pDraw->BlitModulated && !(pDraw->dwBlitMode & C4GFXBLIT_CLRSFC_OWNCLR))
 					ModulateClr(dwPix, pDraw->BlitModulateClr);
 			}
 			else
-				ModulateClr(dwPix, ClrByOwnerClr);
+				ModulateClr(dwPix, ClrByOwnerClr[0]);
 			// does it contain transparency? then blit on main sfc
 			if (byAlpha)
 			{

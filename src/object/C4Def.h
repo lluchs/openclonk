@@ -207,9 +207,10 @@ public:
 		DWORD dwLoadWhat, const char *szLanguage,
 		class C4SoundSystem *pSoundSystem = nullptr,
 		C4DefGraphicsPtrBackup *gfx_backup = nullptr);
-	void Draw(C4Facet &cgo, bool fSelected=false, DWORD iColor=0, C4Object *pObj=NULL, int32_t iPhaseX=0, int32_t iPhaseY=0, C4DrawTransform* trans=NULL, const char * graphicsName=NULL);
+	void Draw(C4Facet &cgo, bool fSelected=false, PlayerColor Color={0,0,0}, C4Object *pObj=NULL, int32_t iPhaseX=0, int32_t iPhaseY=0, C4DrawTransform* trans=NULL, const char * graphicsName=NULL);
+	void Draw(C4Facet &cgo, bool fSelected, uint32_t Color, C4Object *pObj=NULL, int32_t iPhaseX=0, int32_t iPhaseY=0, C4DrawTransform* trans=NULL, const char * graphicsName=NULL) { Draw(cgo, fSelected, {Color, 0, 0}, pObj, iPhaseX, iPhaseY, trans, graphicsName); } // compatibility
 
-	inline C4Facet &GetMainFace(C4DefGraphics *pGraphics, DWORD dwClr=0) { MainFace.Surface=pGraphics->GetBitmap(dwClr); return MainFace; }
+	inline C4Facet &GetMainFace(C4DefGraphics *pGraphics, PlayerColor Clr={0,0,0}) { MainFace.Surface=pGraphics->GetBitmap(Clr); return MainFace; }
 	int32_t GetPlane() { return GetPropertyInt(P_Plane); }
 	int32_t GetValue(C4Object *pInBase, int32_t iBuyPlayer);         // get value of def; calling script functions if defined
 	void Synchronize();

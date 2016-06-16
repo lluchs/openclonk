@@ -1163,7 +1163,7 @@ void C4ParticleList::Draw(C4TargetFacet cgo, C4Object *obj)
 	C4ShaderCall call(pGL->GetSpriteShader(true, false, false));
 	// apply zoom and upload shader uniforms
 	StdProjectionMatrix modelview = StdProjectionMatrix::Identity();
-	pGL->SetupMultiBlt(call, NULL, 0, 0, 0, 0, &modelview);
+	pGL->SetupMultiBlt(call, NULL, 0, 0, 0, {0,0,0}, &modelview);
 	// go to correct output position (note the normal matrix is unaffected
 	// by this)
 	Translate(modelview, cgo.X-cgo.TargetX, cgo.Y-cgo.TargetY, 0.0f);

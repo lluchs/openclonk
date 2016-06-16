@@ -316,7 +316,7 @@ C4DefGraphics *C4DefGraphics::Get(const char *szGrpName)
 	return NULL;
 }
 
-void C4DefGraphics::Draw(C4Facet &cgo, DWORD iColor, C4Object *pObj, int32_t iPhaseX, int32_t iPhaseY, C4DrawTransform* trans)
+void C4DefGraphics::Draw(C4Facet &cgo, PlayerColor Color, C4Object *pObj, int32_t iPhaseX, int32_t iPhaseY, C4DrawTransform* trans)
 {
 	// default: def picture rect
 	C4Rect fctPicRect = pDef->PictureRect;
@@ -334,7 +334,7 @@ void C4DefGraphics::Draw(C4Facet &cgo, DWORD iColor, C4Object *pObj, int32_t iPh
 		// Def has no graphics
 		break;
 	case C4DefGraphics::TYPE_Bitmap:
-		fctPicture.Set(GetBitmap(iColor),fctPicRect.x,fctPicRect.y,fctPicRect.Wdt,fctPicRect.Hgt);
+		fctPicture.Set(GetBitmap(Color),fctPicRect.x,fctPicRect.y,fctPicRect.Wdt,fctPicRect.Hgt);
 		fctPicture.DrawTUnscaled(cgo,true,iPhaseX,iPhaseY,trans);
 		break;
 	case C4DefGraphics::TYPE_Mesh:
@@ -360,7 +360,7 @@ void C4DefGraphics::Draw(C4Facet &cgo, DWORD iColor, C4Object *pObj, int32_t iPh
 			pDraw->SetMeshTransform(&matrix);
 
 		pDraw->SetPerspective(true);
-		pDraw->RenderMesh(*instance, cgo.Surface, cgo.X,cgo.Y, cgo.Wdt, cgo.Hgt, pObj ? pObj->Color : iColor, trans);
+		pDraw->RenderMesh(*instance, cgo.Surface, cgo.X,cgo.Y, cgo.Wdt, cgo.Hgt, pObj ? pObj->Color : Color, trans);
 		pDraw->SetPerspective(false);
 		pDraw->SetMeshTransform(NULL);
 
@@ -376,13 +376,13 @@ void C4DefGraphics::Draw(C4Facet &cgo, DWORD iColor, C4Object *pObj, int32_t iPh
 				pGfxOvrl->DrawPicture(cgo, pObj, trans);
 }
 
-void C4DefGraphics::DrawClr(C4Facet &cgo, bool fAspect, DWORD dwClr)
+void C4DefGraphics::DrawClr(C4Facet &cgo, bool fAspect, PlayerColor Clr)
 {
 	if (Type != TYPE_Bitmap) return; // TODO
 	// create facet and draw it
 	C4Surface *pSfc = Bmp.BitmapClr ? Bmp.BitmapClr : Bmp.Bitmap; if (!pSfc) return;
 	C4Facet fct(pSfc, 0,0,pSfc->Wdt, pSfc->Hgt);
-	fct.DrawClr(cgo, fAspect, dwClr);
+	fct.DrawClr(cgo, fAspect, Clr);
 }
 
 void C4DefGraphicsAdapt::CompileFunc(StdCompiler *pComp)

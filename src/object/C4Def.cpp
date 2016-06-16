@@ -590,7 +590,7 @@ void C4Def::LoadSounds(C4Group &hGroup, C4SoundSystem* pSoundSystem)
 		pSoundSystem->LoadEffects(hGroup, (id == C4ID::None) ? NULL : id.ToString(), true);
 }
 
-void C4Def::Draw(C4Facet &cgo, bool fSelected, DWORD iColor, C4Object *pObj, int32_t iPhaseX, int32_t iPhaseY, C4DrawTransform* trans, const char *graphicsName)
+void C4Def::Draw(C4Facet &cgo, bool fSelected, PlayerColor Color, C4Object *pObj, int32_t iPhaseX, int32_t iPhaseY, C4DrawTransform* trans, const char *graphicsName)
 {
 	if(fSelected)
 		pDraw->DrawBoxDw(cgo.Surface, cgo.X, cgo.Y, cgo.X + cgo.Wdt - 1, cgo.Y + cgo.Hgt - 1, C4RGB(0xca, 0, 0));
@@ -601,7 +601,7 @@ void C4Def::Draw(C4Facet &cgo, bool fSelected, DWORD iColor, C4Object *pObj, int
 		C4DefGraphics *other = graphics->Get(graphicsName);
 		if (other) graphics = other;
 	}
-	graphics->Draw(cgo, iColor, pObj, iPhaseX, iPhaseY, trans);
+	graphics->Draw(cgo, Color, pObj, iPhaseX, iPhaseY, trans);
 }
 
 int32_t C4Def::GetValue(C4Object *pInBase, int32_t iBuyPlayer)

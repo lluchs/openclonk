@@ -21,6 +21,7 @@
 
 #include "graphics/C4Surface.h"
 #include "lib/StdMeshMaterial.h"
+#include "lib/StdColors.h"
 
 // Global Draw access pointer
 extern C4Draw *pDraw;
@@ -200,8 +201,8 @@ public:
 	bool BlitUnscaled(C4Surface * sfcSource, float fx, float fy, float fwdt, float fhgt,
 	                  C4Surface * sfcTarget, float tx, float ty, float twdt, float thgt,
 	                  bool fSrcColKey=false, const C4BltTransform *pTransform=NULL);
-	bool RenderMesh(StdMeshInstance &instance, C4Surface * sfcTarget, float tx, float ty, float twdt, float thgt, DWORD dwPlayerColor, C4BltTransform* pTransform); // Call PrepareMaterial with Mesh's material before
-	virtual void PerformMesh(StdMeshInstance &instance, float tx, float ty, float twdt, float thgt, DWORD dwPlayerColor, C4BltTransform* pTransform) = 0;
+	bool RenderMesh(StdMeshInstance &instance, C4Surface * sfcTarget, float tx, float ty, float twdt, float thgt, PlayerColor dwPlayerColor, C4BltTransform* pTransform); // Call PrepareMaterial with Mesh's material before
+	virtual void PerformMesh(StdMeshInstance &instance, float tx, float ty, float twdt, float thgt, PlayerColor dwPlayerColor, C4BltTransform* pTransform) = 0;
 	bool Blit8(C4Surface * sfcSource, int fx, int fy, int fwdt, int fhgt, // force 8bit-blit (inline)
 	           C4Surface * sfcTarget, int tx, int ty, int twdt, int thgt,
 	           bool fSrcColKey=false, const C4BltTransform *pTransform=NULL);
@@ -218,7 +219,7 @@ public:
 	// Drawing
 	virtual void PerformMultiPix(C4Surface* sfcTarget, const C4BltVertex* vertices, unsigned int n_vertices, C4ShaderCall* shader_call) = 0;
 	virtual void PerformMultiLines(C4Surface* sfcTarget, const C4BltVertex* vertices, unsigned int n_vertices, float width, C4ShaderCall* shader_call) = 0;
-	virtual void PerformMultiTris(C4Surface* sfcTarget, const C4BltVertex* vertices, unsigned int n_vertices, const C4BltTransform* pTransform, C4TexRef* pTex, C4TexRef* pOverlay, C4TexRef* pNormal, DWORD dwOverlayClrMod, C4ShaderCall* shader_call) = 0; // blit the same texture many times
+	virtual void PerformMultiTris(C4Surface* sfcTarget, const C4BltVertex* vertices, unsigned int n_vertices, const C4BltTransform* pTransform, C4TexRef* pTex, C4TexRef* pOverlay, C4TexRef* pNormal, PlayerColor dwOverlayClrMod, C4ShaderCall* shader_call) = 0; // blit the same texture many times
 	// Convenience drawing functions
 	void DrawBoxDw(C4Surface * sfcDest, int iX1, int iY1, int iX2, int iY2, DWORD dwClr); // calls DrawBoxFade
 	void DrawBoxFade(C4Surface * sfcDest, float iX, float iY, float iWdt, float iHgt, DWORD dwClr1, DWORD dwClr2, DWORD dwClr3, DWORD dwClr4, C4ShaderCall* shader_call); // calls DrawQuadDw

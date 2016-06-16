@@ -366,7 +366,7 @@ static std::array<float, 4> ColorToVec4(uint32_t clr)
 	};
 }
 
-void CStdGL::SetupMultiBlt(C4ShaderCall& call, const C4BltTransform* pTransform, GLuint baseTex, GLuint overlayTex, GLuint normalTex, DWORD dwOverlayModClr, StdProjectionMatrix* out_modelview)
+void CStdGL::SetupMultiBlt(C4ShaderCall& call, const C4BltTransform* pTransform, GLuint baseTex, GLuint overlayTex, GLuint normalTex, PlayerColor dwOverlayModClr, StdProjectionMatrix* out_modelview)
 {
 	// Initialize multi blit shader.
 	int iAdditive = dwBlitMode & C4GFXBLIT_ADDITIVE;
@@ -392,9 +392,9 @@ void CStdGL::SetupMultiBlt(C4ShaderCall& call, const C4BltTransform* pTransform,
 		glBindTexture(GL_TEXTURE_2D, overlayTex);
 
 		const float *fOverlayModClr[] = {
-			ColorToVec4(0).data(),
-			ColorToVec4(0).data(),
-			ColorToVec4(0).data()
+			ColorToVec4(dwOverlayModClr[0]).data(),
+			ColorToVec4(dwOverlayModClr[1]).data(),
+			ColorToVec4(dwOverlayModClr[2]).data()
 		};
 
 		call.SetUniform4fv(C4SSU_OverlayClr, 3, (const float *) fOverlayModClr);
@@ -506,13 +506,13 @@ void CStdGL::PerformMultiPix(C4Surface* sfcTarget, const C4BltVertex* vertices, 
 	if (!shader_call)
 	{
 		C4ShaderCall call(GetSpriteShader(false, false, false));
-		SetupMultiBlt(call, NULL, 0, 0, 0, 0, &transform);
+		SetupMultiBlt(call, NULL, 0, 0, 0, {0,0,0}, &transform);
 		for(unsigned int i = 0; i < n_vertices; i += BATCH_SIZE)
 			PerformMultiBlt(sfcTarget, OP_POINTS, &vertices[i], std::min(n_vertices - i, BATCH_SIZE), false, &call);
 	}
 	else
 	{
-		SetupMultiBlt(*shader_call, NULL, 0, 0, 0, 0, &transform);
+		SetupMultiBlt(*shader_call, NULL, 0, 0, 0, {0,0,0}, &transform);
 		for(unsigned int i = 0; i < n_vertices; i += BATCH_SIZE)
 			PerformMultiBlt(sfcTarget, OP_POINTS, &vertices[i], std::min(n_vertices - i, BATCH_SIZE), false, shader_call);
 	}
@@ -566,19 +566,19 @@ void CStdGL::PerformMultiLines(C4Surface* sfcTarget, const C4BltVertex* vertices
 	if (!shader_call)
 	{
 		C4ShaderCall call(GetSpriteShader(true, false, false));
-		SetupMultiBlt(call, NULL, lines_tex, 0, 0, 0, NULL);
+		SetupMultiBlt(call, NULL, lines_tex, 0, 0, {0,0,0}, NULL);
 		PerformMultiBlt(sfcTarget, OP_TRIANGLES, tri_vertices, n_vertices * 3, true, &call);
 	}
 	else
 	{
-		SetupMultiBlt(*shader_call, NULL, lines_tex, 0, 0, 0, NULL);
+		SetupMultiBlt(*shader_call, NULL, lines_tex, 0, 0, {0,0,0}, NULL);
 		PerformMultiBlt(sfcTarget, OP_TRIANGLES, tri_vertices, n_vertices * 3, true, shader_call);
 	}
 
 	delete[] tri_vertices;
 }
 
-void CStdGL::PerformMultiTris(C4Surface* sfcTarget, const C4BltVertex* vertices, unsigned int n_vertices, const C4BltTransform* pTransform, C4TexRef* pTex, C4TexRef* pOverlay, C4TexRef* pNormal, DWORD dwOverlayModClr, C4ShaderCall* shader_call)
+void CStdGL::PerformMultiTris(C4Surface* sfcTarget, const C4BltVertex* vertices, unsigned int n_vertices, const C4BltTransform* pTransform, C4TexRef* pTex, C4TexRef* pOverlay, C4TexRef* pNormal, PlayerColor dwOverlayModClr, C4ShaderCall* shader_call)
 {
 	// Feed the vertices to the GL
 	if (!shader_call)

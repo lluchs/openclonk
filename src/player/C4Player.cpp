@@ -371,7 +371,7 @@ bool C4Player::Init(int32_t iNumber, int32_t iAtClient, const char *szAtClientNa
 			if (!Game.C4S.Head.SaveGame && pInfo->GetType() == C4PT_Script)
 			{
 				Number = pInfo->GetInGameNumber();
-				ColorDw = pInfo->GetColor();
+				SetPlayerColor(pInfo->GetColor(), false);
 				ID = pInfo->GetID();
 				Team = pInfo->GetTeam();
 			}
@@ -614,7 +614,7 @@ bool C4Player::ScenarioInit()
 
 	// set color by player info class
 	// re-setting, because runtime team choice may have altered color
-	ColorDw = pInfo->GetColor();
+	SetPlayerColor(pInfo->GetColor(), false);
 
 	// any team selection is over now
 	Status = PS_Normal;
@@ -991,7 +991,7 @@ void C4Player::DrawHostility(C4Facet &cgo, int32_t iIndex)
 	C4Player *pPlr;
 	if ((pPlr=::Players.GetByIndex(iIndex)))
 	{
-		::GraphicsResource.fctCrewClr.DrawClr(cgo, true, pPlr->ColorDw);
+		::GraphicsResource.fctCrewClr.DrawClr(cgo, true, pPlr->Color);
 		// Other player and hostile
 		if (pPlr != this)
 			if (Hostility.find(pPlr) != Hostility.end())
@@ -1077,7 +1077,7 @@ void C4Player::CompileFunc(StdCompiler *pComp, C4ValueNumbers * numbers)
 	pComp->Value(mkNamingAdapt(Eliminated,          "Eliminated",           0));
 	pComp->Value(mkNamingAdapt(Surrendered,         "Surrendered",          0));
 	pComp->Value(mkNamingAdapt(Evaluated,            "Evaluated",            false));
-	pComp->Value(mkNamingAdapt(ColorDw,             "ColorDw",              0u));
+	pComp->Value(mkNamingAdapt(mkSTLArrayAdapt(Color), "Color",             (PlayerColor) {0, 0, 0}));
 	pComp->Value(mkNamingAdapt(Position,            "Position",             0));
 	pComp->Value(mkNamingAdapt(ViewMode,            "ViewMode",             C4PVM_Cursor));
 	pComp->Value(mkNamingAdapt(ViewX,               "ViewX",                0));
@@ -1117,6 +1117,7 @@ void C4Player::CompileFunc(StdCompiler *pComp, C4ValueNumbers * numbers)
 	if (pComp->isCompiler())
 	{
 		SoundModifier.Denumerate(numbers);
+		ColorDw = Color[0];
 	}
 
 	// Keys held down
@@ -1701,20 +1702,29 @@ void C4Player::OnTeamSelectionFailed()
 		Status = PS_TeamSelection;
 }
 
-void C4Player::SetPlayerColor(uint32_t dwNewClr)
+void C4Player::SetPlayerColor(uint32_t dwNewClr, bool fixObjects)
+{
+	SetPlayerColor({dwNewClr, Color[1], Color[2]}, fixObjects);
+}
+
+void C4Player::SetPlayerColor(PlayerColor newClr, bool fixObjects)
 {
 	// no change?
-	if (dwNewClr == ColorDw) return;
+	if (newClr == Color) return;
 	// reflect change in all active, player-owned objects
 	// this can never catch everything (thinking of overlays, etc.); scenarios that allow team changes should take care of the rest
-	uint32_t dwOldClr = ColorDw;
-	ColorDw = dwNewClr;
-	for (C4Object *pObj : Objects)
-		if (pObj && pObj->Status && pObj->Owner == Number)
-		{
-			if ((pObj->Color & 0xffffff) == (dwOldClr & 0xffffff))
-				pObj->Color = (pObj->Color & 0xff000000u) | (dwNewClr & 0xffffff);
-		}
+	auto oldClr = Color;
+	Color = newClr;
+	ColorDw = newClr[0];
+
+	if (fixObjects)
+		for (C4Object *pObj : Objects)
+			if (pObj && pObj->Status && pObj->Owner == Number)
+			{
+				// TODO: This used to mask alpha values.
+				if (pObj->Color == oldClr)
+					pObj->Color = Color;
+			}
 }
 
 C4PlayerType C4Player::GetType() const

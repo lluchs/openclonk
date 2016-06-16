@@ -3716,7 +3716,7 @@ bool C4Game::DrawPropListSpecImage(C4Facet &fctTarget, C4PropList *pSpec)
 		// Alternative named graphics
 		C4DefGraphics *source_graphics = source_def->Graphics.Get(source_name->GetCStr());
 		if (!source_graphics) return false;
-		source_graphics->Draw(fctTarget, color, NULL, 0,0, NULL);
+		source_graphics->Draw(fctTarget, {color, 0, 0}, NULL, 0,0, NULL);
 	}
 	return true;
 }

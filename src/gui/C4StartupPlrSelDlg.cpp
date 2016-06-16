@@ -1627,7 +1627,7 @@ bool C4StartupPlrPropertiesDlg::SetNewPicture(C4Surface &srcSfc, C4FacetSurface 
 	{
 		C4Surface srcSfcClr;
 		if (!srcSfcClr.CreateColorByOwner(&srcSfc)) return false;
-		return trgFct->CopyFromSfcMaxSize(srcSfcClr, iMaxSize, C4P.PrefColorDw);
+		return trgFct->CopyFromSfcMaxSize(srcSfcClr, iMaxSize, {C4P.PrefColorDw, 0, 0});
 	}
 	else
 	{

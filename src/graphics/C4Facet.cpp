@@ -209,27 +209,27 @@ void C4Facet::DrawFullScreen(C4Facet &cgo)
 	pDraw->Blit(Surface, X, Y, Wdt, Hgt, ccgo.Surface, ccgo.X, ccgo.Y, ccgo.Wdt, ccgo.Hgt);
 }
 
-void C4Facet::DrawClr(C4Facet &cgo, bool fAspect, DWORD dwClr)
+void C4Facet::DrawClr(C4Facet &cgo, bool fAspect, PlayerColor Clr)
 {
 	if (!Surface) return;
 	// set ColorByOwner-color
-	Surface->SetClr(dwClr);
+	Surface->SetClr(Clr);
 	// draw
 	Draw(cgo, fAspect);
 }
 
-void C4Facet::DrawXClr(C4Surface * sfcTarget, int32_t iX, int32_t iY, int32_t iWdt, int32_t iHgt, DWORD dwClr)
+void C4Facet::DrawXClr(C4Surface * sfcTarget, int32_t iX, int32_t iY, int32_t iWdt, int32_t iHgt, PlayerColor Clr)
 {
 	// set ColorByOwner-color
-	Surface->SetClr(dwClr);
+	Surface->SetClr(Clr);
 	// draw
 	DrawX(sfcTarget, iX, iY, iWdt, iHgt);
 }
 
-void C4Facet::DrawValue2Clr(C4Facet &cgo, int32_t iValue1, int32_t iValue2, DWORD dwClr)
+void C4Facet::DrawValue2Clr(C4Facet &cgo, int32_t iValue1, int32_t iValue2, PlayerColor Clr)
 {
 	// set ColorByOwner-color
-	Surface->SetClr(dwClr);
+	Surface->SetClr(Clr);
 	// draw
 	DrawValue2(cgo, iValue1, iValue2);
 }

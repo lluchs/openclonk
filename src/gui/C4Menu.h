@@ -99,10 +99,10 @@ protected:
 	C4MenuItem(C4Menu *pMenu, int32_t iIndex, const char *szCaption, const char *szCommand,
 	           int32_t iCount, C4Object *pObject, const char *szInfoCaption,
 	           C4ID idID, const char *szCommand2, bool fOwnValue, int32_t iValue, int32_t iStyle, bool fIsSelectable);
-	void GrabSymbol(C4FacetSurface &fctSymbol) { Symbol.GrabFrom(fctSymbol); if (Symbol.Surface) dwSymbolClr=Symbol.Surface->GetClr(); }
+	void GrabSymbol(C4FacetSurface &fctSymbol) { Symbol.GrabFrom(fctSymbol); if (Symbol.Surface) dwSymbolClr=Symbol.Surface->GetClr()[0]; }
 	void SetGraphics(C4Object* pObj) { pSymbolObj = pObj; }
 	void SetGraphics(C4DefGraphics* pGfx) { pSymbolGraphics = pGfx; }
-	void RefSymbol(const C4Facet &fctSymbol) { Symbol.Set(fctSymbol); if (Symbol.Surface) dwSymbolClr=Symbol.Surface->GetClr(); }
+	void RefSymbol(const C4Facet &fctSymbol) { Symbol.Set(fctSymbol); if (Symbol.Surface) dwSymbolClr=Symbol.Surface->GetClr()[0]; }
 	void SetSelected(bool fToVal) { fSelected = fToVal; }
 	void DoTextProgress(int32_t &riByVal); // progress number of shown characters by given amount
 

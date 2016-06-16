@@ -19,6 +19,9 @@
 #define INC_StdColors
 
 #include <math.h>
+#include <array>
+
+typedef std::array<uint32_t, 3> PlayerColor;
 
 // helper function
 inline uint32_t RGBA(uint32_t r, uint32_t g, uint32_t b, uint32_t a)

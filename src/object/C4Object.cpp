@@ -184,7 +184,7 @@ void C4Object::Default()
 	Alive=0;
 	Breath=0;
 	InMat=MNone;
-	Color=0;
+	Color.fill(0);
 	lightRange=0;
 	lightFadeoutRange=0;
 	lightColor=0xffffffff;
@@ -288,9 +288,9 @@ bool C4Object::Init(C4PropList *pDef, C4Object *pCreator,
 	if (Def->ColorByOwner)
 	{
 		if (ValidPlr(Owner))
-			Color=::Players.Get(Owner)->ColorDw;
+			Color=::Players.Get(Owner)->Color;
 		else
-			Color=0xff; // no-owner color: blue
+			Color.fill(0xff); // no-owner color: blue
 	}
 
 	// Shape & face
@@ -484,7 +484,7 @@ void C4Object::UpdateFace(bool bUpdateShape, bool fTemp)
 void C4Object::UpdateGraphics(bool fGraphicsChanged, bool fTemp)
 {
 	// check color
-	if (!fTemp) if (!pGraphics->IsColorByOwner()) Color=0;
+	if (!fTemp) if (!pGraphics->IsColorByOwner()) Color.fill(0);
 	// new grafics: update face
 	if (fGraphicsChanged)
 	{
@@ -1154,8 +1154,8 @@ bool C4Object::ChangeDef(C4ID idNew)
 	if (!(BlitMode & C4GFXBLIT_CUSTOM)) BlitMode = Def->BlitMode;
 	// an object may have newly become an ColorByOwner-object
 	// if it had been ColorByOwner, but is not now, this will be caught in UpdateGraphics()
-	if (!Color && ValidPlr(Owner))
-		Color=::Players.Get(Owner)->ColorDw;
+	if (!Color[0] && ValidPlr(Owner))
+		Color=::Players.Get(Owner)->Color;
 	if (!Def->Rotateable) { fix_r=rdir=Fix0; }
 	// Reset solid mask
 	SolidMask=Def->SolidMask;
@@ -1540,18 +1540,18 @@ static void DrawMenuSymbol(int32_t iMenu, C4Facet &cgo, int32_t iOwner)
 {
 	C4Facet ccgo;
 
-	DWORD dwColor=0;
-	if (ValidPlr(iOwner)) dwColor=::Players.Get(iOwner)->ColorDw;
+	PlayerColor Clr = {0,0,0};
+	if (ValidPlr(iOwner)) Clr=::Players.Get(iOwner)->Color;
 
 	switch (iMenu)
 	{
 	case C4MN_Buy:
-		::GraphicsResource.fctFlagClr.DrawClr(ccgo = cgo.GetFraction(75, 75), true, dwColor);
+		::GraphicsResource.fctFlagClr.DrawClr(ccgo = cgo.GetFraction(75, 75), true, Clr);
 		::GraphicsResource.fctWealth.Draw(ccgo = cgo.GetFraction(100, 50, C4FCT_Left, C4FCT_Bottom));
 		::GraphicsResource.fctArrow.Draw(ccgo = cgo.GetFraction(70, 70, C4FCT_Right, C4FCT_Center), false, 0);
 		break;
 	case C4MN_Sell:
-		::GraphicsResource.fctFlagClr.DrawClr(ccgo = cgo.GetFraction(75, 75), true, dwColor);
+		::GraphicsResource.fctFlagClr.DrawClr(ccgo = cgo.GetFraction(75, 75), true, Clr);
 		::GraphicsResource.fctWealth.Draw(ccgo = cgo.GetFraction(100, 50, C4FCT_Left, C4FCT_Bottom));
 		::GraphicsResource.fctArrow.Draw(ccgo = cgo.GetFraction(70, 70, C4FCT_Right, C4FCT_Center), false, 1);
 		break;
@@ -2269,7 +2269,7 @@ void C4Object::CompileFunc(StdCompiler *pComp, C4ValueNumbers * numbers)
 	pComp->Value(mkNamingAdapt( Energy,                           "Energy",             0                 ));
 	pComp->Value(mkNamingAdapt( Alive,                            "Alive",              false             ));
 	pComp->Value(mkNamingAdapt( Breath,                           "Breath",             0                 ));
-	pComp->Value(mkNamingAdapt( Color,                            "Color",              0u                ));
+	pComp->Value(mkNamingAdapt( mkSTLArrayAdapt(Color),           "Color",              (PlayerColor) {0, 0, 0} ));
 	pComp->Value(mkNamingAdapt( fix_x,                            "X",                  Fix0              ));
 	pComp->Value(mkNamingAdapt( fix_y,                            "Y",                  Fix0              ));
 	pComp->Value(mkNamingAdapt( fix_r,                            "R",                  Fix0              ));
@@ -4066,7 +4066,7 @@ bool C4Object::SetOwner(int32_t iOwner)
 	if (iOwner != NO_OWNER)
 		if (GetGraphics()->IsColorByOwner())
 		{
-			Color=::Players.Get(iOwner)->ColorDw;
+			Color=::Players.Get(iOwner)->Color;
 			UpdateFace(false);
 		}
 	// no change?

@@ -238,13 +238,13 @@ public:
 
 	virtual CStdGLCtx *CreateContext(C4Window * pWindow, C4AbstractApp *pApp);
 	// Blit
-	void SetupMultiBlt(C4ShaderCall& call, const C4BltTransform* pTransform, GLuint baseTex, GLuint overlayTex, GLuint normalTex, DWORD dwOverlayModClr, StdProjectionMatrix* out_modelview);
-	virtual void PerformMesh(StdMeshInstance &instance, float tx, float ty, float twdt, float thgt, DWORD dwPlayerColor, C4BltTransform* pTransform);
+	void SetupMultiBlt(C4ShaderCall& call, const C4BltTransform* pTransform, GLuint baseTex, GLuint overlayTex, GLuint normalTex, PlayerColor dwOverlayModClr, StdProjectionMatrix* out_modelview);
+	virtual void PerformMesh(StdMeshInstance &instance, float tx, float ty, float twdt, float thgt, PlayerColor dwPlayerColor, C4BltTransform* pTransform);
 	void FillBG(DWORD dwClr=0);
 	// Drawing
 	virtual void PerformMultiPix(C4Surface* sfcTarget, const C4BltVertex* vertices, unsigned int n_vertices, C4ShaderCall* shader_call);
 	virtual void PerformMultiLines(C4Surface* sfcTarget, const C4BltVertex* vertices, unsigned int n_vertices, float width, C4ShaderCall* shader_call);
-	virtual void PerformMultiTris(C4Surface* sfcTarget, const C4BltVertex* vertices, unsigned int n_vertices, const C4BltTransform* pTransform, C4TexRef* pTex, C4TexRef* pOverlay, C4TexRef* pNormal, DWORD dwOverlayClrMod, C4ShaderCall* shader_call);
+	virtual void PerformMultiTris(C4Surface* sfcTarget, const C4BltVertex* vertices, unsigned int n_vertices, const C4BltTransform* pTransform, C4TexRef* pTex, C4TexRef* pOverlay, C4TexRef* pNormal, PlayerColor dwOverlayClrMod, C4ShaderCall* shader_call);
 	void PerformMultiBlt(C4Surface* sfcTarget, DrawOperation op, const C4BltVertex* vertices, unsigned int n_vertices, bool has_tex, C4ShaderCall* shader_call);
 	// device objects
 	bool RestoreDeviceObjects();    // restore device dependent objects

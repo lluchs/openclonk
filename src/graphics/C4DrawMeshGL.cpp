@@ -503,7 +503,7 @@ namespace
 		return true;
 	}
 
-	void SetStandardUniforms(C4ShaderCall& call, DWORD dwModClr, DWORD dwPlayerColor, DWORD dwBlitMode, bool cullFace, const C4FoWRegion* pFoW, const C4Rect& clipRect, const C4Rect& outRect)
+	void SetStandardUniforms(C4ShaderCall& call, DWORD dwModClr, PlayerColor dwPlayerColor, DWORD dwBlitMode, bool cullFace, const C4FoWRegion* pFoW, const C4Rect& clipRect, const C4Rect& outRect)
 	{
 		// Draw transform
 		const float fMod[4] = {
@@ -517,15 +517,15 @@ namespace
 
 		// Player color
 		const float fPlrClr[9] = {
-			((dwPlayerColor >> 16) & 0xff) / 255.0f,
-			((dwPlayerColor >>  8) & 0xff) / 255.0f,
-			((dwPlayerColor      ) & 0xff) / 255.0f,
-			((dwPlayerColor >> 16) & 0xff) / 255.0f,
-			((dwPlayerColor >>  8) & 0xff) / 255.0f,
-			((dwPlayerColor      ) & 0xff) / 255.0f,
-			((dwPlayerColor >> 16) & 0xff) / 255.0f,
-			((dwPlayerColor >>  8) & 0xff) / 255.0f,
-			((dwPlayerColor      ) & 0xff) / 255.0f,
+			((dwPlayerColor[0] >> 16) & 0xff) / 255.0f,
+			((dwPlayerColor[0] >>  8) & 0xff) / 255.0f,
+			((dwPlayerColor[0]      ) & 0xff) / 255.0f,
+			((dwPlayerColor[1] >> 16) & 0xff) / 255.0f,
+			((dwPlayerColor[1] >>  8) & 0xff) / 255.0f,
+			((dwPlayerColor[1]      ) & 0xff) / 255.0f,
+			((dwPlayerColor[2] >> 16) & 0xff) / 255.0f,
+			((dwPlayerColor[2] >>  8) & 0xff) / 255.0f,
+			((dwPlayerColor[2]      ) & 0xff) / 255.0f,
 		};
 		call.SetUniform3fv(C4SSU_OverlayClr, 3, fPlrClr);
 
@@ -553,7 +553,7 @@ namespace
 		call.SetUniform1i(C4SSU_FrameCounter, ::Game.FrameCounter);
 	}
 
-	bool ResolveAutoParameter(C4ShaderCall& call, StdMeshMaterialShaderParameter& parameter, StdMeshMaterialShaderParameter::Auto value, DWORD dwModClr, DWORD dwPlayerColor, DWORD dwBlitMode, const C4FoWRegion* pFoW, const C4Rect& clipRect)
+	bool ResolveAutoParameter(C4ShaderCall& call, StdMeshMaterialShaderParameter& parameter, StdMeshMaterialShaderParameter::Auto value, DWORD dwModClr, PlayerColor dwPlayerColor, DWORD dwBlitMode, const C4FoWRegion* pFoW, const C4Rect& clipRect)
 	{
 		// There are no auto parameters implemented yet
 		assert(false);
@@ -623,7 +623,7 @@ namespace
 		return matrix;
 	}
 
-	void RenderSubMeshImpl(const StdProjectionMatrix& projectionMatrix, const StdMeshMatrix& modelviewMatrix, const StdMeshInstance& mesh_instance, const StdSubMeshInstance& instance, DWORD dwModClr, DWORD dwBlitMode, DWORD dwPlayerColor, const C4FoWRegion* pFoW, const C4Rect& clipRect, const C4Rect& outRect, bool parity)
+	void RenderSubMeshImpl(const StdProjectionMatrix& projectionMatrix, const StdMeshMatrix& modelviewMatrix, const StdMeshInstance& mesh_instance, const StdSubMeshInstance& instance, DWORD dwModClr, DWORD dwBlitMode, PlayerColor dwPlayerColor, const C4FoWRegion* pFoW, const C4Rect& clipRect, const C4Rect& outRect, bool parity)
 	{
 		const StdMeshMaterial& material = instance.GetMaterial();
 		assert(material.BestTechniqueIndex != -1);
@@ -871,9 +871,9 @@ namespace
 		}
 	}
 
-	void RenderMeshImpl(const StdProjectionMatrix& projectionMatrix, const StdMeshMatrix& modelviewMatrix, StdMeshInstance& instance, DWORD dwModClr, DWORD dwBlitMode, DWORD dwPlayerColor, const C4FoWRegion* pFoW, const C4Rect& clipRect, const C4Rect& outRect, bool parity); // Needed by RenderAttachedMesh
+	void RenderMeshImpl(const StdProjectionMatrix& projectionMatrix, const StdMeshMatrix& modelviewMatrix, StdMeshInstance& instance, DWORD dwModClr, DWORD dwBlitMode, PlayerColor dwPlayerColor, const C4FoWRegion* pFoW, const C4Rect& clipRect, const C4Rect& outRect, bool parity); // Needed by RenderAttachedMesh
 
-	void RenderAttachedMesh(const StdProjectionMatrix& projectionMatrix, const StdMeshMatrix& modelviewMatrix, StdMeshInstance::AttachedMesh* attach, DWORD dwModClr, DWORD dwBlitMode, DWORD dwPlayerColor, const C4FoWRegion* pFoW, const C4Rect& clipRect, const C4Rect& outRect, bool parity)
+	void RenderAttachedMesh(const StdProjectionMatrix& projectionMatrix, const StdMeshMatrix& modelviewMatrix, StdMeshInstance::AttachedMesh* attach, DWORD dwModClr, DWORD dwBlitMode, PlayerColor dwPlayerColor, const C4FoWRegion* pFoW, const C4Rect& clipRect, const C4Rect& outRect, bool parity)
 	{
 		const StdMeshMatrix& FinalTrans = attach->GetFinalTransformation();
 
@@ -893,7 +893,7 @@ namespace
 		RenderMeshImpl(projectionMatrix, newModelviewMatrix, *attach->Child, dwModClr, dwBlitMode, dwPlayerColor, pFoW, clipRect, outRect, parity);
 	}
 
-	void RenderMeshImpl(const StdProjectionMatrix& projectionMatrix, const StdMeshMatrix& modelviewMatrix, StdMeshInstance& instance, DWORD dwModClr, DWORD dwBlitMode, DWORD dwPlayerColor, const C4FoWRegion* pFoW, const C4Rect& clipRect, const C4Rect& outRect, bool parity)
+	void RenderMeshImpl(const StdProjectionMatrix& projectionMatrix, const StdMeshMatrix& modelviewMatrix, StdMeshInstance& instance, DWORD dwModClr, DWORD dwBlitMode, PlayerColor dwPlayerColor, const C4FoWRegion* pFoW, const C4Rect& clipRect, const C4Rect& outRect, bool parity)
 	{
 		const StdMesh& mesh = instance.GetMesh();
 
@@ -921,7 +921,7 @@ namespace
 	}
 }
 
-void CStdGL::PerformMesh(StdMeshInstance &instance, float tx, float ty, float twdt, float thgt, DWORD dwPlayerColor, C4BltTransform* pTransform)
+void CStdGL::PerformMesh(StdMeshInstance &instance, float tx, float ty, float twdt, float thgt, PlayerColor dwPlayerColor, C4BltTransform* pTransform)
 {
 	// Field of View for perspective projection, in degrees
 	static const float FOV = 60.0f;

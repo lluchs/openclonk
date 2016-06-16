@@ -678,6 +678,62 @@ struct StdSTLContainerAdapt
 template <class C>
 inline StdSTLContainerAdapt<C> mkSTLContainerAdapt(C &rTarget, StdCompiler::Sep eSep = StdCompiler::SEP_SEP) { return StdSTLContainerAdapt<C>(rTarget, eSep); }
 
+// Arrays don't have clear() and push_back()
+template <class C>
+struct StdSTLArrayAdapt
+{
+	StdSTLArrayAdapt(C &rStruct, StdCompiler::Sep eSep = StdCompiler::SEP_SEP)
+			: rStruct(rStruct), eSep(eSep) { }
+	C &rStruct; const StdCompiler::Sep eSep;
+	inline void CompileFunc(StdCompiler *pComp) const
+	{
+		typedef typename C::value_type T;
+		// Get compiler specs
+		bool fCompiler = pComp->isCompiler();
+		// Decompiling?
+		if (!fCompiler)
+		{
+			// Write all entries
+			for (typename C::const_iterator i = rStruct.begin(); i != rStruct.end(); ++i)
+			{
+				if (i != rStruct.begin() && eSep) pComp->Separator(eSep);
+				pComp->Value(const_cast<T &>(*i));
+			}
+		}
+		else
+		{
+			// Read size (binary only)
+			uint32_t size = rStruct.size(), pos = 0;
+			// Read new
+			do
+			{
+				// No more space in the array?
+				if (size <= pos)
+					break;
+				// Read entries
+				try
+				{
+					T val;
+					pComp->Value(val);
+					rStruct[pos++] = val;
+				}
+				catch (StdCompiler::NotFoundException *pEx)
+				{
+					// No value found: Stop reading loop
+					delete pEx;
+					break;
+				}
+			}
+			while (!eSep || pComp->Separator(eSep));
+		}
+	}
+	// Operators for default checking/setting
+	inline bool operator == (const C &nValue) const { return rStruct == nValue; }
+	inline StdSTLArrayAdapt &operator = (const C &nValue) { rStruct = nValue; return *this; }
+};
+template <class C>
+inline StdSTLArrayAdapt<C> mkSTLArrayAdapt(C &rTarget, StdCompiler::Sep eSep = StdCompiler::SEP_SEP) { return StdSTLArrayAdapt<C>(rTarget, eSep); }
+
 // Write an integer that is supposed to be small most of the time. The adaptor writes it in
 // 7-bit-pieces, bit 8 being a continuation marker: If it's set, more data is following, if not,
 // all following bits are 0.

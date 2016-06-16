@@ -140,9 +140,10 @@ public:
 	void DrawTUnscaled(C4Surface * sfcTarget, float iX, float iY, int32_t iPhaseX, int32_t iPhaseY, C4DrawTransform *pTransform); // interpret source coordinates as unscaled
 	void DrawTUnscaled(C4Facet &cgo, bool fAspect, int32_t iPhaseX, int32_t iPhaseY, C4DrawTransform *pTransform);
 	void DrawXT(C4Surface * sfcTarget, float iX, float iY, int32_t iWdt, int32_t iHgt, int32_t iPhaseX, int32_t iPhaseY, C4DrawTransform *pTransform);
-	void DrawClr(C4Facet &cgo, bool fAspect=true, DWORD dwClr=0); // set surface color and draw
-	void DrawXClr(C4Surface * sfcTarget, int32_t iX, int32_t iY, int32_t iWdt, int32_t iHgt, DWORD dwClr); // set surface color and draw
-	void DrawValue2Clr(C4Facet &cgo, int32_t iValue1, int32_t iValue2, DWORD dwClr); // set surface color and draw
+	void DrawClr(C4Facet &cgo, bool fAspect=true, PlayerColor Clr={0,0,0}); // set surface color and draw
+	void DrawClr(C4Facet &cgo, bool fAspect, uint32_t Clr) { DrawClr(cgo, fAspect, {Clr, 0, 0}); } // compatibility
+	void DrawXClr(C4Surface * sfcTarget, int32_t iX, int32_t iY, int32_t iWdt, int32_t iHgt, PlayerColor Clr); // set surface color and draw
+	void DrawValue2Clr(C4Facet &cgo, int32_t iValue1, int32_t iValue2, PlayerColor Clr); // set surface color and draw
 	void DrawXR(C4Surface * sfcTarget, int32_t iX, int32_t iY, int32_t iWdt, int32_t iHgt, int32_t iPhaseX=0, int32_t iPhaseY=0, int32_t r=0); // draw rotated
 	void Draw(C4Surface * sfcTarget, float iX, float iY, int32_t iPhaseX=0, int32_t iPhaseY=0);
 	bool GetPhaseNum(int32_t &rX, int32_t &rY);   // return number of phases in this graphic

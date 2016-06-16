@@ -19,6 +19,7 @@
 #define INC_StdSurface2
 
 #include "lib/C4Rect.h"
+#include "lib/StdColors.h"
 
 #include <list>
 
@@ -79,7 +80,7 @@ public:
 	std::unique_ptr<C4TexRef> texture;
 	C4Surface *pMainSfc;          // main surface for simple ColorByOwner-surfaces
 	C4Surface *pNormalSfc;        // normal map; can be NULL
-	DWORD ClrByOwnerClr;          // current color to be used for ColorByOwner-blits
+	PlayerColor ClrByOwnerClr;    // current color to be used for ColorByOwner-blits
 
 	void MoveFrom(C4Surface *psfcFrom); // grab data from other surface - invalidates other surface
 	bool IsRenderTarget();        // surface can be used as a render target?
@@ -130,8 +131,9 @@ public:
 
 	bool AttachPalette();
 	bool GetSurfaceSize(int &irX, int &irY); // get surface size
-	void SetClr(DWORD toClr) { ClrByOwnerClr=toClr; }
-	DWORD GetClr() { return ClrByOwnerClr; }
+	void SetClr(PlayerColor toClr) { ClrByOwnerClr=toClr; }
+	void SetClr(uint32_t toClr) { SetClr({toClr, 0, 0}); }
+	PlayerColor GetClr() { return ClrByOwnerClr; }
 private:
 	void MapBytes(BYTE *bpMap);
 	bool ReadBytes(BYTE **lpbpData, void *bpTarget, int iSize);

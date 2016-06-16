@@ -135,7 +135,7 @@ public:
 	int32_t Energy;
 	int32_t Breath;
 	int32_t InMat; // SyncClearance-NoSave //
-	uint32_t Color;
+	PlayerColor Color;
 	int32_t Audible, AudiblePan, AudiblePlayer; // NoSave //
 	int32_t lightRange;
 	int32_t lightFadeoutRange;

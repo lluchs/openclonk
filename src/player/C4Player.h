@@ -88,7 +88,8 @@ public:
 	int32_t Number;
 	int32_t ID; // unique player ID
 	int32_t Team; // team ID - may be 0 for no teams
-	uint32_t ColorDw;
+	PlayerColor Color;
+	uint32_t ColorDw; // first color, duplicated for compatibility
 	class C4PlayerControlAssignmentSet *ControlSet;
 	StdCopyStrBuf ControlSetName;
 	int32_t MouseControl;
@@ -248,7 +249,8 @@ public:
 	void OnTeamSelectionFailed();
 
 	// when the player changes team, his color changes. Relfect this in player objects
-	void SetPlayerColor(uint32_t dwNewClr);
+	void SetPlayerColor(uint32_t dwNewClr, bool fixObjects = true);
+	void SetPlayerColor(PlayerColor newClr, bool fixObjects = true);
 
 	// zoom and zoom limit changes
 	void SetZoomByViewRange(int32_t range_wdt, int32_t range_hgt, bool direct, bool no_increase, bool no_decrease);

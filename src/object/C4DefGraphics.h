@@ -59,7 +59,7 @@ public:
 
 	bool fColorBitmapAutoCreated;  // if set, the color-by-owner-bitmap has been created automatically by all blue shades of the bitmap
 
-	inline C4Surface *GetBitmap(DWORD dwClr=0) { if (Type != TYPE_Bitmap) return NULL; if (Bmp.BitmapClr) { Bmp.BitmapClr->SetClr(dwClr); return Bmp.BitmapClr; } else return Bmp.Bitmap; }
+	inline C4Surface *GetBitmap(PlayerColor Clr={0,0,0}) { if (Type != TYPE_Bitmap) return NULL; if (Bmp.BitmapClr) { Bmp.BitmapClr->SetClr(Clr); return Bmp.BitmapClr; } else return Bmp.Bitmap; }
 
 	C4DefGraphics(C4Def *pOwnDef=NULL);  // ctor
 	virtual ~C4DefGraphics() { Clear(); }; // dtor
@@ -75,13 +75,13 @@ public:
 	bool IsColorByOwner() // returns whether ColorByOwner-surfaces have been created
 	{ return Type == TYPE_Mesh || (Type == TYPE_Bitmap && !!Bmp.BitmapClr); } // Mesh can always apply PlayerColor (if used in its material)
 
-	void Draw(C4Facet &cgo, DWORD iColor, C4Object *pObj, int32_t iPhaseX, int32_t iPhaseY, C4DrawTransform* trans);
+	void Draw(C4Facet &cgo, PlayerColor Color, C4Object *pObj, int32_t iPhaseX, int32_t iPhaseY, C4DrawTransform* trans);
 
 	virtual const char *GetName() { return NULL; } // return name to be stored in safe game files
 
 	C4AdditionalDefGraphics *GetNext() { return pNext; }
 
-	void DrawClr(C4Facet &cgo, bool fAspect=true, DWORD dwClr=0); // set surface color and draw
+	void DrawClr(C4Facet &cgo, bool fAspect=true, PlayerColor Clr={0,0,0}); // set surface color and draw
 
 	void CompileFunc(StdCompiler *pComp);
 

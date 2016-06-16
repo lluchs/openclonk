@@ -149,7 +149,7 @@ void C4MenuItem::DrawElement(C4TargetFacet &cgo)
 	}
 	else if (pSymbolGraphics && TextDisplayProgress)
 	{
-		pSymbolGraphics->Draw(cgoSymbolOut, dwSymbolClr ? dwSymbolClr : 0xffffffff, NULL, 0, 0, NULL);
+		pSymbolGraphics->Draw(cgoSymbolOut, {dwSymbolClr ? dwSymbolClr : 0xffffffff, 0, 0}, NULL, 0, 0, NULL);
 	}
 	else if (Symbol.Surface && TextDisplayProgress)
 		Symbol.DrawClr(cgoItemSymbol, true, dwSymbolClr);

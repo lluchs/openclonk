@@ -399,14 +399,12 @@ bool C4Draw::BlitUnscaled(C4Surface * sfcSource, float fx, float fy, float fwdt,
 	if (sfcSource->pNormalSfc)
 		pNormalTex = sfcSource->pNormalSfc->texture.get();
 
-	// ClrByOwner is always fully opaque
-	const DWORD dwOverlayClrMod = 0xff000000 | sfcSource->ClrByOwnerClr;
-	PerformMultiTris(sfcTarget, vertices, 6, pTransform, pBaseTex, fBaseSfc ? pTex : NULL, pNormalTex, dwOverlayClrMod, NULL);
+	PerformMultiTris(sfcTarget, vertices, 6, pTransform, pBaseTex, fBaseSfc ? pTex : NULL, pNormalTex, sfcSource->ClrByOwnerClr, NULL);
 	// success
 	return true;
 }
 
-bool C4Draw::RenderMesh(StdMeshInstance &instance, C4Surface * sfcTarget, float tx, float ty, float twdt, float thgt, DWORD dwPlayerColor, C4BltTransform* pTransform)
+bool C4Draw::RenderMesh(StdMeshInstance &instance, C4Surface * sfcTarget, float tx, float ty, float twdt, float thgt, PlayerColor dwPlayerColor, C4BltTransform* pTransform)
 {
 	// TODO: Emulate rendering
 	if (!sfcTarget->IsRenderTarget()) return false;
@@ -566,7 +564,7 @@ bool C4Draw::BlitSurfaceTile(C4Surface * sfcSurface, C4Surface * sfcTarget, floa
 	vertices[4] = vertices[0]; vertices[5] = vertices[2];
 
 	// Draw
-	PerformMultiTris(sfcTarget, vertices, 6, NULL, sfcSurface->texture.get(), NULL, NULL, 0, shader_call);
+	PerformMultiTris(sfcTarget, vertices, 6, NULL, sfcSurface->texture.get(), NULL, NULL, {0,0,0}, shader_call);
 	return true;
 }
 
@@ -658,7 +656,7 @@ void C4Draw::DrawQuadDw(C4Surface * sfcTarget, float *ipVtx, DWORD dwClr1, DWORD
 	DwTo4UB(dwClr4, vertices[3].color);
 	vertices[4] = vertices[0];
 	vertices[5] = vertices[2];
-	PerformMultiTris(sfcTarget, vertices, 6, NULL, NULL, NULL, NULL, 0, shader_call);
+	PerformMultiTris(sfcTarget, vertices, 6, NULL, NULL, NULL, NULL, {0,0,0}, shader_call);
 }
 
 void C4Draw::DrawPatternedCircle(C4Surface * sfcDest, int x, int y, int r, BYTE col, C4Pattern & Pattern, CStdPalette &rPal)
