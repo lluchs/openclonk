@@ -249,8 +249,9 @@ public:
 	void OnTeamSelectionFailed();
 
 	// when the player changes team, his color changes. Relfect this in player objects
-	void SetPlayerColor(uint32_t dwNewClr, bool fixObjects = true);
-	void SetPlayerColor(PlayerColor newClr, bool fixObjects = true);
+	void SetPlayerColor(PlayerColor newClr);
+	// copy colors from player info
+	void SetPlayerColor(class C4PlayerInfo *info);
 
 	// zoom and zoom limit changes
 	void SetZoomByViewRange(int32_t range_wdt, int32_t range_hgt, bool direct, bool no_increase, bool no_decrease);

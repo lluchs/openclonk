@@ -371,7 +371,7 @@ bool C4Player::Init(int32_t iNumber, int32_t iAtClient, const char *szAtClientNa
 			if (!Game.C4S.Head.SaveGame && pInfo->GetType() == C4PT_Script)
 			{
 				Number = pInfo->GetInGameNumber();
-				SetPlayerColor(pInfo->GetColor(), false);
+				SetPlayerColor(pInfo);
 				ID = pInfo->GetID();
 				Team = pInfo->GetTeam();
 			}
@@ -614,7 +614,7 @@ bool C4Player::ScenarioInit()
 
 	// set color by player info class
 	// re-setting, because runtime team choice may have altered color
-	SetPlayerColor(pInfo->GetColor(), false);
+	SetPlayerColor(pInfo);
 
 	// any team selection is over now
 	Status = PS_Normal;
@@ -1702,12 +1702,21 @@ void C4Player::OnTeamSelectionFailed()
 		Status = PS_TeamSelection;
 }
 
-void C4Player::SetPlayerColor(uint32_t dwNewClr, bool fixObjects)
+void C4Player::SetPlayerColor(C4PlayerInfo *info)
 {
-	SetPlayerColor({dwNewClr, Color[1], Color[2]}, fixObjects);
+	// No teams => same is primary.
+	uint32_t secondary = info->GetColor();
+	// Teams without team colors => primary is player color, secondary is team color
+	if (Team && !Game.Teams.IsTeamColors())
+		secondary = Game.Teams.GetTeamByID(Team)->GetColor();
+	// Teams team colors => primary is team color, secondary is player color
+	else if (Team)
+		secondary = info->GetOriginalColor();
+	Color = {info->GetColor(), secondary, info->GetOriginalColor()};
+	ColorDw = Color[0];
 }
 
-void C4Player::SetPlayerColor(PlayerColor newClr, bool fixObjects)
+void C4Player::SetPlayerColor(PlayerColor newClr)
 {
 	// no change?
 	if (newClr == Color) return;
@@ -1717,14 +1726,13 @@ void C4Player::SetPlayerColor(PlayerColor newClr, bool fixObjects)
 	Color = newClr;
 	ColorDw = newClr[0];
 
-	if (fixObjects)
-		for (C4Object *pObj : Objects)
-			if (pObj && pObj->Status && pObj->Owner == Number)
-			{
-				// TODO: This used to mask alpha values.
-				if (pObj->Color == oldClr)
-					pObj->Color = Color;
-			}
+	for (C4Object *pObj : Objects)
+		if (pObj && pObj->Status && pObj->Owner == Number)
+		{
+			// TODO: This used to mask alpha values.
+			if (pObj->Color == oldClr)
+				pObj->Color = Color;
+		}
 }
 
 C4PlayerType C4Player::GetType() const

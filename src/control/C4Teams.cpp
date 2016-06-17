@@ -76,7 +76,16 @@ void C4Team::AddPlayer(C4PlayerInfo &rInfo, bool fAdjustPlayer)
 		if (pJoinedPlr)
 		{
 			pJoinedPlr->Team = GetID();
-			if (Game.Teams.IsTeamColors()) pJoinedPlr->SetPlayerColor(GetColor());
+			// Either the player's primary or their secondary color is the team color.
+			auto color = pJoinedPlr->Color;
+			if (Game.Teams.IsTeamColors())
+			{
+				color[0] = GetColor();
+				color[1] = rInfo.GetOriginalColor();
+			}
+			else
+				color[1] = GetColor();
+			pJoinedPlr->SetPlayerColor(color);
 		}
 	}
 }
