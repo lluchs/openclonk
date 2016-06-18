@@ -1287,14 +1287,20 @@ static void FnSetMass(C4Object *Obj, long iValue)
 	Obj->UpdateMass();
 }
 
-static long FnGetColor(C4Object *Obj)
+static Nillable<long> FnGetColor(C4Object *Obj, Nillable<long> which)
 {
-	return Obj->Color[0];
+	long i = which.IsNil() ? 0 : (long) which;
+	if (i < 0 || i > 2)
+		return C4Void();
+	return Obj->Color[i];
 }
 
-static void FnSetColor(C4Object *Obj, long iValue)
+static void FnSetColor(C4Object *Obj, long iValue, Nillable<long> which)
 {
-	Obj->Color[0]=iValue;
+	long i = which.IsNil() ? 0 : (long) which;
+	if (i < 0 || i > 2)
+		return;
+	Obj->Color[i]=iValue;
 	Obj->UpdateGraphics(false);
 	Obj->UpdateFace(false);
 }
