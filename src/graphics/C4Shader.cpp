@@ -68,12 +68,18 @@ void C4Shader::AddDefine(const char* name)
 {
 	StdStrBuf define = FormatString("#define %s", name);
 	AddVertexSlice(-1, define.getData());
+	AddGeometrySlice(-1, define.getData());
 	AddFragmentSlice(-1, define.getData());
 }
 
 void C4Shader::AddVertexSlice(int iPos, const char *szText)
 {
 	AddSlice(VertexSlices, iPos, szText, nullptr, 0, 0);
+}
+
+void C4Shader::AddGeometrySlice(int iPos, const char *szText)
+{
+	AddSlice(GeometrySlices, iPos, szText, nullptr, 0, 0);
 }
 
 void C4Shader::AddFragmentSlice(int iPos, const char *szText)
@@ -84,6 +90,11 @@ void C4Shader::AddFragmentSlice(int iPos, const char *szText)
 void C4Shader::AddVertexSlices(const char *szWhat, const char *szText, const char *szSource, int iSourceTime)
 {
 	AddSlices(VertexSlices, szWhat, szText, szSource, iSourceTime);
+}
+
+void C4Shader::AddGeometrySlices(const char *szWhat, const char *szText, const char *szSource, int iSourceTime)
+{
+	AddSlices(GeometrySlices, szWhat, szText, szSource, iSourceTime);
 }
 
 void C4Shader::AddFragmentSlices(const char *szWhat, const char *szText, const char *szSource, int iSourceTime)
@@ -99,6 +110,11 @@ bool C4Shader::LoadFragmentSlices(C4GroupSet *pGroups, const char *szFile)
 bool C4Shader::LoadVertexSlices(C4GroupSet *pGroups, const char *szFile)
 {
 	return LoadSlices(VertexSlices, pGroups, szFile);
+}
+
+bool C4Shader::LoadGeometrySlices(C4GroupSet *pGroups, const char *szFile)
+{
+	return LoadSlices(GeometrySlices, pGroups, szFile);
 }
 
 void C4Shader::SetScriptCategories(const std::vector<std::string>& categories)
@@ -326,7 +342,9 @@ bool C4Shader::LoadSlices(ShaderSliceList& slices, C4GroupSet *pGroups, const ch
 void C4Shader::ClearSlices()
 {
 	VertexSlices.clear();
+	GeometrySlices.clear();
 	FragmentSlices.clear();
+	GeometryShaderEnabled = false;
 	iTexCoords = 0;
 	// Script slices
 	ScriptSlicesLoaded = false;
@@ -359,13 +377,21 @@ bool C4Shader::Init(const char *szWhat, const char **szUniforms, const char **sz
 	}
 
 	StdStrBuf VertexShader = Build(VertexSlices, true),
+		GeometryShader,
 		FragmentShader = Build(FragmentSlices, true);
+	if (GeometryShaderEnabled)
+		GeometryShader = Build(GeometrySlices, true);
 
 	// Dump
 	if (C4Shader::IsLogging())
 	{
 		ShaderLogF("******** Vertex shader for %s:", szWhat);
 		ShaderLog(VertexShader.getData());
+		if (GeometryShaderEnabled)
+		{
+			ShaderLogF("******** Geometry shader for %s:", szWhat);
+			ShaderLog(GeometryShader.getData());
+		}
 		ShaderLogF("******** Fragment shader for %s:", szWhat);
 		ShaderLog(FragmentShader.getData());
 	}
@@ -375,13 +401,19 @@ bool C4Shader::Init(const char *szWhat, const char **szUniforms, const char **sz
 	const GLuint hVert = Create(GL_VERTEX_SHADER,
 	                            FormatString("%s vertex shader", szWhat).getData(),
 	                            VertexShader.getData());
+	const GLuint hGeom = GeometryShaderEnabled
+	                   ? Create(GL_GEOMETRY_SHADER,
+	                            FormatString("%s geometry shader", szWhat).getData(),
+	                            GeometryShader.getData())
+	                   : 0;
 	const GLuint hFrag = Create(GL_FRAGMENT_SHADER,
 	                            FormatString("%s fragment shader", szWhat).getData(),
 	                            FragmentShader.getData());
 
-	if(!hFrag || !hVert)
+	if(!hFrag || !hVert || GeometryShaderEnabled && !hGeom)
 	{
 		if (hFrag) glDeleteShader(hFrag);
+		if (hGeom) glDeleteShader(hGeom);
 		if (hVert) glDeleteShader(hVert);
 		return false;
 	}
@@ -390,10 +422,13 @@ bool C4Shader::Init(const char *szWhat, const char **szUniforms, const char **sz
 	const GLuint hNewProg = glCreateProgram();
 	pGL->ObjectLabel(GL_PROGRAM, hNewProg, -1, szWhat);
 	glAttachShader(hNewProg, hVert);
+	if (GeometryShaderEnabled)
+		glAttachShader(hNewProg, hGeom);
 	glAttachShader(hNewProg, hFrag);
 	glLinkProgram(hNewProg);
-	// Delete vertex and fragment shader after we linked the program
+	// Delete vertex, geometry, and fragment shader after we linked the program
 	glDeleteShader(hFrag);
+	if (hGeom) glDeleteShader(hGeom);
 	glDeleteShader(hVert);
 
 	// Link successful?
@@ -446,7 +481,7 @@ bool C4Shader::Init(const char *szWhat, const char **szUniforms, const char **sz
 
 bool C4Shader::Refresh()
 {
-	// Update last refresh. Keep a local copy around though to identify added script shaders.
+	// Update last refresh.
 	LastRefresh = C4TimeMilliseconds::Now();
 
 	auto next = ScriptShader.GetShaderIDs(Categories);

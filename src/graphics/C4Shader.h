@@ -80,7 +80,8 @@ private:
 		int SourceTime;
 	};
 	typedef std::list<ShaderSlice> ShaderSliceList;
-	ShaderSliceList VertexSlices, FragmentSlices;
+	ShaderSliceList VertexSlices, GeometrySlices, FragmentSlices;
+	bool GeometryShaderEnabled = false;
 	std::vector<std::string> SourceFiles;
 	std::vector<std::string> Categories;
 	std::set<int> ScriptShaders;
@@ -148,12 +149,16 @@ public:
 	// Shader is composed from various slices
 	void AddDefine(const char* name);
 	void AddVertexSlice(int iPos, const char *szText);
+	void AddGeometrySlice(int iPos, const char *szText);
 	void AddFragmentSlice(int iPos, const char *szText);
 	void AddVertexSlices(const char *szWhat, const char *szText, const char *szSource = "", int iFileTime = 0);
+	void AddGeometrySlices(const char *szWhat, const char *szText, const char *szSource = "", int iFileTime = 0);
 	void AddFragmentSlices(const char *szWhat, const char *szText, const char *szSource = "", int iFileTime = 0);
 	bool LoadFragmentSlices(C4GroupSet *pGroupSet, const char *szFile);
+	bool LoadGeometrySlices(C4GroupSet *pGroupSet, const char *szFile);
 	bool LoadVertexSlices(C4GroupSet *pGroupSet, const char *szFile);
 	void SetScriptCategories(const std::vector<std::string>& categories);
+	void EnableGeometryShader() { GeometryShaderEnabled = true; }
 
 	// Assemble and link the shader. Should be called again after new slices are added.
 	bool Init(const char *szWhat, const char **szUniforms, const char **szAttributes);
