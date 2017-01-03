@@ -150,7 +150,6 @@ void C4PXS::Deactivate()
 	}
 #endif
 	Mat=MNone;
-	::PXS.Delete(this);
 }
 
 C4PXSSystem::C4PXSSystem()
@@ -160,52 +159,27 @@ C4PXSSystem::C4PXSSystem()
 
 C4PXSSystem::~C4PXSSystem()
 {
-	Clear();
 }
 
 void C4PXSSystem::Default()
 {
-	Count=0;
-	for (unsigned int cnt=0; cnt<PXSMaxChunk; cnt++)
-	{
-		Chunk[cnt]=nullptr;
-		iChunkPXS[cnt]=0;
-	}
+	Count = 0;
+	PXSLast = 0;
 }
 
 void C4PXSSystem::Clear()
 {
-	for (unsigned int cnt=0; cnt<PXSMaxChunk; cnt++)
-	{
-		if (Chunk[cnt]) delete [] Chunk[cnt];
-		Chunk[cnt]=nullptr;
-		iChunkPXS[cnt]=0;
-	}
+	Default();
 }
 
 C4PXS* C4PXSSystem::New()
 {
-	unsigned int cnt,cnt2;
-	C4PXS *pxp;
-	// Check chunks for available space
-	for (cnt=0; cnt<PXSMaxChunk; cnt++)
-	{
-		// Create new chunk if necessary
-		if (!Chunk[cnt])
+	for (size_t i = 0; i < PXSMax; i++)
+		if (PXS[i].Mat == MNone || i == PXSLast)
 		{
-			if (!(Chunk[cnt]=new C4PXS[PXSChunkSize])) return nullptr;
-			iChunkPXS[cnt] = 0;
+			PXSLast = std::max(PXSLast, i + 1);
+			return &PXS[i];
 		}
-		// Check this chunk for space
-		if (iChunkPXS[cnt] < PXSChunkSize)
-			for (cnt2=0,pxp=Chunk[cnt]; cnt2<PXSChunkSize; cnt2++,pxp++)
-				if (pxp->Mat==MNone)
-				{
-					// count them
-					iChunkPXS[cnt]++;
-					return pxp;
-				}
-	}
 	return nullptr;
 }
 
@@ -223,25 +197,18 @@ bool C4PXSSystem::Create(int32_t mat, C4Real ix, C4Real iy, C4Real ixdir, C4Real
 void C4PXSSystem::Execute()
 {
 	// Execute all chunks
-	Count=0;
-	for (unsigned int cchunk=0; cchunk<PXSMaxChunk; cchunk++)
-		if (Chunk[cchunk])
+	Count = 0;
+	size_t last = 0;
+
+	for (size_t i = 0; i < PXSLast; i++)
+		if (PXS[i].Mat != MNone)
 		{
-			// empty chunk?
-			if (!iChunkPXS[cchunk])
-				{ delete [] Chunk[cchunk]; Chunk[cchunk]=nullptr; }
-			else
-			{
-				// Execute chunk pxs, check for empty
-				C4PXS *pxp = Chunk[cchunk];
-				for (unsigned int cnt2=0; cnt2<PXSChunkSize; cnt2++,pxp++)
-					if (pxp->Mat!=MNone)
-					{
-						pxp->Execute();
-						Count++;
-					}
-			}
+			PXS[i].Execute();
+			Count++;
+			last = i + 1;
 		}
+
+	PXSLast = last;
 }
 
 void C4PXSSystem::Draw(C4TargetFacet &cgo)
@@ -260,89 +227,84 @@ void C4PXSSystem::Draw(C4TargetFacet &cgo)
 
 	float cgox = cgo.X - cgo.TargetX, cgoy = cgo.Y - cgo.TargetY;
 	// First pass: draw simple PXS (lines/pixels)
-	unsigned int cnt;
-	for (cnt=0; cnt < PXSMaxChunk; cnt++)
+	for (C4PXS *pxp = PXS; pxp < PXS + PXSLast; pxp++)
 	{
-		if (Chunk[cnt] && iChunkPXS[cnt])
+		if (pxp->Mat != MNone && VisibleRect.Contains(fixtoi(pxp->x), fixtoi(pxp->y)))
 		{
-			C4PXS *pxp = Chunk[cnt];
-			for (unsigned int cnt2 = 0; cnt2 < PXSChunkSize; cnt2++, pxp++)
-				if (pxp->Mat != MNone && VisibleRect.Contains(fixtoi(pxp->x), fixtoi(pxp->y)))
+			C4Material *pMat = &::MaterialMap.Map[pxp->Mat];
+			const DWORD dwMatClr = ::Landscape.GetPal()->GetClr((BYTE) (Mat2PixColDefault(pxp->Mat)));
+			if(pMat->PXSFace.Surface)
+			{
+				int32_t pnx, pny;
+				pMat->PXSFace.GetPhaseNum(pnx, pny);
+				int32_t fcWdt = pMat->PXSFace.Wdt;
+				int32_t fcHgt = pMat->PXSFace.Hgt;
+				// calculate draw width and tile to use (random-ish)
+				uint32_t cnt = pxp - PXS;
+				uint32_t size = (1103515245 * cnt + 12345) >> 3;
+				float z = pMat->PXSGfxSize * (0.625f + 0.05f * int(size % 16));
+				pny = (cnt / pnx) % pny; pnx = cnt % pnx;
+
+				const float w = z;
+				const float h = z * fcHgt / fcWdt;
+				const float x1 = fixtof(pxp->x) + cgox + z * pMat->PXSGfxRt.tx / fcWdt;
+				const float y1 = fixtof(pxp->y) + cgoy + z * pMat->PXSGfxRt.ty / fcHgt;
+				const float x2 = x1 + w;
+				const float y2 = y1 + h;
+
+				const float sfcWdt = pMat->PXSFace.Surface->Wdt;
+				const float sfcHgt = pMat->PXSFace.Surface->Hgt;
+
+				C4BltVertex vtx[6];
+				vtx[0].tx = (pnx + 0.f) * fcWdt / sfcWdt; vtx[0].ty = (pny + 0.f) * fcHgt / sfcHgt;
+				vtx[0].ftx = x1; vtx[0].fty = y1;
+				vtx[1].tx = (pnx + 1.f) * fcWdt / sfcWdt; vtx[1].ty = (pny + 0.f) * fcHgt / sfcHgt;
+				vtx[1].ftx = x2; vtx[1].fty = y1;
+				vtx[2].tx = (pnx + 1.f) * fcWdt / sfcWdt; vtx[2].ty = (pny + 1.f) * fcHgt / sfcHgt;
+				vtx[2].ftx = x2; vtx[2].fty = y2;
+				vtx[3].tx = (pnx + 0.f) * fcWdt / sfcWdt; vtx[3].ty = (pny + 1.f) * fcHgt / sfcHgt;
+				vtx[3].ftx = x1; vtx[3].fty = y2;
+				DwTo4UB(0xFFFFFFFF, vtx[0].color);
+				DwTo4UB(0xFFFFFFFF, vtx[1].color);
+				DwTo4UB(0xFFFFFFFF, vtx[2].color);
+				DwTo4UB(0xFFFFFFFF, vtx[3].color);
+				vtx[4] = vtx[2];
+				vtx[5] = vtx[0];
+
+				std::vector<C4BltVertex>& vec = bltVtx[pxp->Mat];
+				vec.push_back(vtx[0]);
+				vec.push_back(vtx[1]);
+				vec.push_back(vtx[2]);
+				vec.push_back(vtx[3]);
+				vec.push_back(vtx[4]);
+				vec.push_back(vtx[5]);
+			}
+			else
+			{
+				// old-style: unicolored pixels or lines
+				if (fixtoi(pxp->xdir) || fixtoi(pxp->ydir))
 				{
-					C4Material *pMat = &::MaterialMap.Map[pxp->Mat];
-					const DWORD dwMatClr = ::Landscape.GetPal()->GetClr((BYTE) (Mat2PixColDefault(pxp->Mat)));
-					if(pMat->PXSFace.Surface)
-					{
-						int32_t pnx, pny;
-						pMat->PXSFace.GetPhaseNum(pnx, pny);
-						int32_t fcWdt = pMat->PXSFace.Wdt;
-						int32_t fcHgt = pMat->PXSFace.Hgt;
-						// calculate draw width and tile to use (random-ish)
-						uint32_t size = (1103515245 * (cnt * PXSChunkSize + cnt2) + 12345) >> 3;
-						float z = pMat->PXSGfxSize * (0.625f + 0.05f * int(size % 16));
-						pny = (cnt2 / pnx) % pny; pnx = cnt2 % pnx;
-
-						const float w = z;
-						const float h = z * fcHgt / fcWdt;
-						const float x1 = fixtof(pxp->x) + cgox + z * pMat->PXSGfxRt.tx / fcWdt;
-						const float y1 = fixtof(pxp->y) + cgoy + z * pMat->PXSGfxRt.ty / fcHgt;
-						const float x2 = x1 + w;
-						const float y2 = y1 + h;
-
-						const float sfcWdt = pMat->PXSFace.Surface->Wdt;
-						const float sfcHgt = pMat->PXSFace.Surface->Hgt;
-
-						C4BltVertex vtx[6];
-						vtx[0].tx = (pnx + 0.f) * fcWdt / sfcWdt; vtx[0].ty = (pny + 0.f) * fcHgt / sfcHgt;
-						vtx[0].ftx = x1; vtx[0].fty = y1;
-						vtx[1].tx = (pnx + 1.f) * fcWdt / sfcWdt; vtx[1].ty = (pny + 0.f) * fcHgt / sfcHgt;
-						vtx[1].ftx = x2; vtx[1].fty = y1;
-						vtx[2].tx = (pnx + 1.f) * fcWdt / sfcWdt; vtx[2].ty = (pny + 1.f) * fcHgt / sfcHgt;
-						vtx[2].ftx = x2; vtx[2].fty = y2;
-						vtx[3].tx = (pnx + 0.f) * fcWdt / sfcWdt; vtx[3].ty = (pny + 1.f) * fcHgt / sfcHgt;
-						vtx[3].ftx = x1; vtx[3].fty = y2;
-						DwTo4UB(0xFFFFFFFF, vtx[0].color);
-						DwTo4UB(0xFFFFFFFF, vtx[1].color);
-						DwTo4UB(0xFFFFFFFF, vtx[2].color);
-						DwTo4UB(0xFFFFFFFF, vtx[3].color);
-						vtx[4] = vtx[2];
-						vtx[5] = vtx[0];
-
-						std::vector<C4BltVertex>& vec = bltVtx[pxp->Mat];
-						vec.push_back(vtx[0]);
-						vec.push_back(vtx[1]);
-						vec.push_back(vtx[2]);
-						vec.push_back(vtx[3]);
-						vec.push_back(vtx[4]);
-						vec.push_back(vtx[5]);
-					}
-					else
-					{
-						// old-style: unicolored pixels or lines
-						if (fixtoi(pxp->xdir) || fixtoi(pxp->ydir))
-						{
-							// lines for stuff that goes whooosh!
-							int len = fixtoi(Abs(pxp->xdir) + Abs(pxp->ydir));
-							const DWORD dwMatClrLen = uint32_t(std::max<int>(dwMatClr >> 24, 195 - (195 - (dwMatClr >> 24)) / len)) << 24 | (dwMatClr & 0xffffff);
-							C4BltVertex begin, end;
-							begin.ftx = fixtof(pxp->x - pxp->xdir) + cgox; begin.fty = fixtof(pxp->y - pxp->ydir) + cgoy;
-							end.ftx = fixtof(pxp->x) + cgox; end.fty = fixtof(pxp->y) + cgoy;
-							DwTo4UB(dwMatClrLen, begin.color);
-							DwTo4UB(dwMatClrLen, end.color);
-							lineVtx.push_back(begin);
-							lineVtx.push_back(end);
-						}
-						else
-						{
-							// single pixels for slow stuff
-							C4BltVertex vtx;
-							vtx.ftx = fixtof(pxp->x) + cgox;
-							vtx.fty = fixtof(pxp->y) + cgoy;
-							DwTo4UB(dwMatClr, vtx.color);
-							pixVtx.push_back(vtx);
-						}
-					}
+					// lines for stuff that goes whooosh!
+					int len = fixtoi(Abs(pxp->xdir) + Abs(pxp->ydir));
+					const DWORD dwMatClrLen = uint32_t(std::max<int>(dwMatClr >> 24, 195 - (195 - (dwMatClr >> 24)) / len)) << 24 | (dwMatClr & 0xffffff);
+					C4BltVertex begin, end;
+					begin.ftx = fixtof(pxp->x - pxp->xdir) + cgox; begin.fty = fixtof(pxp->y - pxp->ydir) + cgoy;
+					end.ftx = fixtof(pxp->x) + cgox; end.fty = fixtof(pxp->y) + cgoy;
+					DwTo4UB(dwMatClrLen, begin.color);
+					DwTo4UB(dwMatClrLen, end.color);
+					lineVtx.push_back(begin);
+					lineVtx.push_back(end);
 				}
+				else
+				{
+					// single pixels for slow stuff
+					C4BltVertex vtx;
+					vtx.ftx = fixtof(pxp->x) + cgox;
+					vtx.fty = fixtof(pxp->y) + cgoy;
+					DwTo4UB(dwMatClr, vtx.color);
+					pixVtx.push_back(vtx);
+				}
+			}
 		}
 	}
 
@@ -378,14 +340,8 @@ void C4PXSSystem::Cast(int32_t mat, int32_t num, int32_t tx, int32_t ty, int32_t
 
 bool C4PXSSystem::Save(C4Group &hGroup)
 {
-	unsigned int cnt;
-
-	// Check used chunk count
-	int32_t iChunks=0;
-	for (cnt=0; cnt<PXSMaxChunk; cnt++)
-		if (Chunk[cnt] && iChunkPXS[cnt])
-			iChunks++;
-	if (!iChunks)
+	// Check used PSX count
+	if (PXSLast == 0)
 	{
 		hGroup.Delete(C4CFN_PXS);
 		return true;
@@ -402,10 +358,8 @@ bool C4PXSSystem::Save(C4Group &hGroup)
 #endif
 	if (!hTempFile.Write(&iNumFormat, sizeof (iNumFormat)))
 		return false;
-	for (cnt=0; cnt<PXSMaxChunk; cnt++)
-		if (Chunk[cnt]) // must save all chunks in order to keep order consistent on all clients
-			if (!hTempFile.Write(Chunk[cnt],PXSChunkSize * sizeof(C4PXS)))
-				return false;
+	if (!hTempFile.Write(PXS, PXSLast * sizeof(C4PXS)))
+		return false;
 
 	if (!hTempFile.Close())
 		return false;
@@ -421,43 +375,39 @@ bool C4PXSSystem::Save(C4Group &hGroup)
 bool C4PXSSystem::Load(C4Group &hGroup)
 {
 	// load new
-	size_t iBinSize,iChunkNum,cnt2;
-	size_t iChunkSize = PXSChunkSize * sizeof(C4PXS);
-	if (!hGroup.AccessEntry(C4CFN_PXS,&iBinSize)) return false;
+	size_t BinSize, PXSCount;
+	const size_t PXSSize = sizeof(C4PXS);
+	if (!hGroup.AccessEntry(C4CFN_PXS, &BinSize)) return false;
 	// clear previous
 	Clear();
 	// using C4Real or float?
 	int32_t iNumForm = 1;
-	if (iBinSize % iChunkSize == 4)
+	if (BinSize % PXSSize == 4)
 	{
 		if (!hGroup.Read(&iNumForm, sizeof (iNumForm))) return false;
 		if (!Inside<int32_t>(iNumForm, 1, 2)) return false;
-		iBinSize -= 4;
+		BinSize -= 4;
 	}
 	// old pxs-files have no tag for the number format
-	else if (iBinSize % iChunkSize != 0) return false;
-	// calc chunk count
-	iChunkNum = iBinSize / iChunkSize;
-	if (iChunkNum > PXSMaxChunk) return false;
-	for (uint32_t cnt=0; cnt<iChunkNum; cnt++)
-	{
-		if (!(Chunk[cnt]=new C4PXS[PXSChunkSize])) return false;
-		if (!hGroup.Read(Chunk[cnt],iChunkSize)) return false;
-		// count the PXS, Peter!
-		// convert num format, if neccessary
-		C4PXS *pxp; iChunkPXS[cnt]=0;
-		for (cnt2=0,pxp=Chunk[cnt]; cnt2<PXSChunkSize; cnt2++,pxp++)
-			if (pxp->Mat != MNone)
-			{
-				++iChunkPXS[cnt];
-				// convert number format
+	else if (BinSize % PXSSize != 0) return false;
+	// calc PXS count
+	PXSCount = BinSize / PXSSize;
+	if (PXSCount > PXSMax) return false;
+	if (!hGroup.Read(PXS, PXSCount)) return false;
+	PXSLast = PXSCount + 1;
+	// count the PXS, Peter!
+	// convert num format, if neccessary
+	for (C4PXS *pxp = PXS; pxp < PXS + PXSLast; pxp++)
+		if (pxp->Mat != MNone)
+		{
+			++Count;
+			// convert number format
 #ifdef C4REAL_USE_FIXNUM
-				if (iNumForm == 2) { FLOAT_TO_FIXED(&pxp->x); FLOAT_TO_FIXED(&pxp->y); FLOAT_TO_FIXED(&pxp->xdir); FLOAT_TO_FIXED(&pxp->ydir); }
+			if (iNumForm == 2) { FLOAT_TO_FIXED(&pxp->x); FLOAT_TO_FIXED(&pxp->y); FLOAT_TO_FIXED(&pxp->xdir); FLOAT_TO_FIXED(&pxp->ydir); }
 #else
-				if (iNumForm == 1) { FIXED_TO_FLOAT(&pxp->x); FIXED_TO_FLOAT(&pxp->y); FIXED_TO_FLOAT(&pxp->xdir); FIXED_TO_FLOAT(&pxp->ydir); }
+			if (iNumForm == 1) { FIXED_TO_FLOAT(&pxp->x); FIXED_TO_FLOAT(&pxp->y); FIXED_TO_FLOAT(&pxp->xdir); FIXED_TO_FLOAT(&pxp->ydir); }
 #endif
-			}
-	}
+		}
 	return true;
 }
 
@@ -468,49 +418,15 @@ void C4PXSSystem::Synchronize()
 
 void C4PXSSystem::SyncClearance()
 {
-	// consolidate chunks; remove empty chunks
-	C4PXS **pDestChunk = Chunk;
-	int32_t iDestChunk = 0;
-	for (unsigned int cnt=0; cnt<PXSMaxChunk; cnt++)
-	{
-		if (Chunk[cnt])
-		{
-			if (iChunkPXS[cnt])
-			{
-				*pDestChunk++ = Chunk[cnt];
-				iChunkPXS[iDestChunk++] = iChunkPXS[cnt];
-			}
-			else
-			{
-				delete [] Chunk[cnt];
-				Chunk[cnt] = nullptr;
-			}
-		}
-	}
-}
-
-void C4PXSSystem::Delete(C4PXS *pPXS)
-{
-	// find chunk
-	unsigned int cnt;
-	for (cnt = 0; cnt < PXSMaxChunk; cnt++)
-		if (Chunk[cnt] && iChunkPXS[cnt])
-			if (pPXS >= Chunk[cnt] && pPXS < Chunk[cnt] + PXSChunkSize)
-				break;
-	// decrease pxs counter
-	if (cnt < PXSMaxChunk)
-		iChunkPXS[cnt]--;
+	// Nothing to do
 }
 
 int32_t C4PXSSystem::GetCount(int32_t mat) const
 {
 	// count PXS of given material
 	int32_t result = 0;
-	for (size_t cnt = 0; cnt < PXSMaxChunk; cnt++) if (Chunk[cnt] && iChunkPXS[cnt])
-	{
-		C4PXS *pxp = Chunk[cnt];
-		for (size_t cnt2 = 0; cnt2 < PXSChunkSize; cnt2++, pxp++) if (pxp->Mat == mat) ++result;
-	}
+	for (const C4PXS *pxp = PXS; pxp < PXS + PXSLast; pxp++)
+		if (pxp->Mat == mat) ++result;
 	return result;
 }
 
@@ -518,14 +434,10 @@ int32_t C4PXSSystem::GetCount(int32_t mat, int32_t x, int32_t y, int32_t wdt, in
 {
 	// count PXS of given material in given area
 	int32_t result = 0;
-	for (size_t cnt = 0; cnt < PXSMaxChunk; cnt++) if (Chunk[cnt] && iChunkPXS[cnt])
-	{
-		C4PXS *pxp = Chunk[cnt];
-		for (size_t cnt2 = 0; cnt2 < PXSChunkSize; cnt2++, pxp++)
-			if (pxp->Mat != MNone)
-				if (pxp->Mat == mat || mat == MNone)
-					if (Inside(pxp->x, x, x + wdt - 1) && Inside(pxp->y, y, y + hgt - 1)) ++result;
-	}
+	for (const C4PXS *pxp = PXS; pxp < PXS + PXSLast; pxp++)
+		if (pxp->Mat != MNone)
+			if (pxp->Mat == mat || mat == MNone)
+				if (Inside(pxp->x, x, x + wdt - 1) && Inside(pxp->y, y, y + hgt - 1)) ++result;
 	return result;
 }
 

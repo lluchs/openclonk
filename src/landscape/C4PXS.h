@@ -35,6 +35,7 @@ protected:
 };
 
 const size_t PXSChunkSize=500,PXSMaxChunk=20;
+const size_t PXSMax = 10000;
 
 class C4PXSSystem
 {
@@ -44,10 +45,9 @@ public:
 public:
 	int32_t Count;
 protected:
-	C4PXS *Chunk[PXSMaxChunk];
-	size_t iChunkPXS[PXSMaxChunk];
+	C4PXS PXS[PXSMax];
+	size_t PXSLast; // highest index + 1 set in PXS to speed up execution with few PXS
 public:
-	void Delete(C4PXS *pPXS);
 	void Default();
 	void Clear();
 	void Execute();
