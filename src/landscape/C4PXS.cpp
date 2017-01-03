@@ -150,6 +150,7 @@ void C4PXS::Deactivate()
 	}
 #endif
 	Mat=MNone;
+	::PXS.Delete(this);
 }
 
 C4PXSSystem::C4PXSSystem()
@@ -164,8 +165,6 @@ C4PXSSystem::~C4PXSSystem()
 void C4PXSSystem::Default()
 {
 	Count = 0;
-	PXSLast = 0;
-	PXSFirstFree = 0;
 }
 
 void C4PXSSystem::Clear()
@@ -175,14 +174,13 @@ void C4PXSSystem::Clear()
 
 C4PXS* C4PXSSystem::New()
 {
-	for (size_t i = PXSFirstFree; i < PXSMax; i++)
-		if (PXS[i].Mat == MNone || i == PXSLast)
-		{
-			PXSLast = std::max(PXSLast, i + 1);
-			PXSFirstFree = i + 1;
-			return &PXS[i];
-		}
-	return nullptr;
+	auto ret = PXS.New();
+	return ret;
+}
+
+void C4PXSSystem::Delete(C4PXS *pxp)
+{
+	PXS.Delete(pxp);
 }
 
 bool C4PXSSystem::Create(int32_t mat, C4Real ix, C4Real iy, C4Real ixdir, C4Real iydir)
@@ -200,19 +198,12 @@ void C4PXSSystem::Execute()
 {
 	// Execute all chunks
 	Count = 0;
-	size_t last = 0;
 
-	for (size_t i = 0; i < PXSLast; i++)
-		if (PXS[i].Mat != MNone)
-		{
-			PXS[i].Execute();
-			Count++;
-			last = i + 1;
-		}
-		else if (PXSFirstFree > i)
-			PXSFirstFree = i;
-
-	PXSLast = last;
+	for (auto pxp : PXS)
+	{
+		pxp->Execute();
+		Count++;
+	}
 }
 
 void C4PXSSystem::Draw(C4TargetFacet &cgo)
@@ -231,7 +222,7 @@ void C4PXSSystem::Draw(C4TargetFacet &cgo)
 
 	float cgox = cgo.X - cgo.TargetX, cgoy = cgo.Y - cgo.TargetY;
 	// First pass: draw simple PXS (lines/pixels)
-	for (C4PXS *pxp = PXS; pxp < PXS + PXSLast; pxp++)
+	for (auto pxp : PXS)
 	{
 		if (pxp->Mat != MNone && VisibleRect.Contains(fixtoi(pxp->x), fixtoi(pxp->y)))
 		{
@@ -244,7 +235,7 @@ void C4PXSSystem::Draw(C4TargetFacet &cgo)
 				int32_t fcWdt = pMat->PXSFace.Wdt;
 				int32_t fcHgt = pMat->PXSFace.Hgt;
 				// calculate draw width and tile to use (random-ish)
-				uint32_t cnt = pxp - PXS;
+				uint32_t cnt = 42; // TODO
 				uint32_t size = (1103515245 * cnt + 12345) >> 3;
 				float z = pMat->PXSGfxSize * (0.625f + 0.05f * int(size % 16));
 				pny = (cnt / pnx) % pny; pnx = cnt % pnx;
@@ -362,7 +353,8 @@ bool C4PXSSystem::Save(C4Group &hGroup)
 #endif
 	if (!hTempFile.Write(&iNumFormat, sizeof (iNumFormat)))
 		return false;
-	if (!hTempFile.Write(PXS, PXSLast * sizeof(C4PXS)))
+	// TODO: proper saving
+	if (!hTempFile.Write(&PXS, sizeof(PXS)))
 		return false;
 
 	if (!hTempFile.Close())
@@ -397,10 +389,11 @@ bool C4PXSSystem::Load(C4Group &hGroup)
 	// calc PXS count
 	PXSCount = BinSize / PXSSize;
 	if (PXSCount > PXSMax) return false;
-	if (!hGroup.Read(PXS, PXSCount)) return false;
+	if (!hGroup.Read(&PXS, PXSCount)) return false;
 	PXSLast = PXSCount + 1;
 	// count the PXS, Peter!
 	// convert num format, if neccessary
+	/*
 	for (C4PXS *pxp = PXS; pxp < PXS + PXSLast; pxp++)
 		if (pxp->Mat != MNone)
 		{
@@ -412,6 +405,7 @@ bool C4PXSSystem::Load(C4Group &hGroup)
 			if (iNumForm == 1) { FIXED_TO_FLOAT(&pxp->x); FIXED_TO_FLOAT(&pxp->y); FIXED_TO_FLOAT(&pxp->xdir); FIXED_TO_FLOAT(&pxp->ydir); }
 #endif
 		}
+		*/
 	return true;
 }
 
@@ -429,7 +423,7 @@ int32_t C4PXSSystem::GetCount(int32_t mat) const
 {
 	// count PXS of given material
 	int32_t result = 0;
-	for (const C4PXS *pxp = PXS; pxp < PXS + PXSLast; pxp++)
+	for (const auto pxp : PXS)
 		if (pxp->Mat == mat) ++result;
 	return result;
 }
@@ -438,10 +432,9 @@ int32_t C4PXSSystem::GetCount(int32_t mat, int32_t x, int32_t y, int32_t wdt, in
 {
 	// count PXS of given material in given area
 	int32_t result = 0;
-	for (const C4PXS *pxp = PXS; pxp < PXS + PXSLast; pxp++)
-		if (pxp->Mat != MNone)
-			if (pxp->Mat == mat || mat == MNone)
-				if (Inside(pxp->x, x, x + wdt - 1) && Inside(pxp->y, y, y + hgt - 1)) ++result;
+	for (const auto pxp : PXS)
+		if (pxp->Mat == mat || mat == MNone)
+			if (Inside(pxp->x, x, x + wdt - 1) && Inside(pxp->y, y, y + hgt - 1)) ++result;
 	return result;
 }
 
