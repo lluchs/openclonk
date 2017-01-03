@@ -165,6 +165,7 @@ void C4PXSSystem::Default()
 {
 	Count = 0;
 	PXSLast = 0;
+	PXSFirstFree = 0;
 }
 
 void C4PXSSystem::Clear()
@@ -174,10 +175,11 @@ void C4PXSSystem::Clear()
 
 C4PXS* C4PXSSystem::New()
 {
-	for (size_t i = 0; i < PXSMax; i++)
+	for (size_t i = PXSFirstFree; i < PXSMax; i++)
 		if (PXS[i].Mat == MNone || i == PXSLast)
 		{
 			PXSLast = std::max(PXSLast, i + 1);
+			PXSFirstFree = i + 1;
 			return &PXS[i];
 		}
 	return nullptr;
@@ -207,6 +209,8 @@ void C4PXSSystem::Execute()
 			Count++;
 			last = i + 1;
 		}
+		else if (PXSFirstFree > i)
+			PXSFirstFree = i;
 
 	PXSLast = last;
 }

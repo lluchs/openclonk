@@ -47,6 +47,7 @@ public:
 protected:
 	C4PXS PXS[PXSMax];
 	size_t PXSLast; // highest index + 1 set in PXS to speed up execution with few PXS
+	size_t PXSFirstFree; // start index to search for a free slot
 public:
 	void Default();
 	void Clear();
