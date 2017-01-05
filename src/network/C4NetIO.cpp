@@ -436,12 +436,11 @@ bool C4NetIO::EndpointAddress::IsNull() const
 
 bool C4NetIO::HostAddress::IsNull() const
 {
-	static const in6_addr IPv6Null = in6_addr();
 	switch (gen.sa_family)
 	{
 	case AF_INET: return v4.sin_addr.s_addr == 0;
 	case AF_INET6:
-		return memcmp(&IPv6Null, &v6, sizeof(IPv6Null)) == 0;
+		return IN6_IS_ADDR_UNSPECIFIED(&v6.sin6_addr);
 	}
 	assert(!"Shouldn't reach this");
 	return false;
