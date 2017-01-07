@@ -26,20 +26,6 @@
 #include <random>
 #include <stdexcept>
 
-namespace std
-{
-	template<> struct hash<C4NetIO::addr_t>
-	{
-		typedef C4NetIO::addr_t argument_type;
-		typedef size_t result_type;
-		result_type operator()(argument_type const& addr) const
-		{
-			// TODO: Hashing the address directly would be more efficient.
-			return std::hash<std::string>{}(addr.ToString().getData());
-		}
-	};
-}
-
 class C4PuncherServer : public C4NetIOUDP, private C4NetIO::CBClass
 {
 public:
