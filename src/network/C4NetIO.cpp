@@ -496,8 +496,9 @@ uint16_t C4NetIO::EndpointAddress::GetPort() const
 
 bool C4NetIO::HostAddress::operator ==(const HostAddress &rhs) const
 {
-	// TODO: Check for IPv4-mapped IPv6 addresses?
-	if (gen.sa_family != rhs.gen.sa_family) return false;
+	// Check for IPv4-mapped IPv6 addresses.
+	if (gen.sa_family != rhs.gen.sa_family)
+		return AsIPv6() == rhs.AsIPv6();
 	if (gen.sa_family == AF_INET)
 		return v4.sin_addr.s_addr == rhs.v4.sin_addr.s_addr;
 	if (gen.sa_family == AF_INET6)
@@ -1916,7 +1917,7 @@ bool C4NetIOSimpleUDP::Execute(int iMaxTime, pollfd *)
 		// alloc buffer
 		C4NetIOPacket Pkt; Pkt.New(iMaxMsgSize);
 		// read data (note: it is _not_ garantueed that iMaxMsgSize bytes are available)
-		addr_t SrcAddr; socklen_t iSrcAddrLen = sizeof(SrcAddr);
+		addr_t SrcAddr; socklen_t iSrcAddrLen = sizeof(sockaddr_in6);
 		int iMsgSize = ::recvfrom(sock, getMBufPtr<char>(Pkt), iMaxMsgSize, 0, &SrcAddr, &iSrcAddrLen);
 		// error?
 		if (iMsgSize == SOCKET_ERROR)
@@ -1936,7 +1937,7 @@ bool C4NetIOSimpleUDP::Execute(int iMaxTime, pollfd *)
 			}
 		}
 		// invalid address?
-		if (iSrcAddrLen != sizeof(SrcAddr) || SrcAddr.GetFamily() != addr_t::IPv4)
+		if ((iSrcAddrLen != sizeof(sockaddr_in) && iSrcAddrLen != sizeof(sockaddr_in6)) || SrcAddr.GetFamily() == addr_t::UnknownFamily)
 		{
 			SetError("recvfrom returned an invalid address");
 			return false;
