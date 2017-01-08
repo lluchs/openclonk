@@ -29,6 +29,13 @@ enum C4NetpuncherPacketType {
 
 typedef uint32_t C4NetpuncherID_t;
 
+struct C4NetpuncherID {
+	C4NetpuncherID_t v4 = 0, v6 = 0;
+
+	void CompileFunc(StdCompiler *pComp);
+	bool operator==(const C4NetpuncherID& other) const { return v4 == other.v4 && v6 == other.v6; }
+};
+
 class C4NetpuncherPacket {
 public:
 	typedef std::unique_ptr<C4NetpuncherPacket> uptr;
