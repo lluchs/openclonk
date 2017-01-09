@@ -193,7 +193,7 @@ void C4Network2Client::AddLocalAddrs(int16_t iPortTCP, int16_t iPortUDP)
 	// get local address(es)
 #ifdef HAVE_WINSOCK
 	const size_t BUFFER_SIZE = 16000;
-	PIP_ADAPTER_ADDRESSES addresses = NULL;
+	PIP_ADAPTER_ADDRESSES addresses = nullptr;
 	for (int i = 0; i < 3; ++i)
 	{
 		addresses = (PIP_ADAPTER_ADDRESSES) realloc(addresses, BUFFER_SIZE * (i+1));
@@ -203,7 +203,7 @@ void C4Network2Client::AddLocalAddrs(int16_t iPortTCP, int16_t iPortUDP)
 		ULONG bufsz = BUFFER_SIZE * (i+1);
 		DWORD rv = GetAdaptersAddresses(AF_UNSPEC,
 			GAA_FLAG_SKIP_ANYCAST|GAA_FLAG_SKIP_MULTICAST|GAA_FLAG_SKIP_DNS_SERVER|GAA_FLAG_SKIP_FRIENDLY_NAME,
-			NULL, addresses, &bufsz);
+			nullptr, addresses, &bufsz);
 		if (rv == ERROR_BUFFER_OVERFLOW)
 			// too little space, try again
 			continue;

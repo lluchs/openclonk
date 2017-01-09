@@ -442,8 +442,8 @@ void C4NetIO::EndpointAddress::SetAddress(const StdStrBuf &addr, AddressFamily f
 	addrinfo hints = addrinfo();
 	hints.ai_family = family;
 	//hints.ai_flags = AI_NUMERICHOST;
-	addrinfo *addresses = NULL;
-	if (getaddrinfo(std::string(ab, ae).c_str(), pb != end ? std::string(pb, pe).c_str() : NULL, &hints, &addresses) != 0)
+	addrinfo *addresses = nullptr;
+	if (getaddrinfo(std::string(ab, ae).c_str(), pb != end ? std::string(pb, pe).c_str() : nullptr, &hints, &addresses) != 0)
 		// GAI failed
 		return;
 	SetAddress(addresses->ai_addr);
