@@ -488,7 +488,7 @@ void C4Network2IO::SendPuncherPacket(const C4NetpuncherPacket& p, C4NetIO::HostA
 	if (!pNetIO_UDP) return;
 	if (family == C4NetIO::HostAddress::IPv4 && !PuncherAddrIPv4.IsNull())
 		pNetIO_UDP->Send(p.PackTo(PuncherAddrIPv4));
-	else if (family == C4NetIO::HostAddress::IPv4 && !PuncherAddrIPv6.IsNull())
+	else if (family == C4NetIO::HostAddress::IPv6 && !PuncherAddrIPv6.IsNull())
 		pNetIO_UDP->Send(p.PackTo(PuncherAddrIPv6));
 }
 
