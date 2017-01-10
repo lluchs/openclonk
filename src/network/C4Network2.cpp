@@ -942,7 +942,7 @@ bool C4Network2::HandlePuncherPacket(C4NetpuncherPacket::uptr pkt, C4NetIO::Host
 	}
 }
 
-C4NetpuncherID_t& C4Network2::getNetpuncherGameID(C4NetIO::HostAddress::AddressFamily family)
+C4NetpuncherID::value& C4Network2::getNetpuncherGameID(C4NetIO::HostAddress::AddressFamily family)
 {
     switch (family)
     {

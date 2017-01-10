@@ -303,7 +303,7 @@ public:
 	bool StopStreaming();
 
 	// netpuncher
-	C4NetpuncherID_t& getNetpuncherGameID(C4NetIO::HostAddress::AddressFamily family);
+	C4NetpuncherID::value& getNetpuncherGameID(C4NetIO::HostAddress::AddressFamily family);
 	C4NetpuncherID getNetpuncherGameID() const { return NetpuncherGameID; };
 	StdStrBuf getNetpuncherAddr() const { return NetpuncherAddr; }
 
