@@ -33,6 +33,7 @@
 #include "c4group/C4Language.h"
 #include "graphics/C4GraphicsResource.h"
 #include "graphics/C4Draw.h"
+#include "platform/C4Window.h"
 
 #ifdef _WIN32
 #include <shellapi.h>

@@ -33,6 +33,7 @@
 #include "player/C4RankSystem.h"
 #include "gui/C4MouseControl.h"
 #include "lib/StdColors.h"
+#include "platform/C4Window.h"
 #include <cctype>
 #include <algorithm>
 

@@ -29,6 +29,7 @@
 #include "graphics/C4GraphicsResource.h"
 #include "graphics/C4Draw.h"
 #include "game/C4GraphicsSystem.h"
+#include "platform/C4Window.h"
 
 namespace C4GUI
 {
@@ -711,23 +712,11 @@ namespace C4GUI
 #ifdef USE_WIN32_WINDOWS
 	Dialog *Screen::GetDialog(HWND hWindow)
 	{
-		// get dialog with matching handle
-		Dialog *pDlg;
-		for (Element *pEl = pLast; pEl; pEl = pEl->GetPrev())
-			if ((pDlg = pEl->GetDlg()))
-				if (pDlg->pWindow && pDlg->pWindow->hWindow == hWindow)
-					return pDlg;
 		return nullptr;
 	}
 #endif
 	Dialog *Screen::GetDialog(C4Window * pWindow)
 	{
-		// get dialog with matching window
-		Dialog *pDlg;
-		for (Element *pEl = pLast; pEl; pEl = pEl->GetPrev())
-			if ( (pDlg = pEl->GetDlg()) != nullptr)
-				if (pDlg->pWindow == pWindow)
-					return pDlg;
 		return nullptr;
 	}
 	void Screen::Render(bool fDoBG)

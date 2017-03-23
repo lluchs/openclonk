@@ -30,6 +30,7 @@
 #include "network/C4Network2.h"
 #include "graphics/C4GraphicsResource.h"
 #include "control/C4GameControl.h"
+#include "platform/C4Window.h"
 
 namespace C4GameLobby
 {

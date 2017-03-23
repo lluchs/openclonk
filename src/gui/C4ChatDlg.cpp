@@ -23,6 +23,7 @@
 #include "network/C4Network2IRC.h"
 #include "gui/C4MessageInput.h"
 #include "graphics/C4GraphicsResource.h"
+#include "platform/C4Window.h"
 
 /* C4ChatControl::ChatSheet::NickItem */
 

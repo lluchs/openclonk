@@ -26,6 +26,7 @@
 #include "graphics/C4GraphicsResource.h"
 #include "graphics/C4Draw.h"
 #include "network/C4Network2Reference.h"
+#include "platform/C4Window.h"
 
 // ----------- C4StartupNetListEntry -----------------------------------------------------------------------
 

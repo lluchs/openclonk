@@ -23,6 +23,7 @@
 #include "gui/C4MouseControl.h"
 #include "graphics/C4GraphicsResource.h"
 #include "graphics/C4Draw.h"
+#include "platform/C4Window.h"
 
 namespace C4GUI
 {

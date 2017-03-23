@@ -34,6 +34,7 @@
 #include "object/C4Object.h"
 #include "object/C4ObjectMenu.h"
 #include "script/C4Aul.h"
+#include "platform/C4Window.h"
 
 #include <algorithm>
 

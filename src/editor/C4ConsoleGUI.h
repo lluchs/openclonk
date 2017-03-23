@@ -21,6 +21,7 @@
 #include "player/C4Player.h"
 #include "control/C4GameControl.h"
 #include "lib/StdBuf.h"
+#include "platform/C4Window.h"
 
 namespace OpenFileFlags
 {

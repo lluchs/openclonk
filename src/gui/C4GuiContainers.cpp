@@ -22,6 +22,7 @@
 #include "gui/C4MouseControl.h"
 #include "graphics/C4GraphicsResource.h"
 #include "graphics/C4Draw.h"
+#include "platform/C4Window.h"
 
 namespace C4GUI
 {
@@ -40,10 +41,7 @@ namespace C4GUI
 				// skip viewport dialogs
 				if (!pEl->IsExternalDrawDialog())
 				{
-					if (pEl->GetDialogWindow())
-						pEl->GetDialogWindow()->RequestUpdate();
-					else
-						pEl->Draw(cgo);
+					pEl->Draw(cgo);
 				}
 			}
 	}

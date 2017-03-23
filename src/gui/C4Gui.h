@@ -30,7 +30,6 @@
 #include "gui/C4KeyboardInput.h"
 #include "platform/StdScheduler.h"
 #include "object/C4Id.h"
-#include "platform/C4Window.h"
 
 // consts (load those from a def file some time)
 // font colors - alpha is font alpha, which is inversed opaque
@@ -401,7 +400,6 @@ namespace C4GUI
 		virtual bool IsOwnPtrElement() { return false; } // if true is returned, item will not be deleted when container is cleared
 		virtual bool IsExternalDrawDialog() { return false; }
 		virtual bool IsMenu() { return false; }
-		virtual class DialogWindow* GetDialogWindow() { return nullptr; } // return DialogWindow if this element is a dialog
 
 		// for listbox-selection by character input
 		virtual bool CheckNameHotkey(const char *) { return false; }
@@ -2025,18 +2023,6 @@ namespace C4GUI
 
 	class Dialog;
 
-	// EM window class
-	class DialogWindow : public C4Window
-	{
-	public:
-		Dialog* pDialog;
-		DialogWindow(): C4Window(), pDialog(nullptr) {}
-		using C4Window::Init;
-		C4Window * Init(C4AbstractApp * pApp, const char * Title, const C4Rect &rcBounds, const char *szID);
-		virtual void Close();
-		virtual void PerformUpdate();
-	};
-
 	// information on how to draw dialog borders and face
 	class FrameDecoration
 	{
@@ -2085,7 +2071,6 @@ namespace C4GUI
 		bool fDelOnClose; // auto-delete when closing
 		StdStrBuf TitleString;
 		bool fViewportDlg; // set in ctor: if true, dlg is not independant, but drawn ad controlled within viewports
-		DialogWindow *pWindow;  // window in console mode
 		FrameDecoration *pFrameDeco;
 
 		bool CreateConsoleWindow();
@@ -2114,7 +2099,6 @@ namespace C4GUI
 		void SetFocus(Control *pCtrl, bool fByMouse);
 		Control *GetFocus() { return pActiveCtrl; }
 		virtual Dialog *GetDlg() { return this; } // this is the dialog
-		virtual DialogWindow* GetDialogWindow() { return pWindow; }
 
 		virtual bool CharIn(const char * c);                                 // input: character key pressed - should return false for none-character-inputs  (forward to focused control)
 
@@ -2649,7 +2633,7 @@ namespace C4GUI
 #ifdef USE_WIN32_WINDOWS
 		Dialog *GetDialog(HWND hWindow); // get console dialog
 #endif
-		Dialog *GetDialog(C4Window * pWindow); // get console dialog
+		Dialog *GetDialog(class C4Window * pWindow); // get console dialog
 		void DoContext(ContextMenu *pNewCtx, Element *pAtElement, int32_t iX, int32_t iY); // open context menu (closes any other contextmenu)
 		void AbortContext(bool fByUser) { if (pContext) pContext->Abort(fByUser); } // close context menu
 		int32_t GetContextMenuIndex() { return pContext ? pContext->GetMenuIndex() : 0; } // get current context-menu (lowest level)

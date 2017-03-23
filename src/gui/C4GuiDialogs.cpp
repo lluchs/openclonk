@@ -29,6 +29,7 @@
 #include "graphics/C4Draw.h"
 #include "game/C4Application.h"
 #include "game/C4GameScript.h"
+#include "platform/C4Window.h"
 
 #include "graphics/C4DrawGL.h"
 #include "platform/StdRegistry.h"
@@ -177,102 +178,21 @@ namespace C4GUI
 		fctBottomRight.Draw(cgo.Surface, ox+rcBounds.Wdt-iBorderRight+fctBottomRight.TargetX,oy+rcBounds.Hgt-iBorderBottom+fctBottomRight.TargetY);
 	}
 
-// --------------------------------------------------
-// DialogWindow
-
-#ifdef USE_WIN32_WINDOWS
-
-	C4Window * DialogWindow::Init(C4AbstractApp * pApp, const char * Title, const C4Rect &rcBounds, const char *szID)
-	{
-		C4Window * result = C4Window::Init(C4Window::W_GuiWindow, pApp, Title, &rcBounds);
-		if (result)
-		{
-			// update pos
-			if (szID && *szID)
-				RestoreWindowPosition(hWindow, FormatString("ConsoleGUI_%s", szID).getData(), Config.GetSubkeyPath("Console"), false);
-			// and show
-			::ShowWindow(hWindow, SW_SHOW);
-		}
-		return result;
-	}
-
-#else
-	C4Window * DialogWindow::Init(C4AbstractApp * pApp, const char * Title, const C4Rect &rcBounds, const char *szID)
-	{
-		C4Window * result = C4Window::Init(C4Window::W_GuiWindow, pApp, Title, &rcBounds);
-		if (result)
-		{
-			// update pos
-			if (szID && *szID)
-				RestorePosition(FormatString("ConsoleGUI_%s", szID).getData(), Config.GetSubkeyPath("Console"), false);
-			else
-				SetSize(rcBounds.Wdt, rcBounds.Hgt);
-		}
-		return result;
-	}
-#endif // _WIN32
-
-	void DialogWindow::PerformUpdate()
-	{
-		if (!pDialog)
-			return; // safety
-		C4Rect r;
-		GetSize(&r);
-		if (pSurface)
-		{
-			pSurface->Wdt = r.Wdt;
-			pSurface->Hgt = r.Hgt;
-#ifndef USE_CONSOLE
-			pGL->PrepareRendering(pSurface);
-			glClear(GL_COLOR_BUFFER_BIT);
-#endif
-		}
-		C4TargetFacet cgo;
-		cgo.Set(nullptr, 0, 0, r.Wdt, r.Hgt, 0, 0);
-		pDialog->Draw(cgo);
-	}
-
-	void DialogWindow::Close()
-	{
-		// FIXME: Close the dialog of this window
-	}
-
 	bool Dialog::CreateConsoleWindow()
 	{
 #ifdef WITH_QT_EDITOR
 		// TODO: Implement these as Qt editor windows.
 		// This currently creates an empty window in Windows and a segfault in Linux.
-		return false;
 #endif
-		// already created?
-		if (pWindow) return true;
-		// create it!
-		pWindow = new DialogWindow();
-		if (!pWindow->Init(&Application, TitleString.getData(), rcBounds, GetID()))
-		{
-			delete pWindow;
-			pWindow = nullptr;
-			return false;
-		}
-		// create rendering context
-		pWindow->pSurface = new C4Surface(&Application, pWindow);
-		pWindow->pDialog = this;
-		return true;
+		return false;
 	}
 
 	void Dialog::DestroyConsoleWindow()
 	{
-		if (pWindow)
-		{
-			delete pWindow->pSurface;
-			pWindow->Clear();
-			delete pWindow;
-			pWindow = nullptr;
-		}
 	}
 
 	Dialog::Dialog(int32_t iWdt, int32_t iHgt, const char *szTitle, bool fViewportDlg):
-			Window(), pTitle(nullptr), pCloseBtn(nullptr), fDelOnClose(false), fViewportDlg(fViewportDlg), pWindow(nullptr), pFrameDeco(nullptr)
+			Window(), pTitle(nullptr), pCloseBtn(nullptr), fDelOnClose(false), fViewportDlg(fViewportDlg), pFrameDeco(nullptr)
 	{
 		// zero fields
 		pActiveCtrl = nullptr;
@@ -341,7 +261,6 @@ namespace C4GUI
 		// console mode dialogs: Use window bar
 		if (Application.isEditor && !IsViewportDialog())
 		{
-			if (pWindow) pWindow->SetTitle(szTitle ? szTitle : "");
 			return;
 		}
 		// set new
@@ -407,21 +326,10 @@ namespace C4GUI
 		}
 		// inherited
 		Window::UpdateSize();
-		// update assigned window
-		if (pWindow)
-		{
-			pWindow->SetSize(rcBounds.Wdt,rcBounds.Hgt);
-		}
 	}
 
 	void Dialog::UpdatePos()
 	{
-		// Dialogs with their own windows can only be at 0/0
-		if (pWindow)
-		{
-			rcBounds.x = 0;
-			rcBounds.y = 0;
-		}
 		Window::UpdatePos();
 	}
 
@@ -436,12 +344,6 @@ namespace C4GUI
 	void Dialog::Draw(C4TargetFacet &cgo0)
 	{
 		C4TargetFacet cgo; cgo.Set(cgo0);
-		// Dialogs with a window just ignore the cgo.
-		if (pWindow)
-		{
-			cgo.Surface = pWindow->pSurface;
-			cgo.X = 0; cgo.Y = 0; cgo.Wdt = rcBounds.Wdt; cgo.Hgt = rcBounds.Hgt;
-		}
 		Screen *pScreen;
 		// evaluate fading
 		switch (eFade)
@@ -475,31 +377,11 @@ namespace C4GUI
 			if (iFade <= 0) return;
 			pDraw->ActivateBlitModulation((iFade*255/100)<<24 | 0xffffff);
 		}
-		// separate window: Clear background
-		if (pWindow)
-			pDraw->DrawBoxDw(cgo.Surface, rcBounds.x, rcBounds.y, rcBounds.Wdt-1, rcBounds.Hgt-1, (0xff << 24) | (C4GUI_StandardBGColor & 0xffffff) );
 		// draw window + contents (evaluates IsVisible)
 		Window::Draw(cgo);
 		// reset blit modulation
 		if (iFade<100) pDraw->DeactivateBlitModulation();
 		// blit output to own window
-		if (pWindow)
-		{
-			// Draw context menu on editor window
-			ContextMenu *menu;
-			if ((menu = GetScreen()->pContext))
-			{
-				if (menu->GetTargetDialog() == this)
-				{
-					menu->Draw(cgo);
-				}
-			}
-			// Editor window: Blit to output
-			C4Rect rtSrc,rtDst;
-			rtSrc.x=rcBounds.x; rtSrc.y=rcBounds.y;  rtSrc.Wdt=rcBounds.Wdt; rtSrc.Hgt=rcBounds.Hgt;
-			rtDst.x=0; rtDst.y=0;    rtDst.Wdt=rcBounds.Wdt; rtDst.Hgt=rcBounds.Hgt;
-			pWindow->pSurface->PageFlip(&rtSrc, &rtDst);
-		}
 	}
 
 	void Dialog::DrawElement(C4TargetFacet &cgo)
@@ -639,15 +521,12 @@ namespace C4GUI
 		Screen *pScreen = GetScreen();
 		if (pScreen) pScreen->CloseDialog(this, false); else fShow = false;
 		// developer mode: Remove window
-		if (pWindow) DestroyConsoleWindow();
 		// do callback - last call, because it might do perilous things
 		OnClosed(fOK);
 	}
 
 	void Dialog::OnClosed(bool fOK)
 	{
-		// developer mode: Remove window
-		if (pWindow) DestroyConsoleWindow();
 		// delete when closing?
 		if (fDelOnClose)
 		{

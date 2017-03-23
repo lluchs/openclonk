@@ -29,6 +29,7 @@
 #include "graphics/C4Draw.h"
 #include "network/C4Network2.h"
 #include "gui/C4MouseControl.h"
+#include "platform/C4Window.h"
 
 #include "graphics/C4DrawGL.h"
 
