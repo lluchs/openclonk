@@ -46,7 +46,7 @@ private:
 #endif
 
 	// Address information
-	StdCopyStrBuf URL;
+	StdCopyStrBuf URL, ServerName;
 	C4NetIO::addr_t ServerAddr;
 
 	StdCopyBuf RequestData;
@@ -87,7 +87,7 @@ public:
 	const StdBuf &getResultBin() const { assert(fBinary); return ResultBin; }
 	const char *getResultString() const { assert(!fBinary); return ResultString.getData(); }
 	const char *getURL() const { return URL.getData(); }
-	const char *getServerName() const;
+	const char *getServerName() const { return ServerName.getData(); }
 	const C4NetIO::addr_t &getServerAddress() const { return ServerAddr; }
 	virtual const char *GetError() const { return Error.getData(); }
 	void ResetError() { Error.Clear(); }
