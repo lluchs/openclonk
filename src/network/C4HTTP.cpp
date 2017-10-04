@@ -31,12 +31,24 @@ C4HTTPClient::~C4HTTPClient()
 	Cancel(nullptr);
 	if (MultiHandle)
 		curl_multi_cleanup(MultiHandle);
+#ifdef STDSCHEDULER_USE_EVENTS
+	if (Event != nullptr)
+		WSACloseEvent(Event);
+#endif
 }
 
 bool C4HTTPClient::Init()
 {
 	MultiHandle = curl_multi_init();
 	if (!MultiHandle) return false;
+#ifdef STDSCHEDULER_USE_EVENTS
+	if ((Event = WSACreateEvent()) == WSA_INVALID_EVENT)
+	{
+		SetError("could not create socket event");
+		curl_multi_cleanup(MultiHandle);
+		return false;
+	}
+#endif
 	curl_multi_setopt(MultiHandle, CURLMOPT_SOCKETFUNCTION, &C4HTTPClient::SSocketCallback);
 	curl_multi_setopt(MultiHandle, CURLMOPT_SOCKETDATA, this);
 	return true;
@@ -97,9 +109,7 @@ C4TimeMilliseconds C4HTTPClient::GetNextTick(C4TimeMilliseconds tNow)
 	return tNow + timeout;
 }
 
-#ifdef STDSCHEDULER_USE_EVENTS
-// TODO
-#else
+#ifndef STDSCHEDULER_USE_EVENTS
 void C4HTTPClient::GetFDs(std::vector<pollfd> &pollfds)
 {
 	for (const auto& kv : sockets)
@@ -212,10 +222,30 @@ int C4HTTPClient::SSocketCallback(CURL *easy, curl_socket_t s, int what, void *u
 
 int C4HTTPClient::SocketCallback(CURL *easy, curl_socket_t s, int what, void *socketp)
 {
+#ifdef STDSCHEDULER_USE_EVENTS
+	long NetworkEvents;
+	switch (what)
+	{
+	case CURL_POLL_IN:
+		NetworkEvents = FD_READ; break;
+	case CURL_POLL_OUT:
+		NetworkEvents = FD_WRITE; break;
+	case CURL_POLL_INOUT:
+		NetworkEvents = FD_READ | FD_WRITE; break;
+	default:
+		NetworkEvents = 0;
+	}
+	if (WSAEventSelect(s, Event, NetworkEvents) == SOCKET_ERROR)
+	{
+		SetError("could not set event");
+		return 1;
+	}
+#else
 	if (what == CURL_POLL_REMOVE)
 		sockets.erase(s);
 	else
 		sockets[s] = what;
+#endif
 	return 0;
 }
 

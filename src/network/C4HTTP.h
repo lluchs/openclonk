@@ -38,7 +38,12 @@ private:
 	CURLM *MultiHandle{nullptr};
 	CURL *CurlHandle{nullptr};
 
+#ifdef STDSCHEDULER_USE_EVENTS
+	// event indicating network activity
+	HANDLE Event{nullptr};
+#else
 	std::map<SOCKET, int> sockets;
+#endif
 
 	// Address information
 	StdCopyStrBuf URL;
@@ -98,8 +103,7 @@ public:
 	bool Execute(int iMaxTime = -1, pollfd * readyfds = nullptr) override;
 	C4TimeMilliseconds GetNextTick(C4TimeMilliseconds tNow) override;
 #ifdef STDSCHEDULER_USE_EVENTS
-	// TODO
-	HANDLE GetEvent() override { return nullptr; }
+	HANDLE GetEvent() override { return Event; }
 #else
 	void GetFDs(std::vector<struct pollfd> &) override;
 #endif
