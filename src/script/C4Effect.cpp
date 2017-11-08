@@ -50,6 +50,7 @@ C4Effect::C4Effect(C4Effect **ppEffectList, C4String *szName, int32_t iPrio, int
 	iTime = 0;
 	CommandTarget.SetPropList(pCmdTarget);
 	AcquireNumber();
+	LogF("C4Effect %s", szName->GetCStr());
 	Register(ppEffectList, iPrio);
 	// Set name and callback functions
 	SetProperty(P_Name, C4VString(szName));
@@ -64,6 +65,7 @@ C4Effect::C4Effect(C4Effect **ppEffectList, C4PropList * prototype, int32_t iPri
 	iTime = 0;
 	CommandTarget.Set0();
 	AcquireNumber();
+	LogF("C4Effect %s", prototype->GetName());
 	Register(ppEffectList, iPrio);
 	SetProperty(P_Name, C4VString(prototype->GetName()));
 }

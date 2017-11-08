@@ -158,6 +158,7 @@ void C4PropListNumbered::AcquireNumber()
 	do
 		Number = ++EnumerationIndex;
 	while (PropLists.Get(Number));
+	LogF("AcquireNumber -> %d", EnumerationIndex);
 	// Add to list
 	PropLists.Add(this);
 }

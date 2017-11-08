@@ -49,6 +49,17 @@
 
 #include <array>
 
+#include <lib/SHA1.h>
+
+static StdStrBuf SurfaceChecksum(const CSurface8& surface)
+{
+	sha1 s;
+	s.process_bytes(surface.Bits, surface.Pitch * surface.Hgt);
+	unsigned int digest[5];
+	s.get_digest(digest);
+	return FormatString("%x%x%x%x%x", digest[0], digest[1], digest[2], digest[3], digest[4]);
+}
+
 struct C4Landscape::P
 {
 	std::unique_ptr<CSurface8> Surface8;
@@ -1676,6 +1687,8 @@ bool C4Landscape::Init(C4Group &hGroup, bool fOverloadCurrent, bool fLoadSky, bo
 	if (!SaveInitial())
 		return false;
 
+	LogF("Landscape Init before diff %s", SurfaceChecksum(*p->Surface8).getData());
+
 	// Load diff, if existant
 	ApplyDiff(hGroup);
 
@@ -1683,6 +1696,8 @@ bool C4Landscape::Init(C4Group &hGroup, bool fOverloadCurrent, bool fLoadSky, bo
 	p->UpdatePixCnt(this, C4Rect(0, 0, GetWidth(), GetHeight()));
 	p->ClearMatCount();
 	p->UpdateMatCnt(this, C4Rect(0, 0, GetWidth(), GetHeight()), true);
+
+	LogF("Landscape Init after diff %s", SurfaceChecksum(*p->Surface8).getData());
 
 	// Create initial landscape render data (after applying diff so landscape is complete)
 	if (p->pLandscapeRender) p->pLandscapeRender->Update(C4Rect(0, 0, GetWidth(), GetHeight()), this);
@@ -1750,6 +1765,7 @@ bool C4Landscape::P::SaveInternal(const C4Landscape *d, C4Group &hGroup) const
 bool C4Landscape::SaveDiff(C4Group &hGroup, bool fSyncSave) const
 {
 	C4SolidMask::RemoveSolidMasks();
+	LogF("Landscape SaveDiff: %s", SurfaceChecksum(*p->Surface8).getData());
 	bool r = p->SaveDiffInternal(this, hGroup, fSyncSave);
 	C4SolidMask::PutSolidMasks();
 	return r;
