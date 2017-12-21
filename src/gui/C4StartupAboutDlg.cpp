@@ -46,6 +46,7 @@ static struct DeveloperList : public PersonList
 		}
 	}
 }
+// the following lists are all sorted by all-time commit count: git shortlog -s | sort -rn
 engineAndTools =
 {
 	{"Sven Eberhardt", "Sven2"},
@@ -102,16 +103,17 @@ static struct ContributorList : public PersonList
 	void WriteTo(C4GUI::TextWindow *textbox, CStdFont &font)
 	{
 		StdStrBuf text;
-		text = "Contributors for OpenClonk 8.0: ";
+		text = "<c ff0000>Contributors for OpenClonk 8.0:</c> ";
 		text.Append(ConcatNames(contributorsThisRelease));
 		textbox->AddTextLine(text.getData(), &font, C4GUI_MessageFontClr, false, true);
 
-		text = "Previous contributors: ";
+		text = "<c ff0000>Previous contributors:</c> ";
 		text.Append(ConcatNames(contributors));
 		textbox->AddTextLine(text.getData(), &font, C4GUI_MessageFontClr, false, true);
 
-		text = "Also thanks to our Linux package maintainers ";
+		text = "<c ff0000>Also thanks to our Linux package maintainers</c> ";
 		text.Append(ConcatNames(packageMaintainers));
+		text.Append(", and more");
 		textbox->AddTextLine(text.getData(), &font, C4GUI_MessageFontClr, false, true);
 
 		text = "Finally, a big thanks to Matthes Bender and all those who contributed to previous Clonk titles for the passion they put into the game and for agreeing to make Clonk open source.";
@@ -119,6 +121,7 @@ static struct ContributorList : public PersonList
 	}
 } contributors;
 
+// Sorted by commit count this release, e.g.: git shortlog -s v7.0.. | sort -rn
 const std::vector<ContributorList::Entry> ContributorList::contributorsThisRelease = {
 	{"Fulgen", nullptr},
 	{"Linus Heckemann", "sphalerite"},
@@ -128,52 +131,58 @@ const std::vector<ContributorList::Entry> ContributorList::contributorsThisRelea
 	{"jok", nullptr},
 	{"Philip Kern", "pkern"},
 	{"Matthias Mailänder", nullptr},
+	{"marsmoon", nullptr},
 };
 
+// First real names sorted by last name (sort -k2), then nicks (sort)
 const std::vector<ContributorList::Entry> ContributorList::contributors = {
 	{"Martin Adam", "Win"},
-	{"Florian Graier", "Nachtfalter"},
+	{"Tim Blume", nullptr},
 	{"Merten Ehmig", "pluto"},
+	{"Florian Graier", "Nachtfalter"},
+	{"Sven-Hendrik Haase", nullptr},
+	{"Carl-Philip Hänsch", "Carli"},
+	{"Jan Heberer", nullptr},
 	{"Benjamin Herr", "Loriel"},
-	{"Pyrit", nullptr},
 	{"Philip Holzmann", "Batman"},
-	{"Alexander Semeniuk", "AlteredARMOR"},
-	{"Andriel", nullptr},
-	{"Peewee", nullptr},
-	{"Oliver Schneider", "ker"},
+	{"Lauri Niskanen", "Ape"},
+	{"Johannes Nixdorf", "mixi"},
+	{"Misty de Meo", nullptr}, // note: three part name
 	{"Fabian Pietsch", nullptr},
 	{"Manuel Rieke", "MrBeast"},
 	{"Felix Riese", "Fungiform"},
-	{"Carl-Philip Hänsch", "Carli"},
 	{"Sebastian Rühl", nullptr},
-	{"Gurkenglas", nullptr},
-	{"Asmageddon", nullptr},
-	{"mizipzor", nullptr},
-	{"Tim Blume", nullptr},
-	{"Apfelclonk", nullptr},
-	{"Sven-Hendrik Haase", nullptr},
-	{"Lauri Niskanen", "Ape"},
+	{"Oliver Schneider", "ker"},
+	{"Lorenz Schwittmann", nullptr},
+	{"Alexander Semeniuk", "AlteredARMOR"},
 	{"Daniel Theuke", "ST-DDT"},
+	{"Andriel", nullptr},
+	{"Apfelclonk", nullptr},
+	{"Asmageddon", nullptr},
+	{"Checkmaty", nullptr},
+	{"Clonkine", nullptr},
+	{"dylanstrategie", nullptr},
+	{"Faby", nullptr},
+	{"grgecko", nullptr},
+	{"Gurkenglas", nullptr},
+	{"hasufell", nullptr},
+	{"Koronis", nullptr},
+	{"mizipzor", nullptr},
+	{"Peewee", nullptr},
+	{"Pyrit", nullptr},
 	{"Russell", nullptr},
 	{"Stan", nullptr},
 	{"TomyLobo", nullptr},
-	{"Clonkine", nullptr},
-	{"Koronis", nullptr},
-	{"Johannes Nixdorf", "mixi"},
-	{"grgecko", nullptr},
-	{"Misty de Meo", nullptr},
-	{"Lorenz Schwittmann", nullptr},
-	{"hasufell", nullptr},
-	{"Jan Heberer", nullptr},
-	{"dylanstrategie", nullptr},
-	{"Checkmaty", nullptr},
-	{"Faby", nullptr},
 };
 
+// Sorted alphabetically: sort -k2
 const std::vector<ContributorList::Entry> ContributorList::packageMaintainers = {
-	{"Benedict Etzel", "B_E"},
-	{"Philip Kern", "pkern"},
-	{"Kevin Zeng", nullptr},
+	{"Benedict Etzel", "B_E"}, // Arch
+	{"Linus Heckemann", "sphalerite"}, // NixOS
+	{"Philip Kern", "pkern"}, // Debian
+	{"Matthias Mailänder", nullptr}, // OpenSUSE
+	{"Julian Ospald", "hasufell"}, // Gentoo
+	{"Kevin Zeng", nullptr}, // FreeBSD
 };
 
 // ------------------------------------------------
