@@ -24,16 +24,16 @@
 
 struct PersonList
 {
+	struct Entry
+	{
+		const char *name, *nick;
+	};
 	virtual void WriteTo(C4GUI::TextWindow *textbox, CStdFont &font) = 0;
 	virtual ~PersonList() { }
 };
 
 static struct DeveloperList : public PersonList
 {
-	struct Entry 
-	{
-		const char *name, *nick;
-	};
 	std::vector<Entry> developers;
 
 	DeveloperList(std::initializer_list<Entry> l) : developers(l) { }
@@ -83,10 +83,6 @@ musicAndSound =
 
 static struct ContributorList : public PersonList
 {
-	struct Entry 
-	{
-		const char *name, *nick;
-	};
 	static const std::vector<Entry> contributorsThisRelease, contributors, packageMaintainers;
 
 	StdStrBuf ConcatNames(const std::vector<Entry>& names)
