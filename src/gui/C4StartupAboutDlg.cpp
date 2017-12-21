@@ -232,8 +232,12 @@ void C4StartupAboutDlg::DrawPersonList(int title, PersonList& persons, C4Rect& r
 {
 	CStdFont &rUseFont = ::GraphicsResource.TextFont;
 	auto image = C4Startup::Get()->Graphics.fctAboutTitles.GetPhase(0, title);
-	int height = 2*rUseFont.GetFontHeight();
-	auto textbox = new C4GUI::TextWindow(rect, image.GetWidthByHeight(height), height, 0, 100, 4096, "", true, &image, 0, true);
+	int height = 2*rUseFont.GetFontHeight(), width = std::min(image.GetWidthByHeight(height), rect.Wdt);
+	auto picture = new C4GUI::Picture(C4Rect(rect.x, rect.y, width, height), true);
+	AddElement(picture);
+	picture->SetFacet(image);
+	rect.y += height; rect.Hgt -= height;
+	auto textbox = new C4GUI::TextWindow(rect, 0, 0, 0, 100, 4096, "", true, nullptr, 0, true);
 	AddElement(textbox);
 	textbox->SetDecoration(false, false, nullptr, true);
 	persons.WriteTo(textbox, rUseFont);
