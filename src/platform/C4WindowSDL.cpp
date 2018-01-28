@@ -147,6 +147,7 @@ bool C4Window::GetSize(C4Rect * pRect)
 {
 	pRect->x = pRect->y = 0;
 	SDL_GL_GetDrawableSize(window, &pRect->Wdt, &pRect->Hgt);
+	LogF("GetSize: %d %d", pRect->Wdt, pRect->Hgt);
 	return true;
 }
 
@@ -213,6 +214,7 @@ void C4Window::HandleSDLEvent(SDL_WindowEvent &e)
 		break;
 	case SDL_WINDOWEVENT_RESIZED:
 	case SDL_WINDOWEVENT_SIZE_CHANGED:
+		LogF("ResolutionChanged: %d %d", e.data1, e.data2);
 		Application.OnResolutionChanged(e.data1, e.data2);
 		break;
 	default:
