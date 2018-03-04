@@ -103,60 +103,31 @@ bool StdScheduler::DoScheduleProcs(int iTimeout)
 
 /* CStdMultimediaTimerProc */
 
-int CStdMultimediaTimerProc::iTimePeriod = 0;
-
 CStdMultimediaTimerProc::CStdMultimediaTimerProc(uint32_t iDelay) :
-		uCriticalTimerDelay(28),
-		idCriticalTimer(0),
-		uCriticalTimerResolution(5),
 		Event(true)
 {
-
-	if (!iTimePeriod)
-	{
-		// Get resolution caps
-		TIMECAPS tc;
-		timeGetDevCaps(&tc, sizeof(tc));
-		// Establish minimum resolution
-		uCriticalTimerResolution = Clamp(uCriticalTimerResolution, tc.wPeriodMin, tc.wPeriodMax);
-		timeBeginPeriod(uCriticalTimerResolution);
-	}
-	iTimePeriod++;
+	TimerQueue = CreateTimerQueue();
 
 	SetDelay(iDelay);
-
 }
 
 CStdMultimediaTimerProc::~CStdMultimediaTimerProc()
 {
-	if (idCriticalTimer)
-	{
-		timeKillEvent(idCriticalTimer);
-		idCriticalTimer = 0;
-
-		iTimePeriod--;
-		if (!iTimePeriod)
-			timeEndPeriod(uCriticalTimerResolution);
-	}
+	DeleteTimerQueueEx(TimerQueue, nullptr);
 }
 
 void CStdMultimediaTimerProc::SetDelay(uint32_t iDelay)
 {
+	if (Timer)
+		DeleteTimerQueueTimer(TimerQueue, Timer, nullptr);
+	if (!CreateTimerQueueTimer(&Timer, TimerQueue, TimerRoutine, &Event, iDelay, iDelay, 0))
+		DebugLogF("Creating Timer failed: %d", GetLastError());
+}
 
-	// Kill old timer (of any)
-	if (idCriticalTimer)
-		timeKillEvent(idCriticalTimer);
-
-	// Set new delay
-	uCriticalTimerDelay = iDelay;
-
-	// Set critical timer
-	idCriticalTimer=timeSetEvent(
-	                  uCriticalTimerDelay,uCriticalTimerResolution,
-	                  (LPTIMECALLBACK) Event.GetEvent(),0,TIME_PERIODIC | TIME_CALLBACK_EVENT_SET);
-
-	if(idCriticalTimer == 0)
-		DebugLogF("Creating Critical Timer failed: %d", GetLastError());
+void CStdMultimediaTimerProc::TimerRoutine(void *param, BOOLEAN TimerOrWaitFired)
+{
+	CStdEvent *event = static_cast<CStdEvent*>(param);
+	event->Set();
 }
 
 void StdScheduler::Added(StdSchedulerProc *pProc)

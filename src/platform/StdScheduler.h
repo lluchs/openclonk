@@ -175,11 +175,9 @@ public:
 	~CStdMultimediaTimerProc() override;
 
 private:
-	static int iTimePeriod;
-	uint32_t uCriticalTimerDelay;
-
-	UINT idCriticalTimer,uCriticalTimerResolution;
 	CStdEvent Event;
+	HANDLE TimerQueue, Timer{ nullptr };
+	static void TimerRoutine(void *param, BOOLEAN TimerOrWaitFired);
 	bool Check() { return Event.WaitFor(0); }
 
 public:
