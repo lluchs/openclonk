@@ -41,9 +41,8 @@ private:
 #ifdef STDSCHEDULER_USE_EVENTS
 	// event indicating network activity
 	HANDLE Event{nullptr};
-#else
-	std::map<SOCKET, int> sockets;
 #endif
+	std::map<SOCKET, int> sockets;
 
 	// Address information
 	StdCopyStrBuf URL, ServerName;

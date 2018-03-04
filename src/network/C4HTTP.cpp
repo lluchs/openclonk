@@ -59,16 +59,34 @@ bool C4HTTPClient::Init()
 bool C4HTTPClient::Execute(int iMaxTime, pollfd *readyfd)
 {
 	int running;
+#ifdef STDSCHEDULER_USE_EVENTS
+	// On Windows, StdScheduler doesn't inform us about which fd triggered the
+	// event, so we have to check manually.
+	if (WaitForSingleObject(Event, 0) == WAIT_OBJECT_0)
+	{
+		for (const auto& kv : sockets)
+		{
+			auto socket = kv.first;
+			WSANETWORKEVENTS NetworkEvents;
+			if (WSAEnumNetworkEvents(socket, Event, &NetworkEvents) != SOCKET_ERROR)
+			{
+				int ev_bitmask = 0;
+				if (NetworkEvents.lNetworkEvents & (FD_READ|FD_ACCEPT|FD_CLOSE)) ev_bitmask |= CURL_CSELECT_IN;
+				if (NetworkEvents.lNetworkEvents & (FD_WRITE|FD_CONNECT))        ev_bitmask |= CURL_CSELECT_OUT;
+				curl_multi_socket_action(MultiHandle, socket, ev_bitmask, &running);
+			}
+		}
+	}
+#else
 	if (readyfd)
 	{
-#ifndef STDSCHEDULER_USE_EVENTS
 		int ev_bitmask = 0;
 		if (readyfd->revents & POLLIN)  ev_bitmask |= CURL_CSELECT_IN;
 		if (readyfd->revents & POLLOUT) ev_bitmask |= CURL_CSELECT_OUT;
 		if (readyfd->revents & POLLERR) ev_bitmask |= CURL_CSELECT_ERR;
 		curl_multi_socket_action(MultiHandle, readyfd->fd, ev_bitmask, &running);
-#endif
 	}
+#endif
 	else
 	{
 		curl_multi_socket_action(MultiHandle, CURL_SOCKET_TIMEOUT, 0, &running);
@@ -229,11 +247,11 @@ int C4HTTPClient::SocketCallback(CURL *easy, curl_socket_t s, int what, void *so
 	switch (what)
 	{
 	case CURL_POLL_IN:
-		NetworkEvents = FD_READ; break;
+		NetworkEvents = FD_READ | FD_ACCEPT | FD_CLOSE; break;
 	case CURL_POLL_OUT:
-		NetworkEvents = FD_WRITE; break;
+		NetworkEvents = FD_WRITE | FD_CONNECT; break;
 	case CURL_POLL_INOUT:
-		NetworkEvents = FD_READ | FD_WRITE; break;
+		NetworkEvents = FD_READ | FD_ACCEPT | FD_CLOSE | FD_WRITE | FD_CONNECT; break;
 	default:
 		NetworkEvents = 0;
 	}
@@ -242,12 +260,11 @@ int C4HTTPClient::SocketCallback(CURL *easy, curl_socket_t s, int what, void *so
 		SetError("could not set event");
 		return 1;
 	}
-#else
+#endif
 	if (what == CURL_POLL_REMOVE)
 		sockets.erase(s);
 	else
 		sockets[s] = what;
-#endif
 	return 0;
 }
 
