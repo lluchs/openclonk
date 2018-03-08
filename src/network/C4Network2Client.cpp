@@ -159,27 +159,27 @@ bool C4Network2Client::DoConnectAttempt(C4Network2IO *pIO)
 
 bool C4Network2Client::DoTCPSimultaneousOpen(class C4Network2IO *pIO, const C4Network2Address &addr)
 {
-	if (!pIO->hasTCP()) return false;
+	if (!pIO->getNetIO(P_TCP)) return false;
 
 	// Did we already bind a socket?
 	if (TcpSimOpenSocket)
 	{
-		// TODO: LogSilentF
-	    LogF("Network: connecting client %s on %s with TCP simultaneous open...", getName(), addr.getAddr().ToString().getData());
+		LogSilentF("Network: connecting client %s on %s with TCP simultaneous open...", getName(), addr.getAddr().ToString().getData());
 		return pIO->ConnectWithSocket(addr.getAddr(), addr.getProtocol(), pClient->getCore(), std::move(TcpSimOpenSocket));
 	}
 	else
 	{
 		// No - bind one, inform peer, and schedule a connection attempt.
 		auto NetIOTCP = dynamic_cast<C4NetIOTCP*>(pIO->getNetIO(P_TCP));
-		auto bindAddr = IPv6AddrFromPuncher;
+		auto bindAddr = pParent->GetLocal()->IPv6AddrFromPuncher;
 		// We need to know an address that works.
 		if (bindAddr.IsNull()) return false;
 		bindAddr.SetPort(0);
 		TcpSimOpenSocket = NetIOTCP->Bind(bindAddr);
-	    LogF("Network: requesting TCP simultaneous open for client %s from %s...", getName(), bindAddr.ToString().getData());
+		auto boundAddr = TcpSimOpenSocket->GetAddress();
+		LogSilentF("Network: requesting TCP simultaneous open for client %s from %s...", getName(), boundAddr.ToString().getData());
 		// Send address we bound to to the client.
-		if (!SendMsg(MkC4NetIOPacket(PID_TCPSimOpen, C4PacketTCPSimOpen(pParent->GetLocal()->getID(), C4Network2Address(bindAddr, P_TCP)))))
+		if (!SendMsg(MkC4NetIOPacket(PID_TCPSimOpen, C4PacketTCPSimOpen(pParent->GetLocal()->getID(), C4Network2Address(boundAddr, P_TCP)))))
 			return false;
 		// ClientList will call us again on the next tick.
 		TcpSimOpenAddr = addr;

@@ -251,7 +251,7 @@ bool C4Network2IO::ConnectWithSocket(const C4NetIO::addr_t &addr, C4Network2IOPr
 	pConn->Set(pNetIO, eProt, paddr, addr, CS_Connect, szPassword, iConnID);
 	pConn->SetCCore(nCCore);
 	if (socket)
-	    pConn->SetSocket(std::move(socket));
+		pConn->SetSocket(std::move(socket));
 	AddConnection(pConn);
 	// connect
 	if (!pConn->Connect())
@@ -1449,7 +1449,7 @@ bool C4Network2IOConnection::Connect()
 	if (TcpSimOpenSocket)
 	{
 		auto pNetTCP = dynamic_cast<C4NetIOTCP*>(pNetClass);
-		pNetTCP->Connect(ConnectAddr, std::move(TcpSimOpenSocket));
+		return pNetTCP->Connect(ConnectAddr, std::move(TcpSimOpenSocket));
 	}
 	// try connect
 	return pNetClass->Connect(ConnectAddr);
