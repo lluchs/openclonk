@@ -22,6 +22,9 @@
 #include "network/C4Network2Stats.h"
 #include "player/C4PlayerList.h"
 
+#include <thread>
+#include <chrono>
+
 // *** C4Network2Client
 
 C4Network2Client::C4Network2Client(C4Client *pClient)
@@ -137,7 +140,7 @@ bool C4Network2Client::DoConnectAttempt(C4Network2IO *pIO)
 	auto addr = Addr[iBestAddress].getAddr();
 	
 	// try TCP simultaneous open if the stars align right
-	if (addr.GetFamily() == C4NetIO::addr_t::IPv6 && Addr[iBestAddress].getProtocol() == P_TCP && !TcpSimOpenSocket)
+	if (addr.GetFamily() == C4NetIO::addr_t::IPv6 && Addr[iBestAddress].getProtocol() == P_TCP && !TcpSimOpenSocket && pParent->GetLocal()->getID() < getID())
 		DoTCPSimultaneousOpen(pIO, C4Network2Address());
 
 	std::set<int> interfaceIDs;
@@ -177,12 +180,21 @@ bool C4Network2Client::DoTCPSimultaneousOpen(class C4Network2IO *pIO, const C4Ne
 		bindAddr.SetPort(0);
 		TcpSimOpenSocket = NetIOTCP->Bind(bindAddr);
 		auto boundAddr = TcpSimOpenSocket->GetAddress();
-		LogSilentF("Network: requesting TCP simultaneous open for client %s from %s...", getName(), boundAddr.ToString().getData());
+		LogSilentF("Network: %s TCP simultaneous open request for client %s from %s...", addr.isIPNull() ? "initiating" : "responding to",
+				getName(), boundAddr.ToString().getData());
 		// Send address we bound to to the client.
 		if (!SendMsg(MkC4NetIOPacket(PID_TCPSimOpen, C4PacketTCPSimOpen(pParent->GetLocal()->getID(), C4Network2Address(boundAddr, P_TCP)))))
 			return false;
-		// ClientList will call us again on the next tick.
-		TcpSimOpenAddr = addr;
+		if (!addr.isIPNull())
+		{
+			// We need to delay the connection attempt a bit. Unfortunately,
+			// waiting for the next tick would usually take way too much time.
+			// Instead, we block the main thread for a very short time and hope
+			// that noone notices...
+			int ping = getMsgConn()->getLag();
+			std::this_thread::sleep_for(std::chrono::milliseconds(std::min(ping / 2, 10)));
+			DoTCPSimultaneousOpen(pIO, addr);
+		}
 		return true;
 	}
 }
@@ -589,12 +601,6 @@ void C4Network2ClientList::DoConnectAttempts()
 		if (!pClient->isLocal() && !pClient->isRemoved() && pClient->getNextConnAttempt() && pClient->getNextConnAttempt() <= t)
 			// attempt connect
 			pClient->DoConnectAttempt(pIO);
-		// Did we schedule a TCP simultaneous open?
-		if (!pClient->TcpSimOpenAddr.isIPNull())
-		{
-			pClient->DoTCPSimultaneousOpen(pIO, pClient->TcpSimOpenAddr);
-			pClient->TcpSimOpenAddr.getAddr().Clear();
-		}
 	}
 }
 

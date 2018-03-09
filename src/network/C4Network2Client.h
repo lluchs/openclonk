@@ -71,7 +71,6 @@ protected:
 	C4Network2IOConnection *pMsgConn, *pDataConn;
 	time_t iNextConnAttempt;
 	std::unique_ptr<C4NetIOTCP::Socket> TcpSimOpenSocket;
-	C4Network2Address TcpSimOpenAddr;
 
 	// part of client list
 	C4Network2Client *pNext;
