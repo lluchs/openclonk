@@ -2,7 +2,7 @@
  * OpenClonk, http://www.openclonk.org
  *
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2011-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2011-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -16,9 +16,10 @@
 // png file reading functionality
 
 #include "C4Include.h"
-#include <StdPNG.h>
+#include "graphics/StdPNG.h"
 
-#include <StdColors.h>
+#include "lib/StdColors.h"
+#include "platform/StdScheduler.h"
 
 // png reading proc
 void PNGAPI CPNGFile::CPNGReadFn(png_structp png_ptr, png_bytep data, size_t length)
@@ -43,7 +44,7 @@ bool CPNGFile::DoLoad()
 	if (png_sig_cmp((unsigned char *) pFilePtr, 0, 8)) return false;
 	// setup png for reading
 	fWriteMode=false;
-	png_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
+	png_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING, nullptr, nullptr, nullptr);
 	if (!png_ptr) return false;
 	info_ptr = png_create_info_struct(png_ptr);
 	if (!info_ptr) return false;
@@ -65,7 +66,7 @@ bool CPNGFile::DoLoad()
 	if (iBPC == 16) png_set_strip_16(png_ptr);
 	if (iBPC < 8) png_set_packing(png_ptr);
 	if (iClrType == PNG_COLOR_TYPE_GRAY || iClrType == PNG_COLOR_TYPE_GRAY_ALPHA) png_set_gray_to_rgb(png_ptr);
-	/*if (iClrType == PNG_COLOR_TYPE_RGB || iClrType == PNG_COLOR_TYPE_RGB_ALPHA)*/ png_set_bgr(png_ptr);
+	png_set_bgr(png_ptr);
 	// update info
 	png_read_update_info(png_ptr, info_ptr);
 	png_get_IHDR(png_ptr, info_ptr, &uWdt, &uHgt, &iBPC, &iClrType, &iIntrlcType, &iCmprType, &iFltrType);
@@ -100,15 +101,15 @@ CPNGFile::CPNGFile()
 void CPNGFile::Default()
 {
 	// zero fields
-	pFile=NULL;
+	pFile=nullptr;
 	fpFileOwned=false;
-	pFilePtr=NULL;
-	png_ptr=NULL;
-	info_ptr=end_info=NULL;
-	pImageData=NULL;
+	pFilePtr=nullptr;
+	png_ptr=nullptr;
+	info_ptr=end_info=nullptr;
+	pImageData=nullptr;
 	iRowSize=0;
 	iPixSize=0;
-	fp=NULL;
+	fp=nullptr;
 }
 
 CPNGFile::~CPNGFile()
@@ -127,26 +128,26 @@ void CPNGFile::ClearPngStructs()
 		else
 			png_destroy_read_struct(&png_ptr, &info_ptr, &end_info);
 	}
-	png_ptr=NULL;
-	info_ptr=end_info=NULL;
+	png_ptr=nullptr;
+	info_ptr=end_info=nullptr;
 	fWriteMode=false;
 }
 
 void CPNGFile::Clear()
 {
 	// free image data
-	if (pImageData) { delete [] pImageData; pImageData=NULL; }
+	if (pImageData) { delete [] pImageData; pImageData=nullptr; }
 	// clear internal png ptrs
 	ClearPngStructs();
 	// free file ptr if owned
-	if (pFile && fpFileOwned) delete [] pFile; pFile=NULL;
+	if (pFile && fpFileOwned) delete [] pFile; pFile=nullptr;
 	// reset fields
 	fpFileOwned=false;
-	pFilePtr=NULL;
+	pFilePtr=nullptr;
 	iRowSize=0;
 	iPixSize=0;
 	// close file if open
-	if (fp) { fclose(fp); fp=NULL; }
+	if (fp) { fclose(fp); fp=nullptr; }
 }
 
 bool CPNGFile::Load(unsigned char *pFile, int iSize)
@@ -164,7 +165,7 @@ bool CPNGFile::Load(unsigned char *pFile, int iSize)
 		return false;
 	}
 	// reset file-field
-	this->pFile = NULL; iFileSize=0;
+	this->pFile = nullptr; iFileSize=0;
 	// success
 	return true;
 }
@@ -224,7 +225,7 @@ bool CPNGFile::SetPix(int iX, int iY, DWORD dwValue)
 		pPix[2] = GetRedValue(dwValue);
 		return true;
 	case PNG_COLOR_TYPE_RGB_ALPHA: // RGBA: simply set in mem
-		*(unsigned long *) pPix = dwValue;
+		*(DWORD *) pPix = dwValue;
 		return true;
 	}
 	return false;
@@ -240,7 +241,7 @@ bool CPNGFile::Save(const char *szFilename)
 	ClearPngStructs();
 	// reinit them for writing
 	fWriteMode=true;
-	png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
+	png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, nullptr, nullptr, nullptr);
 	if (!png_ptr) { Clear(); return false; }
 	info_ptr = png_create_info_struct(png_ptr);
 	if (!info_ptr) { Clear(); return false; }
@@ -279,7 +280,7 @@ bool CPNGFile::Save(const char *szFilename)
 	// write end struct
 	png_write_end(png_ptr, info_ptr);
 	// finally, close the file
-	fclose(fp); fp = NULL;
+	fclose(fp); fp = nullptr;
 	// clear png structs
 	ClearPngStructs();
 	// success!
@@ -294,4 +295,81 @@ int CPNGFile::GetBitsPerPixel()
 	case PNG_COLOR_TYPE_RGB_ALPHA: return 32;
 	}
 	return 0;
+}
+
+/* Background-threaded screenshot saving */
+
+class CPNGSaveThread : public StdThread
+{
+private:
+	std::unique_ptr<CPNGFile> png;
+	StdCopyStrBuf filename;
+
+	static CStdCSec threads_sec;
+	static std::list<CPNGSaveThread *> threads;
+public:
+	CPNGSaveThread(CPNGFile *png, const char *filename);
+	~CPNGSaveThread() override;
+
+	static bool HasPendingThreads();
+
+protected:
+	void Execute() override;
+	bool IsSelfDestruct() override { return true; }
+};
+
+CStdCSec CPNGSaveThread::threads_sec;
+std::list<CPNGSaveThread *> CPNGSaveThread::threads;
+
+CPNGSaveThread::CPNGSaveThread(CPNGFile *png, const char *filename) : png(png), filename(filename)
+{
+	// keep track of current saves
+	CStdLock lock(&threads_sec);
+	threads.push_back(this);
+}
+
+CPNGSaveThread::~CPNGSaveThread()
+{
+	// keep track of current saves
+	CStdLock lock(&threads_sec);
+	threads.remove(this);
+}
+
+void CPNGSaveThread::Execute()
+{
+	// Save without feedback. There's no way to post e.g. a log message to the main thread at the moment.
+	// But if saving fails, there's just a missing screenshot, which shouldn't be a big deal.
+	png->Save(filename.getData());
+	SignalStop();
+}
+
+bool CPNGSaveThread::HasPendingThreads()
+{
+	CStdLock lock(&threads_sec);
+	return !threads.empty();
+}
+
+void CPNGFile::ScheduleSaving(CPNGFile *png, const char *filename)
+{
+	// start a background thread to save the png file
+	// thread is responsible for cleaning up
+	CPNGSaveThread *saver = new CPNGSaveThread(png, filename);
+	if (!saver->Start()) delete saver;
+}
+
+void CPNGFile::WaitForSaves()
+{
+	// Yield main thread until all pending saves have finished.Wait for
+	bool first = true;
+	while (CPNGSaveThread::HasPendingThreads())
+	{
+		// English message because localization data is no longer loaded
+		if (first) LogSilent("Waiting for pending image files to be written to disc...");
+		first = false;
+#ifdef HAVE_WINTHREAD
+		Sleep(100);
+#else
+		sched_yield();
+#endif
+	}
 }

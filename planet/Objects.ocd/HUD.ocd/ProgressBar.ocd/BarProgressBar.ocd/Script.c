@@ -90,7 +90,7 @@ func Init(to, max, cur, timeout, offset, visibility, data)
 	
 	for(var i = 1; i < number_of_bars; ++i)
 	{
-		bars[i] = CreateObject(GetID(), 0, 0, GetOwner());
+		bars[i] = CreateObjectAbove(GetID(), 0, 0, GetOwner());
 	}
 		
 	var cnt = 0;
@@ -105,16 +105,7 @@ func Init(to, max, cur, timeout, offset, visibility, data)
 		obj->Set(to, cnt, number_of_bars, size, offset, visibility);
 		++cnt;
 	}
-	
-	AddEffect("LifeCheck", to, 1, 0, this);
 	Update();
-}
-
-func FxLifeCheckStop(target, effect, cause, temp)
-{
-	if(temp) return;
-	if(this)
-		this->RemoveObject();
 }
 
 func FxTimeOutTimer(target, effect, time)

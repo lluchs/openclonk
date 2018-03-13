@@ -18,38 +18,41 @@ protected func Initialize()
 	AddEffect("BlessTheKing",goal,100,1,nil);
 	CreateObject(Rule_KillLogs);
 	CreateObject(Rule_Gravestones);
+	GetRelaunchRule()
+		->SetLastWeaponUse(false)
+		->SetDefaultRelaunchCount(nil);
 	
 	//Enviroment.
 	//SetSkyAdjust(RGBa(250,250,255,128),RGB(200,200,220));
 	SetSkyParallax(1, 20,20, 0,0, nil, nil);
-	Sound("BirdsLoop",true,100,nil,+1);
+	Sound("Environment::BirdsLoop",true,100,nil,+1);
 		
-	CreateObject(Column,650,379);
-	CreateObject(Column,350,409);
-	CreateObject(Column,160,229);
-	CreateObject(Column,448,269);
-	CreateObject(Column,810,179);
+	CreateObjectAbove(Column,650,379);
+	CreateObjectAbove(Column,350,409);
+	CreateObjectAbove(Column,160,229);
+	CreateObjectAbove(Column,448,269);
+	CreateObjectAbove(Column,810,179);
 
 	// Chests with weapons.
-	CreateObject(Chest, 175, 200, NO_OWNER)->MakeInvincible();
-	CreateObject(Chest, 800, 150, NO_OWNER)->MakeInvincible();
-	CreateObject(Chest, 430, 240, NO_OWNER)->MakeInvincible();
-	CreateObject(Chest, 610, 340, NO_OWNER)->MakeInvincible();
-	CreateObject(Chest, 355, 390, NO_OWNER)->MakeInvincible();
+	CreateObjectAbove(Chest, 175, 200, NO_OWNER)->MakeInvincible();
+	CreateObjectAbove(Chest, 800, 150, NO_OWNER)->MakeInvincible();
+	CreateObjectAbove(Chest, 430, 240, NO_OWNER)->MakeInvincible();
+	CreateObjectAbove(Chest, 610, 340, NO_OWNER)->MakeInvincible();
+	CreateObjectAbove(Chest, 355, 390, NO_OWNER)->MakeInvincible();
 	
 	AddEffect("IntFillChests", nil, 100, 2 * 36, nil);
-	// Smooth brick edges.
-	AddEffect("ChanneledWind", nil, 100, 1, nil);
+	AddEffect("ChanneledWind", nil, 1, 1, nil);
 	AddEffect("Balloons", nil, 100, 100, nil);
 	
 	// Moving bricks.
 	var brick;
-	brick = CreateObject(MovingBrick,370,424);
+	brick = CreateObjectAbove(MovingBrick,370,424);
 	brick->MoveHorizontal(344, 544);
-	brick = CreateObject(MovingBrick,550,250);
+	brick = CreateObjectAbove(MovingBrick,550,250);
 	brick->MoveVertical(240, 296);
 
-	CreateObject(BrickEdge, 380, 416)->PermaEdge();
+	// Smooth brick edges.
+	DrawMaterialTriangle("Brick-brick", 380, 412, 0);
 	
 	PlaceGras();
 	
@@ -117,20 +120,25 @@ global func FxBlessTheKingTimer(object target, effect, int timer)
 	return 1;
 }
 
+public func ApplyChanneledWindEffects(x, y, w, h, bottom)
+{
+	for(var obj in FindObjects(Find_InRect(x, y, w, h)))
+	{
+		obj->SetYDir(Max(obj->GetYDir()-5,-50));
+		var x_dir = -1;
+		if (obj->GetXDir() > 0)
+			x_dir = +1;
+		else if (obj->GetXDir() == 0)
+			x_dir = RandomX(-2, 2);
+		obj->SetXDir(obj->GetXDir() + x_dir);
+	}
+	CreateParticle("Air", x+Random(w),bottom,RandomX(-1,1),-30, PV_Random(10, 30), ThunderousSkies_air_particles);
+}
+
 global func FxChanneledWindTimer()
 {
-	for(var obj in FindObjects(Find_InRect(230,300,40,90)))
-	{
-		obj->SetYDir(Max(obj->GetYDir()-5,-50));
-		obj->SetXDir(obj->GetXDir()+RandomX(-1,1));
-	}
-	for(var obj in FindObjects(Find_InRect(700,250,60,100)))
-	{
-		obj->SetYDir(Max(obj->GetYDir()-5,-50));
-		obj->SetXDir(obj->GetXDir()+RandomX(-1,1));
-	}
-	CreateParticle("Air", 230+Random(40),398,RandomX(-1,1),-30, PV_Random(10, 30), ThunderousSkies_air_particles);
-	CreateParticle("Air", 700+Random(60),348,RandomX(-1,1),-30, PV_Random(10, 30), ThunderousSkies_air_particles);
+	Scenario->ApplyChanneledWindEffects(230, 300, 40, 90, 398);
+	Scenario->ApplyChanneledWindEffects(700, 250, 60, 100, 348);
 }
 
 global func FxBalloonsTimer()
@@ -152,12 +160,12 @@ global func FxBalloonsTimer()
 	var target;
 	
 	var r = Random(3);
-	if (r == 0) { target = CreateObject(Boompack, x, y, NO_OWNER); target->SetR(180); }
-	if (r == 1) { target = CreateObject(DynamiteBox, x, y, NO_OWNER); target->SetR(180); }
-	if (r == 2) { target = CreateObject(Arrow, x, y, NO_OWNER); target->SetObjDrawTransform(1000,0,0,0,1000,-7500); }
+	if (r == 0) { target = CreateObjectAbove(Boompack, x, y, NO_OWNER); target->SetR(180); }
+	if (r == 1) { target = CreateObjectAbove(DynamiteBox, x, y, NO_OWNER); target->SetR(180); }
+	if (r == 2) { target = CreateObjectAbove(Arrow, x, y, NO_OWNER); target->SetObjDrawTransform(1000,0,0,0,1000,-7500); }
 		
 		
-	var balloon = CreateObject(TargetBalloon, x, y-30, NO_OWNER);
+	var balloon = CreateObjectAbove(TargetBalloon, x, y-30, NO_OWNER);
 	balloon->SetProperty("load",target);
 	target->SetAction("Attach", balloon);
 	CreateParticle("Flash", x, y, 0, 0, 8, Particles_Flash());
@@ -172,7 +180,7 @@ global func PlaceGras()
 	var r=[-91, -93, -93, 89, 93, 93, 88, 89, -92, -92, 88, 93, 93, -88, -87, -93, 0, 0, 0, 0, 0, 0, 0, 0, 0, 43, 43, 46, 44, 48, -43, -48, -48, -45, -43, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -48, -44, -45, 48, 46, 48, 45, 0, 0, 0, 0, 0, 0, 0, 44, 0];
 	for (var i = 0; i < GetLength(x); i++)
 	{
-		var edge=CreateObject(Grass, x[i], y[i] + 5, NO_OWNER);
+		var edge=CreateObjectAbove(Grass, x[i], y[i] + 5, NO_OWNER);
 		edge->SetR(r[i]); 
 		edge->Initialize();
 	}
@@ -184,7 +192,7 @@ global func FxIntFillChestsStart(object target, effect, int temporary)
 {
 	if(temporary) return 1;
 	var chests = FindObjects(Find_ID(Chest),Find_InRect(0,0,LandscapeWidth(),610));
-	var w_list = [Shield, Javelin, FireballScroll, Bow, Musket, WindScroll, ThunderScroll];
+	var w_list = [Shield, Javelin, FireballScroll, Bow, Blunderbuss, WindScroll, ThunderScroll];
 	
 	for(var chest in chests)
 		for(var i=0; i<4; ++i)
@@ -196,7 +204,7 @@ global func FxIntFillChestsTimer()
 {
 	SetTemperature(100);
 	var chest = FindObjects(Find_ID(Chest), Sort_Random())[0];
-	var w_list = [Javelin, Bow, Musket, Boompack, IronBomb, Shield, WindScroll, FireballScroll, ThunderScroll, Club, Sword];
+	var w_list = [Javelin, Bow, Blunderbuss, Boompack, IronBomb, Shield, WindScroll, FireballScroll, ThunderScroll, Club, Sword];
 	var maxcount = [1,1,1,1,2,1,1,2,2,1,1];
 	
 	var contents;
@@ -229,41 +237,25 @@ global func CreateChestContents(id obj_id)
 {
 if (!this)
 		return;
-	var obj = CreateObject(obj_id);
+	var obj = CreateObjectAbove(obj_id);
 	if (obj_id == Bow)
 		obj->CreateContents(Arrow);
-	if (obj_id == Musket)
-		obj->CreateContents(LeadShot);
+	if (obj_id == Blunderbuss)
+		obj->CreateContents(LeadBullet);
 	obj->Enter(this);
 	return;
 }
 
 protected func InitializePlayer(int plr)
 {
-	return JoinPlayer(plr);
+	// This scenario does not have shadows.
+	SetFoW(false, plr);
 }
 
-// GameCall from RelaunchContainer.
-protected func RelaunchPlayer(int plr)
+public func RelaunchPosition()
 {
-	var clonk = CreateObject(Clonk, 0, 0, plr);
-	clonk->MakeCrewMember(plr);
-	SetCursor(plr, clonk);
-	JoinPlayer(plr);
-	return;
-}
-
-protected func JoinPlayer(int plr)
-{
-	var clonk = GetCrew(plr);
-	clonk->DoEnergy(100000);
-	var position = [[180,150],[310,320],[600,290],[650,180],[790,110],[440,190]];
-	var r=Random(GetLength(position));
-	var x = position[r][0], y = position[r][1];
-	var relaunch = CreateObject(RelaunchContainer, x, y + 49, clonk->GetOwner());
-	relaunch->StartRelaunch(clonk);
-	return;
+	return [[180,150],[310,300],[600,290],[650,180],[790,110],[440,190]];
 }
 
 func KillsToRelaunch() { return 0; }
-func RelaunchWeaponList() { return [Bow,  Javelin, Musket, FireballScroll, WindScroll, ThunderScroll]; }
+func RelaunchWeaponList() { return [Bow,  Javelin, Blunderbuss, FireballScroll, WindScroll, ThunderScroll]; }

@@ -7,6 +7,7 @@
 public func Initialize()
 {
 	SetAction("Idle");
+	return _inherited(...);
 }
 
 protected func IsBuilt()
@@ -66,8 +67,12 @@ CloseDoor = {
 func Definition(def) {
 	SetProperty("PictureTransformation", Trans_Mul(Trans_Translate(2000,0,7000),Trans_Rotate(-20,1,0,0),Trans_Rotate(30,0,1,0)), def);
 	SetProperty("MeshTransformation", Trans_Rotate(-8,0,1,0));
+	return _inherited(def, ...);
 }
+local ContainBlast = true;
 local BlastIncinerate = 100;
+local FireproofContainer = true;
 local HitPoints = 70;
 local Name = "$Name$";
 local Description = "$Description$";
+local Components = {Wood = 5, Rock = 4};

@@ -15,7 +15,7 @@ public func Initialize()
 
 func SetProgress(int new_progress)
 {
-	var parts = [Plane_Skids, Plane_Chassis, Plane_Wings, Plane_Engine, Plane_Propeller, nil];
+	var parts = [Airplane_Skids, Airplane_Chassis, Airplane_Wings, Airplane_Engine, Airplane_Propeller, nil];
 	progress = new_progress;
 	if (!progress)
 	{
@@ -26,12 +26,14 @@ func SetProgress(int new_progress)
 	{
 		SetGraphics(Format("%d", new_progress));
 		SetGraphics("Site", GetID(), GFX_Overlay, GFXOV_MODE_Base);
+		GameCallEx("OnPlanePartAdded", this);
 	}
 	else
 	{
 		SetGraphics();
 		SetGraphics(nil, nil, GFX_Overlay, GFXOV_MODE_Base);
 		GameCall("OnPlaneFinished", this);
+		return true;
 	}
 	next_part = parts[progress];
 	return true;
@@ -52,7 +54,7 @@ func AddPart(object part)
 {
 	part->RemoveRestoreMode();
 	part->RemoveObject();
-	Sound("Applause", true);
+	Sound("UI::Ding", true);
 	SetProgress(progress+1);
 	return true;
 }

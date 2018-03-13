@@ -2,7 +2,7 @@
  * OpenClonk, http://www.openclonk.org
  *
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -16,14 +16,13 @@
 // generic user interface
 // context menu
 
-#include <C4Include.h>
-#include <C4Gui.h>
+#include "C4Include.h"
+#include "gui/C4Gui.h"
 
-#include <C4FacetEx.h>
-#include <C4MouseControl.h>
-#include <C4GraphicsResource.h>
-
-#include <C4Window.h>
+#include "graphics/C4Draw.h"
+#include "graphics/C4FacetEx.h"
+#include "graphics/C4GraphicsResource.h"
+#include "gui/C4MouseControl.h"
 
 namespace C4GUI
 {
@@ -84,62 +83,62 @@ namespace C4GUI
 // ----------------------------------------------------
 // ContextMenu
 
-	ContextMenu::ContextMenu() : Window(), pTarget(NULL), pSelectedItem(NULL), pSubmenu(NULL)
+	ContextMenu::ContextMenu() : Window()
 	{
 		iMenuIndex = ++iGlobalMenuIndex;
 		// set min size
 		rcBounds.Wdt=40; rcBounds.Hgt=7;
 		// key bindings
 		C4CustomKey::CodeList Keys;
-		Keys.push_back(C4KeyCodeEx(K_UP));
+		Keys.emplace_back(K_UP);
 		if (Config.Controls.GamepadGuiControl)
 		{
-			Keys.push_back(C4KeyCodeEx(KEY_Gamepad(0, KEY_JOY_Up)));
+			ControllerKeys::Up(Keys);
 		}
 		pKeySelUp = new C4KeyBinding(Keys, "GUIContextSelUp", KEYSCOPE_Gui,
 		                             new C4KeyCB<ContextMenu>(*this, &ContextMenu::KeySelUp), C4CustomKey::PRIO_Context);
 
 		Keys.clear();
-		Keys.push_back(C4KeyCodeEx(K_DOWN));
+		Keys.emplace_back(K_DOWN);
 		if (Config.Controls.GamepadGuiControl)
 		{
-			Keys.push_back(C4KeyCodeEx(KEY_Gamepad(0, KEY_JOY_Down)));
+			ControllerKeys::Down(Keys);
 		}
 		pKeySelDown = new C4KeyBinding(Keys, "GUIContextSelDown", KEYSCOPE_Gui,
 		                               new C4KeyCB<ContextMenu>(*this, &ContextMenu::KeySelDown), C4CustomKey::PRIO_Context);
 
 		Keys.clear();
-		Keys.push_back(C4KeyCodeEx(K_RIGHT));
+		Keys.emplace_back(K_RIGHT);
 		if (Config.Controls.GamepadGuiControl)
 		{
-			Keys.push_back(C4KeyCodeEx(KEY_Gamepad(0, KEY_JOY_Right)));
+			ControllerKeys::Right(Keys);
 		}
 		pKeySubmenu = new C4KeyBinding(Keys, "GUIContextSubmenu", KEYSCOPE_Gui,
 		                               new C4KeyCB<ContextMenu>(*this, &ContextMenu::KeySubmenu), C4CustomKey::PRIO_Context);
 
 		Keys.clear();
-		Keys.push_back(C4KeyCodeEx(K_LEFT));
+		Keys.emplace_back(K_LEFT);
 		if (Config.Controls.GamepadGuiControl)
 		{
-			Keys.push_back(C4KeyCodeEx(KEY_Gamepad(0, KEY_JOY_Left)));
+			ControllerKeys::Left(Keys);
 		}
 		pKeyBack = new C4KeyBinding(Keys, "GUIContextBack", KEYSCOPE_Gui,
 		                            new C4KeyCB<ContextMenu>(*this, &ContextMenu::KeyBack), C4CustomKey::PRIO_Context);
 
 		Keys.clear();
-		Keys.push_back(C4KeyCodeEx(K_ESCAPE));
+		Keys.emplace_back(K_ESCAPE);
 		if (Config.Controls.GamepadGuiControl)
 		{
-			Keys.push_back(C4KeyCodeEx(KEY_Gamepad(0, KEY_JOY_AnyHighButton)));
+			ControllerKeys::Cancel(Keys);
 		}
 		pKeyAbort = new C4KeyBinding(Keys, "GUIContextAbort", KEYSCOPE_Gui,
 		                             new C4KeyCB<ContextMenu>(*this, &ContextMenu::KeyAbort), C4CustomKey::PRIO_Context);
 
 		Keys.clear();
-		Keys.push_back(C4KeyCodeEx(K_RETURN));
+		Keys.emplace_back(K_RETURN);
 		if (Config.Controls.GamepadGuiControl)
 		{
-			Keys.push_back(C4KeyCodeEx(KEY_Gamepad(0, KEY_JOY_AnyLowButton)));
+			ControllerKeys::Ok(Keys);
 		}
 		pKeyConfirm = new C4KeyBinding(Keys, "GUIContextConfirm", KEYSCOPE_Gui,
 		                               new C4KeyCB<ContextMenu>(*this, &ContextMenu::KeyConfirm), C4CustomKey::PRIO_Context);
@@ -151,7 +150,7 @@ namespace C4GUI
 	ContextMenu::~ContextMenu()
 	{
 		// del any submenu
-		if (pSubmenu) { delete pSubmenu; pSubmenu=NULL; }
+		if (pSubmenu) { delete pSubmenu; pSubmenu=nullptr; }
 		// forward RemoveElement to screen
 		Screen *pScreen = GetScreen();
 		if (pScreen) pScreen->RemoveElement(this);
@@ -170,7 +169,7 @@ namespace C4GUI
 	void ContextMenu::Abort(bool fByUser)
 	{
 		// effect
-		if (fByUser) GUISound("DoorClose");
+		if (fByUser) GUISound("UI::Close");
 		// simply del menu: dtor will remove itself
 		delete this;
 	}
@@ -207,7 +206,7 @@ namespace C4GUI
 		{
 			// reset selection
 			Element *pPrevSelectedItem = pSelectedItem;
-			pSelectedItem = NULL;
+			pSelectedItem = nullptr;
 			// get client component the mouse is over
 			iX -= GetMarginLeft(); iY -= GetMarginTop();
 			for (Element *pCurr = GetFirst(); pCurr; pCurr = pCurr->GetNext())
@@ -231,7 +230,7 @@ namespace C4GUI
 		// no submenu open? then deselect any selected item
 		if (pOldEntry==pSelectedItem && !pSubmenu)
 		{
-			pSelectedItem = NULL;
+			pSelectedItem = nullptr;
 			SelectionChanged(true);
 		}
 	}
@@ -303,7 +302,10 @@ namespace C4GUI
 		// not if focus is in submenu
 		if (pSubmenu) return false;
 		Element *pPrevSelectedItem = pSelectedItem;
-		C4KeyCode wKey = TOUPPERIFX11(key.Key);
+		StdStrBuf sKey = C4KeyCodeEx::KeyCode2String(key.Key, true, true);
+		// do hotkey procs for standard alphanumerics only
+		if (sKey.getLength() != 1) return false;
+		WORD wKey = WORD(*sKey.getData());
 		if (Inside<C4KeyCode, C4KeyCode, C4KeyCode>(wKey, 'A', 'Z') || Inside<C4KeyCode, C4KeyCode, C4KeyCode>(wKey, '0', '9'))
 		{
 			// process hotkeys
@@ -329,12 +331,12 @@ namespace C4GUI
 		Element *pCurr = GetFirst();
 		if (!pCurr) return;
 		pCurr->GetBounds().y = 0;
-		int32_t iMinWdt = Max<int32_t>(20, pCurr->GetBounds().Wdt);;
+		int32_t iMinWdt = std::max<int32_t>(20, pCurr->GetBounds().Wdt);;
 		int32_t iOverallHgt = pCurr->GetBounds().Hgt;
 		// others stacked under it
 		while ((pCurr = pCurr->GetNext()))
 		{
-			iMinWdt = Max(iMinWdt, pCurr->GetBounds().Wdt);
+			iMinWdt = std::max(iMinWdt, pCurr->GetBounds().Wdt);
 			int32_t iYSpace = pCurr->GetListItemTopSpacing();
 			int32_t iNewY = iOverallHgt + iYSpace;
 			iOverallHgt += pCurr->GetBounds().Hgt + iYSpace;
@@ -345,7 +347,7 @@ namespace C4GUI
 			}
 		}
 		// don't make smaller
-		iMinWdt = Max(iMinWdt, rcBounds.Wdt - GetMarginLeft() - GetMarginRight());
+		iMinWdt = std::max(iMinWdt, rcBounds.Wdt - GetMarginLeft() - GetMarginRight());
 		// all entries same size
 		for (pCurr = GetFirst(); pCurr; pCurr = pCurr->GetNext())
 			if (pCurr->GetBounds().Wdt != iMinWdt)
@@ -355,7 +357,7 @@ namespace C4GUI
 			}
 		// update own size
 		rcBounds.Wdt = iMinWdt + GetMarginLeft() + GetMarginRight();
-		rcBounds.Hgt = Max<int32_t>(iOverallHgt, 8) + GetMarginTop() + GetMarginBottom();
+		rcBounds.Hgt = std::max<int32_t>(iOverallHgt, 8) + GetMarginTop() + GetMarginBottom();
 		UpdateSize();
 	}
 
@@ -366,11 +368,11 @@ namespace C4GUI
 		// target lost?
 		if (pChild == pTarget) { Abort(false); return; }
 		// submenu?
-		if (pChild == pSubmenu) pSubmenu = NULL;
+		if (pChild == pSubmenu) pSubmenu = nullptr;
 		// clear selection var
 		if (pChild == pSelectedItem)
 		{
-			pSelectedItem = NULL;
+			pSelectedItem = nullptr;
 			SelectionChanged(false);
 		}
 		// forward to any submenu
@@ -424,7 +426,7 @@ namespace C4GUI
 		if (pSelectedItem)
 		{
 			// effect
-			if (fByUser) GUISound("Command");
+			if (fByUser) GUISound("UI::Select");
 		}
 		// close any submenu from prev selection
 		if (pSubmenu) pSubmenu->Abort(true);
@@ -457,6 +459,9 @@ namespace C4GUI
 
 	void ContextMenu::Draw(C4TargetFacet &cgo)
 	{
+		// In editor mode, the surface is not assigned
+		// The menu is drawn directly by the dialogue, so just exit here.
+		if (!cgo.Surface) return;
 		// draw self
 		Window::Draw(cgo);
 		// draw submenus on top
@@ -471,7 +476,7 @@ namespace C4GUI
 		// set target
 		this->pTarget = pTarget;
 		// effect :)
-		GUISound("DoorOpen");
+		GUISound("UI::Open");
 		// done
 	}
 
@@ -534,7 +539,7 @@ namespace C4GUI
 		// close all menus (deletes this class!) w/o sound
 		GetScreen()->AbortContext(false);
 		// sound
-		GUISound("Click");
+		GUISound("UI::Click");
 		// do CB
 		pCallback->OnOK(pTarget);
 		// free CB class
@@ -543,7 +548,7 @@ namespace C4GUI
 
 	void ContextMenu::SelectItem(int32_t iIndex)
 	{
-		// get item to be selected (may be NULL on purpose!)
+		// get item to be selected (may be nullptr on purpose!)
 		Element *pNewSelElement = GetElementByIndex(iIndex);
 		if (pNewSelElement != pSelectedItem) return;
 		// set new
@@ -582,12 +587,12 @@ namespace C4GUI
 	{
 		// reg keys for pressing the context button
 		C4CustomKey::CodeList ContextKeys;
-		ContextKeys.push_back(C4KeyCodeEx(K_RIGHT));
-		ContextKeys.push_back(C4KeyCodeEx(K_DOWN));
-		ContextKeys.push_back(C4KeyCodeEx(K_SPACE));
-		ContextKeys.push_back(C4KeyCodeEx(K_RIGHT, KEYS_Alt));
-		ContextKeys.push_back(C4KeyCodeEx(K_DOWN, KEYS_Alt));
-		ContextKeys.push_back(C4KeyCodeEx(K_SPACE, KEYS_Alt));
+		ContextKeys.emplace_back(K_RIGHT);
+		ContextKeys.emplace_back(K_DOWN);
+		ContextKeys.emplace_back(K_SPACE);
+		ContextKeys.emplace_back(K_RIGHT, KEYS_Alt);
+		ContextKeys.emplace_back(K_DOWN, KEYS_Alt);
+		ContextKeys.emplace_back(K_SPACE, KEYS_Alt);
 		pKeyContext = new C4KeyBinding(ContextKeys, "GUIContextButtonPress", KEYSCOPE_Gui,
 		                               new ControlKeyCB<ContextButton>(*this, &ContextButton::KeyContext), C4CustomKey::PRIO_Ctrl);
 	}

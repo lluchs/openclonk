@@ -3,7 +3,7 @@
  *
  * Copyright (c) 1998-2000, Matthes Bender
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -22,14 +22,12 @@
 
 #define C4D_VertexCpyPos (C4D_MaxVertex/2)
 
-#include <vector>
-
 struct FLOAT_RECT { float left,right,top,bottom; };
 
 class C4Rect
 {
 public:
-	int32_t x,y,Wdt,Hgt;
+	int32_t x = 0, y = 0, Wdt = 0, Hgt = 0;
 public:
 	void Set(int32_t iX, int32_t iY, int32_t iWdt, int32_t iHgt);
 	void Default();
@@ -55,13 +53,16 @@ public:
 	void Enlarge(int32_t iBy)
 	{ Enlarge(iBy, iBy); }
 
-	int32_t GetMiddleX() { return x+Wdt/2; }
-	int32_t GetMiddleY() { return y+Hgt/2; }
-	int32_t GetBottom() { return y+Hgt; }
+	int32_t GetMiddleX() const { return x+Wdt/2; }
+	int32_t GetMiddleY() const { return y + Hgt / 2; }
+	int32_t GetBottom() const { return y + Hgt; }
+	int32_t GetTop() const { return y; }
+	int32_t GetLeft() const { return x; }
+	int32_t GetRight() const { return x + Wdt; }
 
+	C4Rect() = default;
 	C4Rect(int32_t tx, int32_t ty, int32_t twdt, int32_t thgt) // ctor
 	{ x=tx; y=ty; Wdt=twdt; Hgt=thgt; }
-	C4Rect() { } // default ctor; doesn't initialize
 	C4Rect(const FLOAT_RECT &rcfOuter) // set to surround floating point rectangle
 	{
 		x=static_cast<int32_t>(rcfOuter.left); y=static_cast<int32_t>(rcfOuter.top);
@@ -79,7 +80,7 @@ public:
 public:
 	C4TargetRect(int32_t iX, int32_t iY, int32_t iWdt, int32_t iHgt, int32_t iTX, int32_t iTY)
 			: C4Rect(iX, iY, iWdt, iHgt), tx(iTX), ty(iTY) { }
-	C4TargetRect() { } // default ctor; doesn't initialize
+	C4TargetRect() = default; // default ctor; doesn't initialize
 	void Set(int32_t iX, int32_t iY, int32_t iWdt, int32_t iHgt, int32_t iTX, int32_t iTY);
 	void Default();
 	bool ClipBy(C4TargetRect &rClip); // clip this rectangle by the given one (adding target positions) - return false if they don't overlap

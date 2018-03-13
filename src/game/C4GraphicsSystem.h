@@ -3,7 +3,7 @@
  *
  * Copyright (c) 1998-2000, Matthes Bender
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -20,18 +20,15 @@
 #ifndef INC_C4GraphicsSystem
 #define INC_C4GraphicsSystem
 
-#include <C4FacetEx.h>
-#include <C4MessageBoard.h>
-#include <C4UpperBoard.h>
-#include <C4Video.h>
-#include <C4Shape.h>
+#include "gui/C4MessageBoard.h"
+#include "gui/C4UpperBoard.h"
 
 class C4GraphicsSystem
 {
 public:
 	C4GraphicsSystem();
 	~C4GraphicsSystem();
-	C4MessageBoard MessageBoard;
+	std::unique_ptr<C4MessageBoard> MessageBoard;
 	C4UpperBoard UpperBoard;
 	int32_t iRedrawBackground;
 	bool ShowHelp;
@@ -41,8 +38,9 @@ public:
 	bool ShowEntrance;
 	bool ShowPathfinder;
 	bool ShowNetstatus;
-	bool ShowSolidMask;
-	C4Video Video;
+	int Show8BitSurface; // 0 normal, 1 foreground mats, 2 background mats
+	bool ShowLights;
+	bool ShowMenuInfo;
 	C4LoaderScreen *pLoaderScreen;
 	void Default();
 	void Clear();
@@ -60,17 +58,19 @@ public:
 	bool DoSaveScreenshot(bool fSaveAll, const char *szFilename, float fSaveAllZoom);
 	inline void InvalidateBg() { iRedrawBackground=2; }
 	inline void OverwriteBg() { InvalidateBg(); }
-protected:
+
+private:
 	char FlashMessageText[C4MaxTitle+1];
 	int32_t FlashMessageTime,FlashMessageX,FlashMessageY;
 	void DrawHelp();
 	void DrawFlashMessage();
 	void DrawHoldMessages();
 	void ClearFullscreenBackground();
-	int32_t SeekLoaderScreens(C4Group &rFromGrp, const char *szWildcard, int32_t iLoaderCount, char *szDstName, C4Group **ppDestGrp);
+
+	C4TimeMilliseconds lastFrame;
 
 public:
-	bool ToggleShowSolidMask();
+	bool ToggleShow8BitSurface();
 	bool ToggleShowNetStatus();
 	bool ToggleShowVertices();
 	bool ToggleShowAction();

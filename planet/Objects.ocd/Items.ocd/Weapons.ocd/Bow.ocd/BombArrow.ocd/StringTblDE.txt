@@ -1,0 +1,2 @@
+Name=Explosivpfeile
+Description=Explosive Munition für den Bogen.

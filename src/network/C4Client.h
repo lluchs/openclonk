@@ -2,7 +2,7 @@
  * OpenClonk, http://www.openclonk.org
  *
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2010-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2010-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -16,9 +16,9 @@
 #ifndef C4CLIENT_H
 #define C4CLIENT_H
 
-#include "C4NetIO.h"
-#include "C4PacketBase.h"
-#include "C4InputValidation.h"
+#include "lib/C4InputValidation.h"
+#include "network/C4NetIO.h"
+#include "network/C4PacketBase.h"
 
 // special ids
 const int32_t C4ClientIDUnknown = -1,
@@ -35,12 +35,12 @@ class C4ClientCore : public C4PacketBase
 {
 public:
 	C4ClientCore();
-	~C4ClientCore();
+	~C4ClientCore() override;
 
 protected:
 
 	// identification
-	int32_t iID;
+	int32_t iID{-1};
 	ValidatedStdCopyStrBuf<C4InVal::VAL_NameNoEmpty> Name, Nick;
 	ValidatedStdCopyStrBuf<C4InVal::VAL_NameAllowEmpty> CUID;
 	ValidatedStdCopyStrBuf<C4InVal::VAL_NameAllowEmpty> Revision; // engine hg revision number
@@ -49,7 +49,7 @@ protected:
 	int iVersion[4];
 
 	// status
-	bool fActivated, fObserver;
+	bool fActivated{false}, fObserver{false}, fLobbyReady{false};
 
 public:
 
@@ -58,10 +58,12 @@ public:
 	bool        isHost()          const { return iID == C4ClientIDHost; }
 	bool        isActivated()     const { return fActivated; }
 	bool        isObserver()      const { return fObserver; }
+	bool		isLobbyReady()	  const { return fLobbyReady; }
 	void SetID(int32_t inID)            { iID = inID; }
 	void SetName(const char *sznName)   { Name.CopyValidated(sznName); }
 	void SetActivated(bool fnActivated) { fActivated = fnActivated; fObserver = false; }
 	void SetObserver(bool fnObserver)   { fActivated &= !(fObserver = fnObserver); }
+	void SetLobbyReady(bool fnLobbyReady){ fLobbyReady = fnLobbyReady; }
 
 	// misc
 	const char *getName()     const { return Name.getData(); }
@@ -76,7 +78,7 @@ public:
 
 	int32_t getDiffLevel(const C4ClientCore &CCore2) const;
 
-	virtual void CompileFunc(StdCompiler *pComp);
+	void CompileFunc(StdCompiler *pComp) override;
 };
 
 class C4Client
@@ -90,10 +92,11 @@ public:
 private:
 	C4ClientCore Core;
 
-	bool fLocal; // Local, NoSync
-	class C4Network2Client *pNetClient; // Local, NoSync
+	bool fLocal{false}; // Local, NoSync
+	class C4Network2Client *pNetClient{nullptr}; // Local, NoSync
+	time_t last_lobby_ready_change{0}; // Local, NoSync: Time when the lobby ready state was changed last through the SetLobbyReady call. 0 for never changed.
 
-	bool fIsIgnored; // Local, NoSync: chat messages from this client are suppressed
+	bool fIsIgnored{false}; // Local, NoSync: chat messages from this client are suppressed
 
 	C4Client *pNext;
 
@@ -106,6 +109,7 @@ public:
 	const char *getNick()     const { return Core.getNick(); }
 	bool        isActivated() const { return Core.isActivated(); }
 	bool        isObserver()  const { return Core.isObserver(); }
+	bool		isLobbyReady()const { return Core.isLobbyReady(); }
 	bool        isRegistered()const { return Core.isRegistered(); }
 	bool IsIgnored() const { return fIsIgnored; }
 
@@ -117,11 +121,12 @@ public:
 
 	void SetActivated(bool fnActivated);
 	void SetObserver() { Core.SetObserver(true); }
+	void SetLobbyReady(bool fnLobbyReady, time_t *time_since_last_change = nullptr);
 	void SetLocal();
 
 	void ToggleIgnore() { fIsIgnored = !fIsIgnored; }
 
-	void UnlinkNetClient() { pNetClient = NULL; }
+	void UnlinkNetClient() { pNetClient = nullptr; }
 
 	void Remove();
 
@@ -141,18 +146,18 @@ public:
 
 protected:
 	// client list
-	C4Client *pFirst;
+	C4Client *pFirst{nullptr};
 
 	// pointer to local client
-	C4Client *pLocal;
+	C4Client *pLocal{nullptr};
 
-	// network client list (may be NULL if network is not active)
-	class C4Network2ClientList *pNetClients;
+	// network client list (may be nullptr if network is not active)
+	class C4Network2ClientList *pNetClients{nullptr};
 
 	void Add(C4Client *pClient);
 
 public:
-	C4Client *getClient(const C4Client *pAfter = NULL) const { return pAfter ? pAfter->pNext : pFirst; }
+	C4Client *getClient(const C4Client *pAfter = nullptr) const { return pAfter ? pAfter->pNext : pFirst; }
 	C4Client *getLocal() const { return pLocal; }
 	C4Client *getClientByID(int32_t iID) const;
 	C4Client *getHost() const { return getClientByID(C4ClientIDHost); }
@@ -164,6 +169,7 @@ public:
 	const C4ClientCore &getLocalCore() const { return getLocal()->getCore(); }
 	const char *getLocalName() const { return pLocal ? getLocalCore().getName() : "???"; }
 	int32_t getLocalID() const { return pLocal ? getLocalCore().getID() : C4ClientIDUnknown; }
+	StdStrBuf GetAllClientNames() const;
 
 	bool Init(int32_t iLocalClientID = C4ClientIDHost);
 	void InitNetwork(class C4Network2ClientList *pNetClients);

@@ -1,30 +1,29 @@
 /*
  * OpenClonk, http://www.openclonk.org
  *
- * Portions might be copyrighted by other authors who have contributed
- * to OpenClonk.
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
- * Permission to use, copy, modify, and/or distribute this software for any
- * purpose with or without fee is hereby granted, provided that the above
- * copyright notice and this permission notice appear in all copies.
- * See isc_license.txt for full license and disclaimer.
+ * Distributed under the terms of the ISC license; see accompanying file
+ * "COPYING" for details.
  *
- * "Clonk" is a registered trademark of Matthes Bender.
- * See clonk_trademark_license.txt for full license.
+ * "Clonk" is a registered trademark of Matthes Bender, used with permission.
+ * See accompanying file "TRADEMARK" for details.
+ *
+ * To redistribute this file separately, substitute the full license texts
+ * for the above references.
  */
-
+ 
 #include <GL/glew.h>
 
-#include <C4Include.h>
-#include <C4Console.h>
-#include <C4Player.h>
-#include <C4PlayerList.h>
-#include <C4Game.h>
+#include "C4Include.h"
+#include "editor/C4Console.h"
+#include "player/C4Player.h"
+#include "player/C4PlayerList.h"
 
 #import <Cocoa/Cocoa.h>
-#import <C4EditorWindowController.h>
-#import <C4DrawGLMac.h>
-#import <C4AppDelegate.h>
+#import "editor/C4EditorWindowController.h"
+#import "graphics/C4DrawGLMac.h"
+#import "platform/C4AppDelegate.h"
 
 #ifdef USE_COCOA
 
@@ -160,7 +159,7 @@ int indexFromSender(id sender)
 - (IBAction) selectLandscapeMode:(id)sender
 {
 	// add one since 0 is "undefined"
-	Console.ToolsDlg.SetLandscapeMode([sender selectedSegment]+1, NO);
+	Console.ToolsDlg.SetLandscapeMode((LandscapeMode)([sender selectedSegment]+1), NO, NO);
 }
 
 - (IBAction) setGrade:(id)sender

@@ -336,7 +336,7 @@
             </xsl:if>
             <xsl:if test="position() mod 2=0"><xsl:attribute name="class">dark</xsl:attribute></xsl:if>
             <xsl:for-each select="col|literal_col">
-              <td><xsl:apply-templates select="@colspan|node()"/></td>
+              <td><xsl:apply-templates select="@colspan|@id|node()"/></td>
             </xsl:for-each>
           </tr>
         </xsl:for-each>
@@ -516,7 +516,7 @@
   <xsl:template name="color2">
     <xsl:param name="s" select="." />
     <!-- the list of keywords -->
-    <xsl:param name="t" select="'#include|#appendto|public|private|protected|global|static|var|local|const|any|int|bool|def|effect|object|proplist|string|array|func|return|if|else|break|continue|while|for|true|false|nil|'" />
+    <xsl:param name="t" select="'#include|#appendto|#warning|public|private|protected|global|static|var|local|const|any|int|bool|def|effect|object|proplist|string|array|func|return|if|else|break|continue|while|for|new|true|false|nil|'" />
     <xsl:param name="w" select="substring-before($t, '|')" />
     <!-- text before the keyword -->
     <xsl:variable name="l" select="substring-before($s, $w)" />

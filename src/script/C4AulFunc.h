@@ -2,7 +2,7 @@
  * OpenClonk, http://www.openclonk.org
  *
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -17,7 +17,11 @@
 #ifndef INC_C4AulFunc
 #define INC_C4AulFunc
 
-#include <C4StringTable.h>
+#ifndef INC_C4Value
+#error Include C4Value.h instead of C4AulFunc.h
+#endif
+
+#include "script/C4StringTable.h"
 
 #define C4AUL_MAX_Par         10  // max number of parameters
 
@@ -25,14 +29,11 @@ struct C4AulParSet
 {
 	C4Value Par[C4AUL_MAX_Par];
 
-	C4AulParSet() {} // standard-constructor
-	C4AulParSet(const C4Value &par0,             const C4Value &par1 = C4Value(), const C4Value &par2 = C4Value(), const C4Value &par3 = C4Value(), const C4Value &par4 = C4Value(),
-	            const C4Value &par5 = C4Value(), const C4Value &par6 = C4Value(), const C4Value &par7 = C4Value(), const C4Value &par8 = C4Value(), const C4Value &par9 = C4Value())
+	template<class ...T> explicit C4AulParSet(T&& ...pars):
+			Par {C4Value(std::forward<T>(pars))...}
 	{
-		Par[0].Set(par0); Par[1].Set(par1); Par[2].Set(par2); Par[3].Set(par3); Par[4].Set(par4);
-		Par[5].Set(par5); Par[6].Set(par6); Par[7].Set(par7); Par[8].Set(par8); Par[9].Set(par9);
 	}
-	C4AulParSet(const C4Value * Pars, int ParCount)
+	void Copy(const C4Value * Pars, int ParCount)
 	{
 		for (int i = 0; i < ParCount; ++i)
 			Par[i].Set(Pars[i]);
@@ -42,47 +43,42 @@ struct C4AulParSet
 };
 
 // base function class
-class C4AulFunc
+class C4AulFunc: public C4RefCnt
 {
-	friend class C4AulScript;
 	friend class C4AulScriptEngine;
 	friend class C4AulFuncMap;
 	friend class C4AulParse;
 	friend class C4ScriptHost;
-
-	// Reference counter
-	unsigned int iRefCnt;
-
 public:
-	C4AulFunc(C4AulScript *pOwner, const char *pName);
+	C4AulFunc(C4PropListStatic * Parent, const char *pName);
 
-	// Add/Remove Reference
-	void IncRef() { iRefCnt++; }
-	void DecRef() { if (!--iRefCnt) delete this;  }
-
-	C4AulScript *Owner; // owner
-	const char * GetName() const { return Name ? Name->GetCStr() : 0; }
-	virtual StdStrBuf GetFullName(); // get a fully classified name (C4ID::Name) for debug output
+	C4PropListStatic * Parent;
+	const char * GetName() const { return Name ? Name->GetCStr() : nullptr; }
+	virtual StdStrBuf GetFullName() const; // get a fully classified name (C4ID::Name) for debug output
 
 protected:
 	C4RefCntPointer<C4String> Name; // function name
 	C4AulFunc *MapNext; // map member
-	virtual ~C4AulFunc();
+	~C4AulFunc() override;
 
 public:
-	virtual C4AulScriptFunc *SFunc() { return NULL; } // type check func...
+	virtual C4AulScriptFunc *SFunc() { return nullptr; } // type check func...
 
 	// Wether this function should be visible to players
 	virtual bool GetPublic() const { return false; }
 	virtual int GetParCount() const { return C4AUL_MAX_Par; }
 	virtual const C4V_Type* GetParType() const = 0;
 	virtual C4V_Type GetRetType() const = 0;
-	C4Value Exec(C4PropList * p = NULL, C4AulParSet *pPars = NULL, bool fPassErrors=false)
+	C4Value Exec(C4PropList * p = nullptr, C4AulParSet *pPars = nullptr, bool fPassErrors=false)
 	{
+		// Every parameter type allows conversion from nil, so no parameters are always allowed
+		if (!pPars)
+			return Exec(p, C4AulParSet().Par, fPassErrors);
+		if (!CheckParTypes(pPars->Par, fPassErrors)) return C4Value();
 		return Exec(p, pPars->Par, fPassErrors);
 	}
 	virtual C4Value Exec(C4PropList * p, C4Value pPars[], bool fPassErrors=false) = 0;
-	void CheckParTypes(const C4Value pPars[]) const;
+	bool CheckParTypes(const C4Value pPars[], bool fPassErrors) const;
 };
 
 #endif

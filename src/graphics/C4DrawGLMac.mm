@@ -1,36 +1,37 @@
 /*
  * OpenClonk, http://www.openclonk.org
  *
- * Portions might be copyrighted by other authors who have contributed
- * to OpenClonk.
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
- * Permission to use, copy, modify, and/or distribute this software for any
- * purpose with or without fee is hereby granted, provided that the above
- * copyright notice and this permission notice appear in all copies.
- * See isc_license.txt for full license and disclaimer.
+ * Distributed under the terms of the ISC license; see accompanying file
+ * "COPYING" for details.
  *
- * "Clonk" is a registered trademark of Matthes Bender.
- * See clonk_trademark_license.txt for full license.
+ * "Clonk" is a registered trademark of Matthes Bender, used with permission.
+ * See accompanying file "TRADEMARK" for details.
+ *
+ * To redistribute this file separately, substitute the full license texts
+ * for the above references.
  */
 
-#include <C4Include.h>
-#include <C4GraphicsSystem.h>
-#include <C4MouseControl.h>
-#include <C4GUI.h>
-#include <C4Game.h>
-#include <C4Viewport.h>
-#include <C4ViewportWindow.h>
-#include <C4Console.h>
-#include <C4Fullscreen.h>
-#include <C4PlayerList.h>
-#include <C4Gui.h>
-#include <C4Landscape.h>
+#include <GL/glew.h> // Somehow, C4Include manages to include gltypes.h on the autobuild hosts, which makes glew.h choke if not included first. I don't understand it, and I don't want to.
+#include "C4Include.h"
+#include "game/C4GraphicsSystem.h"
+#include "gui/C4MouseControl.h"
+#include "gui/C4Gui.h"
+#include "game/C4Game.h"
+#include "game/C4Viewport.h"
+#include "editor/C4ViewportWindow.h"
+#include "editor/C4Console.h"
+#include "game/C4FullScreen.h"
+#include "player/C4PlayerList.h"
+#include "gui/C4Gui.h"
+#include "landscape/C4Landscape.h"
 
-#include <C4DrawGL.h>
+#include "graphics/C4DrawGL.h"
 
-#import "C4DrawGLMac.h"
-#import "C4WindowController.h"
-#import "C4AppDelegate+MainMenuActions.h"
+#import "graphics/C4DrawGLMac.h"
+#import "platform/C4WindowController.h"
+#import "platform/C4AppDelegate+MainMenuActions.h"
 
 #ifdef USE_COCOA
 
@@ -116,6 +117,7 @@
 	if (Application.fQuitMsgReceived)
 		return;
 
+#ifdef __MAC_10_9
 	// don't draw if tab-switched away from fullscreen
 	if ([NSApp respondsToSelector:@selector(occlusionState)])
 	{
@@ -123,13 +125,12 @@
 		if (([NSApp occlusionState] & NSApplicationOcclusionStateVisible) == 0)
 			return;
 	}
-	else
-	{
-		if ([self.controller isFullScreenConsideringLionFullScreen] && ![NSApp isActive])
-			return;
-		if ([self.window isMiniaturized] || ![self.window isVisible])
-			return;
-	}
+#endif
+	
+	if ([self.controller isFullScreenConsideringLionFullScreen] && ![NSApp isActive])
+		return;
+	if ([self.window isMiniaturized] || ![self.window isVisible])
+		return;
 
 	C4Window* stdWindow = self.controller.stdWindow;
 	
@@ -167,6 +168,8 @@ int32_t mouseButtonFromEvent(NSEvent* event, DWORD* modifierFlags)
 			return C4MC_Button_MiddleUp;
 		case NSScrollWheel:
 			return C4MC_Button_Wheel;
+		default:
+			break;
 	}
 	return C4MC_Button_None;
 }
@@ -204,13 +207,22 @@ int32_t mouseButtonFromEvent(NSEvent* event, DWORD* modifierFlags)
 	mouse.y = fmin(fmax(mouse.y, 0), actualSizeY);
 	int x = mouse.x;
 	int y = actualSizeY - mouse.y;
-	
+
 	C4Viewport* viewport = self.controller.viewport;
 	if (::MouseControl.IsViewport(viewport) && Console.EditCursor.GetMode() == C4CNS_ModePlay)
 	{	
 		DWORD keyMask = flags;
 		if ([event type] == NSScrollWheel)
-			keyMask |= (int)[event deltaY] << 16;
+		{
+			// TODO: We could evaluate the full smooth scrolling
+			// information, but zoom and inventory scrolling don't
+			// do very well with that at the moment.
+			if ([event deltaY] > 0)
+				keyMask |= (+32) << 16;
+			else
+				keyMask |= (-32) << 16;
+		}
+
 		::C4GUI::MouseMove(button, x, y, keyMask, Application.isEditor ? viewport : NULL);
 	}
 	else if (viewport)
@@ -218,7 +230,7 @@ int32_t mouseButtonFromEvent(NSEvent* event, DWORD* modifierFlags)
 		switch (button)
 		{
 		case C4MC_Button_LeftDown:
-			Console.EditCursor.Move(viewport->ViewX+x/viewport->GetZoom(), viewport->ViewY+y/viewport->GetZoom(), flags);
+			Console.EditCursor.Move(viewport->GetViewX()+x/viewport->GetZoom(), viewport->GetViewY()+y/viewport->GetZoom(), viewport->GetZoom(), flags);
 			Console.EditCursor.LeftButtonDown(flags);
 			break;
 		case C4MC_Button_LeftUp:
@@ -231,7 +243,7 @@ int32_t mouseButtonFromEvent(NSEvent* event, DWORD* modifierFlags)
 			Console.EditCursor.RightButtonUp(flags);
 			break;
 		case C4MC_Button_None:
-			Console.EditCursor.Move(viewport->ViewX+x/viewport->GetZoom(),viewport->ViewY+y/viewport->GetZoom(), flags);
+			Console.EditCursor.Move(viewport->GetViewX()+x/viewport->GetZoom(),viewport->GetViewY()+y/viewport->GetZoom(), viewport->GetZoom(), flags);
 			break;
 		}
 	}
@@ -292,6 +304,15 @@ int32_t mouseButtonFromEvent(NSEvent* event, DWORD* modifierFlags)
 		[event modifierFlags] & NSShiftKeyMask,
 		false, NULL
 	);
+
+	C4Window* stdWindow = self.controller.stdWindow;
+	if (stdWindow->eKind == C4ConsoleGUI::W_Viewport)
+	{
+		if (type == KEYEV_Down)
+			Console.EditCursor.KeyDown([event keyCode]+CocoaKeycodeOffset, [event modifierFlags]);
+		else
+			Console.EditCursor.KeyUp([event keyCode]+CocoaKeycodeOffset, [event modifierFlags]);
+	}
 }
 
 - (void)keyDown:(NSEvent*)event
@@ -303,6 +324,31 @@ int32_t mouseButtonFromEvent(NSEvent* event, DWORD* modifierFlags)
 - (void)keyUp:(NSEvent*)event
 {
 	[self keyEvent:event withKeyEventType:KEYEV_Up];
+}
+
+- (void)flagsChanged:(NSEvent*)event
+{
+	// Send keypress/release events for relevant modifier keys
+	// keyDown() is not called for modifier keys.
+	C4KeyCode key = (C4KeyCode)([event keyCode] + CocoaKeycodeOffset);
+	int modifier = 0;
+	if (key == K_SHIFT_L || key == K_SHIFT_R)
+		modifier = NSShiftKeyMask;
+	if (key == K_CONTROL_L || key == K_CONTROL_R)
+		modifier = NSControlKeyMask;
+	if (key == K_COMMAND_L || key == K_COMMAND_R)
+		modifier = NSCommandKeyMask;
+	if (key == K_ALT_L || key == K_ALT_R)
+		modifier = NSAlternateKeyMask;
+
+	if (modifier != 0)
+	{
+		int modifierMask = [event modifierFlags];
+		if (modifierMask & modifier)
+			[self keyEvent:event withKeyEventType:KEYEV_Down];
+		else
+			[self keyEvent:event withKeyEventType:KEYEV_Up];
+	}
 }
 
 - (NSDragOperation) draggingEntered:(id<NSDraggingInfo>)sender
@@ -347,22 +393,23 @@ int32_t mouseButtonFromEvent(NSEvent* event, DWORD* modifierFlags)
 
 - (void) scrollWheel:(NSEvent *)event
 {
-	if (!Application.isEditor)
-		[self mouseEvent:event];
+	// Scroll viewport in editor mode
+	C4Viewport* viewport = self.controller.viewport;
+	if (Application.isEditor && viewport && !viewport->GetPlayerLock())
+	{
+		NSScrollView* scrollView = self.controller.scrollView;
+		NSPoint p = NSMakePoint(2*-[event deltaX]/abs(::Landscape.GetWidth()-viewport->ViewWdt), 2*-[event deltaY]/abs(::Landscape.GetHeight()-viewport->ViewHgt));
+		[scrollView.horizontalScroller setDoubleValue:scrollView.horizontalScroller.doubleValue+p.x];
+		[scrollView.verticalScroller setDoubleValue:scrollView.verticalScroller.doubleValue+p.y];
+		viewport->ViewPositionByScrollBars();
+		[self display];
+	}
 	else
 	{
-		C4Viewport* viewport = self.controller.viewport;
-		if (viewport)
-		{
-			NSScrollView* scrollView = self.controller.scrollView;
-			NSPoint p = NSMakePoint(2*-[event deltaX]/abs(GBackWdt-viewport->ViewWdt), 2*-[event deltaY]/abs(GBackHgt-viewport->ViewHgt));
-			[scrollView.horizontalScroller setDoubleValue:scrollView.horizontalScroller.doubleValue+p.x];
-			[scrollView.verticalScroller setDoubleValue:scrollView.verticalScroller.doubleValue+p.y];
-			viewport->ViewPositionByScrollBars();
-			[self display];
-		}
+		// If player lock is enabled or fullscreen: handle scroll
+		// event in-game.
+		[self mouseEvent:event];
 	}
-
 }
 
 - (void) mouseDown:        (NSEvent *)event {[self mouseEvent:event];}
@@ -432,6 +479,8 @@ static NSOpenGLContext* MainContext;
 + (NSOpenGLContext*) createContext:(CStdGLCtx*) pMainCtx
 {
 	std::vector<NSOpenGLPixelFormatAttribute> attribs;
+	attribs.push_back(NSOpenGLPFAOpenGLProfile);
+	attribs.push_back(NSOpenGLProfileVersion3_2Core);
 	attribs.push_back(NSOpenGLPFADepthSize);
 	attribs.push_back(16);
 	if (!Application.isEditor && Config.Graphics.MultiSampling > 0)
@@ -449,10 +498,9 @@ static NSOpenGLContext* MainContext;
 	}
 	attribs.push_back(NSOpenGLPFANoRecovery);
 	//attribs.push_back(NSOpenGLPFADoubleBuffer);
-	attribs.push_back(NSOpenGLPFAWindow);
+	//attribs.push_back(NSOpenGLPFAWindow); // cannot create a core profile with this
 	attribs.push_back(0);
 	NSOpenGLPixelFormat* format = [[NSOpenGLPixelFormat alloc] initWithAttributes:&attribs[0]];
-
 	NSOpenGLContext* result = [[NSOpenGLContext alloc] initWithFormat:format shareContext:pMainCtx ? pMainCtx->objectiveCObject<NSOpenGLContext>() : nil];
 	if (!MainContext)
 		MainContext = result;
@@ -509,13 +557,19 @@ static NSOpenGLContext* MainContext;
 
 #pragma mark CStdGLCtx: Initialization
 
-CStdGLCtx::CStdGLCtx(): pWindow(0) {}
+CStdGLCtx::CStdGLCtx(): pWindow(0), this_context(contexts.end()) {}
 
-void CStdGLCtx::Clear()
+void CStdGLCtx::Clear(bool multisample_change)
 {
 	Deselect();
 	setObjectiveCObject(nil);
 	pWindow = 0;
+
+	if (this_context != contexts.end())
+	{
+		contexts.erase(this_context);
+		this_context = contexts.end();
+	}
 }
 
 void C4Window::EnumerateMultiSamples(std::vector<int>& samples) const
@@ -536,6 +590,7 @@ bool CStdGLCtx::Init(C4Window * pWindow, C4AbstractApp *)
 	// No luck at all?
 	if (!Select(true)) return pGL->Error("  gl: Unable to select context");
 	// init extensions
+	glewExperimental = GL_TRUE; // Init GL 3.0+ function pointers
 	GLenum err = glewInit();
 	if (GLEW_OK != err)
 	{
@@ -548,6 +603,8 @@ bool CStdGLCtx::Init(C4Window * pWindow, C4AbstractApp *)
 	{
 		[controller.openGLView setContext:ctx];
 	}
+
+	this_context = contexts.insert(contexts.end(), this);
 	return true;
 }
 

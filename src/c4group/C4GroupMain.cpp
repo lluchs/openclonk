@@ -2,7 +2,7 @@
  * OpenClonk, http://www.openclonk.org
  *
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -16,32 +16,14 @@
 
 /* C4Group command line executable */
 
-// Version    1.0 November 1997
-//            1.1 November 1997
-//            1.2 February 1998
-//            1.3 March    1998
-//            1.4 April    1998
-//            1.5 May      1998
-//            1.6 November 1998
-//            1.7 December 1998
-//            1.8 February 1999
-//            1.9 May      1999
-//            2.0 June     1999
-//            2.6 March    2001
-//            2.7 June     2001
-//            2.8 June           2002
-//         4.95.0 November 2003
-//         4.95.4 July     2005 PORT/HEAD mixmax
-//         4.95.4 September 2005 Unix-flavour
+#include "C4Include.h"
 
-#include <C4Include.h>
-
-#include <C4Group.h>
-#include <C4Version.h>
-#include <C4Update.h>
-#include <StdRegistry.h>
+#include "c4group/C4Group.h"
+#include "C4Version.h"
+#include "c4group/C4Update.h"
+#include "platform/StdRegistry.h"
 #ifdef _WIN32
-#include <C4windowswrapper.h>
+#include "platform/C4windowswrapper.h"
 #endif
 
 int globalArgC;
@@ -61,9 +43,80 @@ bool EraseItemSafe(const char *szFilename)
 	return false;
 }
 
+void DisplayGroup(const C4Group &grp, const char *filter = nullptr)
+{
+	const C4GroupHeader &head = grp.GetHeader();
+	
+	printf("Version: %d.%d  ", head.Ver1, head.Ver2);
+
+	uint32_t crc = 0;
+	bool crc_valid = GetFileCRC(grp.GetFullName().getData(), &crc);
+	if (crc_valid)
+		printf("CRC: %u (%X)\n", crc, crc);
+	else
+		printf("CRC: <error accessing file>\n");
+
+	// Find maximum file name length (matching filter)
+	size_t max_fn_len = 0;
+	for (const C4GroupEntry *entry = grp.GetFirstEntry(); entry != nullptr; entry = entry->Next)
+	{
+		if (filter == nullptr || WildcardMatch(filter, entry->FileName))
+			max_fn_len = std::max(max_fn_len, strlen(entry->FileName));
+	}
+
+	// List files
+	size_t file_count = 0;
+	size_t byte_count = 0;
+	for (const C4GroupEntry *entry = grp.GetFirstEntry(); entry != nullptr; entry = entry->Next)
+	{
+		if (filter != nullptr && !WildcardMatch(filter, entry->FileName))
+			continue;
+
+		printf("%*s %8u Bytes",
+			int(max_fn_len),
+			entry->FileName,
+			entry->Size);
+		if (entry->ChildGroup != 0)
+			printf(" (Group)");
+		if (entry->Executable != 0)
+			printf(" (Executable)");
+		printf("\n");
+
+		++file_count;
+		byte_count += entry->Size;
+	}
+	printf("%lu Entries, %lu Bytes\n", (unsigned long)file_count, (unsigned long)byte_count);
+}
+
+void PrintGroupInternals(C4Group &grp, int indent_level = 0)
+{
+	const C4GroupHeader &head = grp.GetHeader();
+	int indent = indent_level * 4;
+
+	printf("%*sHead.id: '%s'\n", indent, "", head.id);
+	printf("%*sHead.Ver1: %d\n", indent, "", head.Ver1);
+	printf("%*sHead.Ver2: %d\n", indent, "", head.Ver2);
+	printf("%*sHead.Entries: %d\n", indent, "", head.Entries);
+	for (const C4GroupEntry * p = grp.GetFirstEntry(); p; p = p->Next)
+	{
+		printf("%*sEntry '%s':\n", indent, "", p->FileName);
+		printf("%*s  Packed: %d\n", indent, "", p->Packed);
+		printf("%*s  ChildGroup: %d\n", indent, "", p->ChildGroup);
+		printf("%*s  Size: %d\n", indent, "", p->Size);
+		printf("%*s  Offset: %d\n", indent, "", p->Offset);
+		printf("%*s  Executable: %d\n", indent, "", p->Executable);
+		if (p->ChildGroup != 0)
+		{
+			C4Group hChildGroup;
+			if (hChildGroup.OpenAsChild(&grp, p->FileName))
+				PrintGroupInternals(hChildGroup, indent_level + 1);
+		}
+	}
+}
+
+
 bool ProcessGroup(const char *FilenamePar)
 {
-
 	C4Group hGroup;
 	hGroup.SetStdOutput(!fQuiet);
 	bool fDeleteGroup = false;
@@ -84,9 +137,7 @@ bool ProcessGroup(const char *FilenamePar)
 		// No commands: display contents
 		if (iFirstCommand >= argc)
 		{
-			hGroup.SetStdOutput(true);
-			hGroup.View("*");
-			hGroup.SetStdOutput(!fQuiet);
+			DisplayGroup(hGroup);
 		}
 		// Process commands
 		else
@@ -102,7 +153,7 @@ bool ProcessGroup(const char *FilenamePar)
 						// Sort
 					case 's':
 						// First sort parameter overrides default Clonk sort list
-						C4Group_SetSortList(NULL);
+						C4Group_SetSortList(nullptr);
 						// Missing argument
 						if ((iArg + 1 >= argc) || (argv[iArg + 1][0] == '-'))
 						{
@@ -117,17 +168,15 @@ bool ProcessGroup(const char *FilenamePar)
 						break;
 						// View
 					case 'l':
-						hGroup.SetStdOutput(true);
 						if ((iArg + 1 >= argc) || (argv[iArg + 1][0] == '-'))
 						{
-							hGroup.View("*");
+							DisplayGroup(hGroup);
 						}
 						else
 						{
-							hGroup.View(argv[iArg + 1]);
+							DisplayGroup(hGroup, argv[iArg + 1]);
 							iArg++;
 						}
-						hGroup.SetStdOutput(!fQuiet);
 						break;
 						// Pack
 					case 'p':
@@ -259,7 +308,7 @@ bool ProcessGroup(const char *FilenamePar)
 							if(iArg + 1 < argc)
 							{
 								errno = 0;
-								pid = strtoul(argv[iArg+1], NULL, 10);
+								pid = strtoul(argv[iArg+1], nullptr, 10);
 								if(errno == 0)
 									have_pid = true;
 								else
@@ -275,7 +324,7 @@ bool ProcessGroup(const char *FilenamePar)
 						}
 						break;
 					case 'z':
-						hGroup.PrintInternals();
+						PrintGroupInternals(hGroup);
 						break;
 						// Undefined
 					default:
@@ -324,7 +373,7 @@ int RegisterShellExtensions()
 	wchar_t strCommand[2048+1];
 	char strClass[128];
 	int i;
-	GetModuleFileNameW(NULL, strModule, 2048);
+	GetModuleFileNameW(nullptr, strModule, 2048);
 	// Groups
 	const char *strClasses =
 	  "Clonk4.Definition;Clonk4.Folder;Clonk4.Group;Clonk4.Player;Clonk4.Scenario;Clonk4.Update;Clonk4.Weblink";
@@ -387,7 +436,7 @@ int main(int argc, char *argv[])
 {
 #ifndef WIN32
 	// Always line buffer mode, even if the output is not sent to a terminal
-	setvbuf(stdout, NULL, _IOLBF, 0);
+	setvbuf(stdout, nullptr, _IOLBF, 0);
 #endif
 	// Scan options
 	fQuiet = true;
@@ -403,8 +452,6 @@ int main(int argc, char *argv[])
 			case 'v':
 				fQuiet = false;
 				break;
-				// Silent mode
-				//case 's': fSilent=true; break;
 				// Recursive mode
 			case 'r':
 				fRecursive = true;
@@ -512,7 +559,7 @@ int main(int argc, char *argv[])
 
 		PROCESS_INFORMATION procInfo;
 
-		CreateProcessW(GetWideChar(strExecuteAtEnd), NULL, NULL, NULL, false, 0, NULL, NULL, &startInfo, &procInfo);
+		CreateProcessW(GetWideChar(strExecuteAtEnd), nullptr, nullptr, nullptr, false, 0, nullptr, nullptr, &startInfo, &procInfo);
 #else
 		switch (fork())
 		{
@@ -522,7 +569,7 @@ int main(int argc, char *argv[])
 			break;
 			// Child process
 		case 0:
-			execl(strExecuteAtEnd, strExecuteAtEnd, static_cast<char *>(0)); // currently no parameters are passed to the executed program
+			execl(strExecuteAtEnd, strExecuteAtEnd, static_cast<char *>(nullptr)); // currently no parameters are passed to the executed program
 			exit(1);
 			// Parent process
 		default:

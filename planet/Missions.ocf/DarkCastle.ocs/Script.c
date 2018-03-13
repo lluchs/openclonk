@@ -5,58 +5,67 @@
 	@authors Sven2
 */
 
-static const S2DD_InitialRelaunchs = 0;
-
 static g_is_initialized;
 
-static g_shroom1, g_shroom2, g_shroom3, g_shroom4, g_ruin1, g_ruin2, g_ruin3, g_elev1, g_elev2, g_farmer, g_king;
+static npc_pyrit;
 
-func DoInit(int first_player)
+private func DoInit(int first_player)
 {
-	// Goal
-	var goal = CreateObject(Goal_Assassination);
-	if (goal) goal->SetVictim(g_king);
-	// Elevators
-	// Top
-	g_elev2->SetNoPowerNeed(true);
-	g_elev2->CreateShaft(470);
-	// Left
-	g_elev1->SetNoPowerNeed(true);
-	g_elev1->CreateShaft(100);
-	// Shrooms
-	g_shroom1->AddPoisonEffect(0,0); // floor left
-	g_shroom2->AddPoisonEffect(0,0); // ceiling left
-	g_shroom3->AddPoisonEffect(-20,0); // floor right
-	g_shroom4->AddPoisonEffect(10,-10); // ceiling right
+	var relaunch_rule = GetRelaunchRule();
+	relaunch_rule->SetInventoryTransfer(true);
+	relaunch_rule->SetFreeCrew(true);
+	relaunch_rule->SetRespawnDelay(1);
+	relaunch_rule->SetBaseRespawn(true);
+	relaunch_rule->SetDefaultRelaunchCount(nil);
+	relaunch_rule->SetAllowPlayerRestart(true);
+	relaunch_rule->SetLastClonkRespawn(true);	
+	relaunch_rule->SetInitialRelaunch(false);
 	// Message when first player enters shroom area
 	ScheduleCall(nil, Scenario.ShroomCaveCheck, 21, 0xffffff);
 	// Scorching village
 	g_ruin1->AddScorch(-20,-10, -45, 50, 1500);
 	g_ruin2->AddScorch(-15,42, 90, 50, 1200);
 	g_ruin3->AddScorch(-12,18, 130, 80, 1300);
-	// Rules
-	CreateObject(Rule_TeamAccount);
-	CreateObject(Rule_NoPowerNeed);
 	// Horax
 	g_king.JumpSpeed = 200;
 	// Update AI stuff
 	var fx;
 	for (var enemy in FindObjects(Find_ID(Clonk), Find_Owner(NO_OWNER)))
-		if (fx = S2AI->GetAI(enemy))
+		if (fx = AI->GetAI(enemy))
 		{
 			fx.weapon = fx.target = nil;
-			S2AI->BindInventory(enemy);
+			AI->BindInventory(enemy);
 			enemy->DoEnergy(10000);
 			enemy->AddEnergyBar();
+			SetSpecialDeathMessage(enemy);
+			
+			SetSpecialDeathMessage(enemy);
 		}
-	// Intro. Message 250 frames + regular message time
-	g_farmer.portrait = "Farmer2";
-	DialogueCastle->MessageBoxAll("$MsgIntro1$", g_farmer, true);
-	Schedule(nil, "DialogueCastle->MessageBoxAll(\"$MsgIntro1$\", g_farmer)", 250, 1);
+	g_farmer.portrait = { Source=DialogueCastle };
+	// Start intro if not yet started
+	StartSequence("Intro", 0, GetCrew(first_player));
 	return true;
 }
 
-func InitializePlayer(int plr)
+private func SetSpecialDeathMessage(object clonk)
+{
+	var name = clonk->GetName();
+	if (name == "Horst") clonk.SpecialDeathMessage = "$DeathOfHorst$";
+	if (name == "Hanniball") clonk.SpecialDeathMessage = "$DeathOfHanniball$";
+	if (name == "Twonky") clonk.SpecialDeathMessage = "$DeathOfTwonky$";
+	if (name == "Sven") clonk.SpecialDeathMessage = "$DeathOfSven$";
+	if (name == "Luki") clonk.SpecialDeathMessage = "$DeathOfLuki$";
+	if (name == "Anna") clonk.SpecialDeathMessage = "$DeathOfAnna$";
+	if (name == "Cindy") clonk.SpecialDeathMessage = "$DeathOfCindy$";
+	if (name == "Sabrina") clonk.SpecialDeathMessage = "$DeathOfSabrina$";
+	if (name == "Laura") clonk.SpecialDeathMessage = "$DeathOfLaura$";
+	if (name == "Wolfgang") clonk.SpecialDeathMessage = "$DeathOfWolfgang$";
+	if (name == "Hans") clonk.SpecialDeathMessage = "$DeathOfHans$";
+	if (name == "Joki") clonk.SpecialDeathMessage = "$DeathOfJoki$";
+	if (name == "Archibald") clonk.SpecialDeathMessage = "$DeathOfArchibald$";
+}
+
+private func InitializePlayer(int plr)
 {
 	// Players only
 	if (GetPlayerType(plr)!=C4PT_User) return;
@@ -67,74 +76,52 @@ func InitializePlayer(int plr)
 		SetPlayerZoomByViewRange(plr,400,250,flag);
 	SetPlayerViewLock(plr, true);
 	// Initial join
-	JoinPlayer(plr);
-	return true;
-}
-
-func RelaunchPlayer(int plr)
-{
-	var clonk = CreateObject(Clonk, 50, 1000, plr);
-	clonk->MakeCrewMember(plr);
-	SetCursor(plr, clonk);
-	JoinPlayer(plr);
-	return true;
-}
-
-func JoinPlayer(int plr)
-{
-	// Place in village
-	var crew;
-	for(var index = 0; crew = GetCrew(plr, index); ++index)
-	{
-		var x = 35 + Random(10);
-		var y = 1140;
-		crew->SetPosition(x , y);
-		crew->SetDir(DIR_Right);
-		crew->DoEnergy(1000);
-		// First crew member gets shovel and hammer. Try to get those items from the corpse if they still exist
-		// so we don't end up with dozens of useless shovels
-		if (!index)
-		{
-			for (var equip_id in [Shovel, Hammer])
-			{
-				var obj = FindObject(Find_ID(equip_id), Find_Owner(plr));
-				if (obj) obj->Enter(crew); else crew->CreateContents(equip_id);
-			}
-		}
-	}
+	var crew = GetCrew(plr);
+	crew->SetPosition(35 + Random(10) , 1140);
+	crew->SetDir(DIR_Right);
+	crew->CreateContents(Shovel);
+	crew->CreateContents(Hammer);
+	crew->CreateContents(Axe);
 	return true;
 }
 
 
 /* Enemy encounter messages */
 
-func EncounterCave(object enemy, object player)
+public func EncounterCave(object enemy, object player)
 {
-	DialogueCastle->MessageBoxAll("$MsgEncounterCave$", enemy);
+	Dialogue->MessageBoxAll("$MsgEncounterCave$", enemy, true);
 	return true;
 }
 
-func EncounterOutpost(object enemy, object player)
+public func EncounterOutpost(object enemy, object player)
 {
-	DialogueCastle->MessageBoxAll("$MsgEncounterOutpost$", enemy);
+	Dialogue->MessageBoxAll("$MsgEncounterOutpost$", enemy, true);
 	return true;
 }
 
-func EncounterKing(object enemy, object player)
+public func EncounterKing(object enemy, object player)
 {
 	if (!player) player = enemy; // Leads to a funny message, but better than a null pointer.
-	DialogueCastle->MessageBoxAll(Format("$MsgEncounterKing$", player->GetName()), enemy);
+	Dialogue->MessageBoxAll(Format("$MsgEncounterKing$", player->GetName()), enemy, true);
 	return true;
 }
 
 
 /* Mushroom cave encounter */
 
-func ShroomCaveCheck()
+public func ShroomCaveCheck()
 {
 	var intruder = FindObject(Find_InRect(1252,1342,320,138), Find_OCF(OCF_CrewMember));
 	if (!intruder) return true;
-	DialogueCastle->MessageBoxAll("$MsgEncounterShrooms$", intruder);
+	Dialogue->MessageBoxAll("$MsgEncounterShrooms$", intruder, true);
 	ClearScheduleCall(nil, Scenario.ShroomCaveCheck);
 	return true;
+}
+
+public func OnGoalsFulfilled()
+{
+	GainScenarioAchievement("Done");
+	GainMissionAccess("S2Castle");
+	return false;
 }

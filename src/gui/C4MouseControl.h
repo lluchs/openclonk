@@ -3,7 +3,7 @@
  *
  * Copyright (c) 1998-2000, Matthes Bender
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -20,8 +20,10 @@
 #ifndef INC_C4MouseControl
 #define INC_C4MouseControl
 
-#include <C4Facet.h>
-#include "C4ObjectList.h"
+#include "graphics/C4Facet.h"
+#include "lib/C4Rect.h"
+#include "object/C4ObjectList.h"
+struct ZoomData; // #include "graphics/C4Draw.h"
 
 const int32_t C4MC_Button_None        = 0,
               C4MC_Button_LeftDown    = 1,
@@ -32,13 +34,34 @@ const int32_t C4MC_Button_None        = 0,
               C4MC_Button_RightDouble = 6,
               C4MC_Button_Wheel       = 7,
               C4MC_Button_MiddleDown  = 8,
-              C4MC_Button_MiddleUp    = 9;
+              C4MC_Button_MiddleUp    = 9,
+              C4MC_Button_MiddleDouble= 10,
+              C4MC_Button_X1Down      = 11,
+              C4MC_Button_X1Up        = 12,
+              C4MC_Button_X1Double    = 13,
+              C4MC_Button_X2Down      = 14,
+              C4MC_Button_X2Up        = 15,
+              C4MC_Button_X2Double    = 16;
 
 const int32_t C4MC_DragSensitivity = 5;
 
 const int32_t C4MC_MD_DragSource = 1,
               C4MC_MD_DropTarget = 2,
               C4MC_MD_NoClick = 4;
+
+const int32_t C4MC_Cursor_Select = 0,      // click cursor to select/click stuff in the GUI
+              C4MC_Cursor_Crosshair = 1,   // standard ingame cursor
+              C4MC_Cursor_DragDrop = 2,    // cursor when drag&dropping
+              C4MC_Cursor_Up = 3,          // cursors for scrolling the viewport ...
+              C4MC_Cursor_Down = 4,        // ...
+              C4MC_Cursor_Left = 5,
+              C4MC_Cursor_Right = 6,
+              C4MC_Cursor_UpLeft = 7,
+              C4MC_Cursor_UpRight = 8,
+              C4MC_Cursor_DownLeft = 9,
+              C4MC_Cursor_DownRight = 10,
+              C4MC_Cursor_Passive = 11,    // passive cursor in records and and fog of war and outside viewport
+              C4MC_Cursor_DropInto = 12;   // drop into contents
 
 class C4MouseControl
 {
@@ -54,10 +77,6 @@ protected:
 	C4Viewport *Viewport; // valid during Move()
 
 	int32_t Cursor;
-
-	StdCopyStrBuf Caption;
-	int32_t CaptionBottomY;
-	int32_t KeepCaption;
 
 	int32_t VpX,VpY; // Pixel coordinates of mouse pos
 	float ViewX,ViewY; // Game coordinate scrolling offset of viewport
@@ -86,17 +105,26 @@ protected:
 	C4ID DragID;
 	C4Def* DragImageDef;
 	C4Object* DragImageObject;
+	
+	// Tooltip management
+
+	// currently shown caption
+	StdCopyStrBuf Caption;
+	// tooltip text that will be shown when the mouse is kept in the tooltip rectangle for some time
+	StdCopyStrBuf TooltipText;
+	int32_t CaptionBottomY;
+	int32_t KeepCaption;
+	int32_t TimeInTooltipRectangle;
+	C4Rect ToolTipRectangle;
 
 	// Target object
 	C4Object *TargetObject; // valid during Move()
 	C4Object *DownTarget;
-	int32_t TimeOnTargetObject;
 public:
 	void Default();
 	void Clear();
 	bool Init(int32_t iPlayer);
 	void Execute();
-	const char *GetCaption();
 	void HideCursor();
 	void ShowCursor();
 	void Draw(C4TargetFacet &cgo, const ZoomData &GameZoom);
@@ -108,9 +136,12 @@ public:
 	void SetOwnedMouse(bool fToVal) { fMouseOwned = fToVal; }
 	bool IsMouseOwned() { return fMouseOwned; }
 	bool IsActive() { return !!Active; }
-	bool GetLastGUIPos(int32_t *x_out, int32_t *y_out) const;
+	bool GetLastCursorPos(int32_t *x_out_gui, int32_t *y_out_gui, int32_t *x_out_game, int32_t *y_out_game) const;
+
+	const char *GetCaption();
+	void SetTooltipText(const StdStrBuf &text);
+	void SetTooltipRectangle(const C4Rect &rectangle);
 protected:
-	void SendPlayerSelectNext();
 	void UpdateFogOfWar();
 	void RightUpDragNone();
 	void ButtonUpDragScript();
@@ -125,19 +156,14 @@ protected:
 	void LeftDown();
 	void UpdateScrolling();
 	void UpdateCursorTarget();
-	void SendCommand(int32_t iCommand, int32_t iX=0, int32_t iY=0, C4Object *pTarget=NULL, C4Object *pTarget2=NULL, int32_t iData=0, int32_t iAddMode=C4P_Command_Set);
-	int32_t UpdateObjectSelection();
-	int32_t UpdateCrewSelection();
 	int32_t UpdateSingleSelection();
-	bool SendControl(int32_t iCom, int32_t iData=0);
-	bool IsValidMenu(C4Menu *pMenu);
-	bool UpdatePutTarget(bool fVehicle);
 	C4Object *GetTargetObject(); // get MouseSelection object at position
 	bool IsPassive(); // return whether mouse is only used to look around
 	void ScrollView(float iX, float iY, float ViewWdt, float ViewHgt); // in landscape coordinates
 
 public:
 	bool IsDragging();
+	bool IsLeftDown() { return LeftButtonDown; }
 	int32_t GetPlayer() { return Player; }
 };
 

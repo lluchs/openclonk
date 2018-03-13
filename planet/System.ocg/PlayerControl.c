@@ -1,10 +1,9 @@
-/*--
-		PlayerControl.c
-		Authors: Newton
-		
-		Functions to handle player controls (i.e. input keys)
---*/
-
+/**
+	PlayerControl.c
+	Functions to handle player controls (i.e. input keys).
+	
+	@author Newton
+*/
 
 static const CON_Gamepad_Deadzone = 60;
 static CON_VC_Players;
@@ -14,26 +13,27 @@ static g_player_cursor_pos; // array of [x,y] pos arrays; indexed by player. las
 // Called by engine whenever a control is issued
 // Forwards control to special handler or cursor
 // Return whether handled
-global func PlayerControl(int plr, int ctrl, id spec_id, int x, int y, int strength, bool repeat, bool release)
+// documented in /docs/sdk/script/fn
+global func PlayerControl(int plr, int ctrl, id spec_id, int x, int y, int strength, bool repeat, int status)
 {
-	//Log("%d, %s, %i, %d, %d, %d, %v, %v", plr, GetPlayerControlName(ctrl), spec_id, x,y,strength, repeat, release);
+	var release = status == CONS_Up;
+	//Log("%d, %s, %i, %d, %d, %d, %v, %v", plr, GetPlayerControlName(ctrl), spec_id, x,y,strength, repeat, status);
 	// Control handled by definition? Forward
-	if (spec_id) return spec_id->PlayerControl(plr, ctrl, x, y, strength, repeat, release);
+	if (spec_id) return spec_id->ForwardedPlayerControl(plr, ctrl, x, y, strength, repeat, status);
 
 	// Forward control to player
-	if (Control2Player(plr,ctrl, x, y, strength, repeat, release)) return true;
+	if (Control2Player(plr,ctrl, x, y, strength, repeat, status)) return true;
 
 	// Forward control to cursor
 	var cursor = GetCursor(plr);
-	if (cursor)
-	if (cursor->GetCrewEnabled())
+	if (cursor && cursor->GetCrewEnabled())
 	{
 		// Object controlled by plr
 		cursor->SetController(plr);
 		
 		// menu controls:
 		
-		if (cursor->~GetMenu())
+		if (cursor->~GetMenu() && status != CONS_Moved)
 		{
 			// direction keys are always forwarded to the menu
 			// (because the clonk shall not move while the menu is open)
@@ -48,14 +48,14 @@ global func PlayerControl(int plr, int ctrl, id spec_id, int x, int y, int stren
 			// cancel menu
 			if (ctrl == CON_CancelMenu)
 			{
-				cursor->GetMenu()->Close();
+				cursor->TryCancelMenu();
 				return true;
 			}
 
 			if (ctrl == CON_GUIClick1 || ctrl == CON_GUIClick2 || ctrl == CON_GUICursor)
 			{
-				var menux = cursor->GetMenu()->GetX();
-				var menuy = cursor->GetMenu()->GetY();
+				var menux = cursor->GetMenu()->~GetX();
+				var menuy = cursor->GetMenu()->~GetY();
 				
 				var dx = x-menux;
 				var dy = y-menuy;
@@ -75,20 +75,19 @@ global func PlayerControl(int plr, int ctrl, id spec_id, int x, int y, int stren
 		
 		// local coordinates
 		var cursorX = x, cursorY = y;
-		if(x != nil || y != nil)
+		if (x != nil || y != nil)
 		{
 			cursorX -= cursor->GetX();
 			cursorY -= cursor->GetY();
 		}
 		
 		// Overload by effect?
-		if (cursor->Control2Effect(plr, ctrl, cursorX, cursorY, strength, repeat, release)) return true;
+		if (cursor->Control2Effect(plr, ctrl, cursorX, cursorY, strength, repeat, status)) return true;
 
-		if (cursor->ObjectControl(plr, ctrl, cursorX, cursorY, strength, repeat, release))
+		if (cursor->ObjectControl(plr, ctrl, cursorX, cursorY, strength, repeat, status))
 		{
-			if (cursor && !release && !repeat)
+			if (cursor && status == CONS_Down && !repeat)
 			{
-				cursor->DoNoCollectDelay(-1);
 				// non-mouse controls reset view
 				if (!x && !y) ResetCursorView(plr);
 			}
@@ -97,7 +96,8 @@ global func PlayerControl(int plr, int ctrl, id spec_id, int x, int y, int stren
 		//else Log("-- not handled");
 
 	}
-	// No cursor? Nothing to handle control then
+	
+	// Nothing to handle control then
 	return false;
 }
 
@@ -110,7 +110,7 @@ global func InitializePlayerControl(int plr, string controlset_name, bool keyboa
 	CON_VC_Players[plr] = !mouse;
 	
 	// for all clonks...
-	for(var clonk in FindObjects(Find_OCF(OCF_CrewMember)))
+	for (var clonk in FindObjects(Find_OCF(OCF_CrewMember)))
 	{
 		clonk->~ReinitializeControls();
 	}
@@ -118,7 +118,7 @@ global func InitializePlayerControl(int plr, string controlset_name, bool keyboa
 
 global func PlayerHasVirtualCursor(int plr)
 {
-	if(!CON_VC_Players)
+	if (!CON_VC_Players)
 		return false;
 		
 	return CON_VC_Players[plr];
@@ -126,7 +126,7 @@ global func PlayerHasVirtualCursor(int plr)
 
 // Control2Player
 // Player-wide controls
-global func Control2Player(int plr, int ctrl, int x, int y, int strength, bool repeat, bool release)
+global func Control2Player(int plr, int ctrl, int x, int y, int strength, bool repeat, int status)
 {
 	// select previous or next
 	if (ctrl == CON_PreviousCrew)
@@ -159,6 +159,9 @@ global func Control2Player(int plr, int ctrl, int x, int y, int strength, bool r
 		return SetCursor(plr, crew);
 	}
 	
+	// Modifier keys - do not handle the key. The GetPlayerControlState will still return the correct value when the key is held down.
+	if (ctrl == CON_ModifierMenu1) return false;
+		
 	// cursor pos info - store in player values
 	if (ctrl == CON_CursorPos)
 	{
@@ -186,7 +189,7 @@ global func GetPlayerCursorPos(int plr)
 global func StopSelected(int plr)
 {
 	var cursor = GetCursor(plr);
-	if(cursor)
+	if (cursor)
 	{
 		cursor->SetCommand("None");
 		cursor->SetComDir(COMD_Stop);
@@ -198,20 +201,20 @@ global func StopSelected(int plr)
 
 // Control2Effect
 // Call control function in all effects that have "Control" in their name
-global func Control2Effect(int plr, int ctrl, int x, int y, int strength, bool repeat, bool release)
+global func Control2Effect(int plr, int ctrl, int x, int y, int strength, bool repeat, int status)
 {
 	// x and y are local coordinates
 	if (!this) return false;
 	
 	// Count down from EffectCount, in case effects get deleted
-	var i = GetEffectCount("*Control*", this), iEffect;
+	var i = GetEffectCount("*Control*", this), fx;
 	while (i--)
-		{
-		iEffect = GetEffect("*Control*", this, i);
-		if (iEffect)
-			if (EffectCall(this, iEffect, "Control", ctrl, x,y,strength, repeat, release))
+	{
+		fx = GetEffect("*Control*", this, i);
+		if (fx)
+			if (EffectCall(this, fx, "Control", ctrl, x,y,strength, repeat, status))
 				return true;
-		}
+	}
 	// No effect handled the control
 	return false;
 }
@@ -220,7 +223,7 @@ global func Control2Effect(int plr, int ctrl, int x, int y, int strength, bool r
 // Called from PlayerControl when a control is issued to the cursor
 // Return whether handled
 // To be overloaded by specific objects to enable additional controls
-global func ObjectControl(int plr, int ctrl, int x, int y, int strength, bool repeat, bool release)
+global func ObjectControl(int plr, int ctrl, int x, int y, int strength, bool repeat, int status)
 {
 	if (!this) return false;
 	
@@ -229,7 +232,7 @@ global func ObjectControl(int plr, int ctrl, int x, int y, int strength, bool re
 	
 	// Movement controls
 	if (ctrl == CON_Left || ctrl == CON_Right || ctrl == CON_Up || ctrl == CON_Down || ctrl == CON_Jump)
-		return ObjectControlMovement(plr, ctrl, strength, release, repeat);
+		return ObjectControlMovement(plr, ctrl, strength, status, repeat);
 	
 	// Unhandled control
 	return false;
@@ -272,7 +275,7 @@ global func NameComDir(comdir)
 }
 // Called when CON_Left/Right/Up/Down controls are issued/released
 // Return whether handled
-global func ObjectControlMovement(int plr, int ctrl, int strength, bool release, bool repeat)
+global func ObjectControlMovement(int plr, int ctrl, int strength, int status, bool repeat)
 {
 	if (!this) return false;
 	
@@ -280,20 +283,20 @@ global func ObjectControlMovement(int plr, int ctrl, int strength, bool release,
 	if (Contained()) return false;
 
 	// this is for controlling movement with Analogpad
-	if(!release)
-		if(strength != nil && strength < CON_Gamepad_Deadzone)
+	if (status == CONS_Down)
+		if (strength != nil && strength < CON_Gamepad_Deadzone)
 			return true;
 	
 	var proc = GetProcedure();
 	// Some specific movement controls
-	if (!release)
+	if (status == CONS_Down)
 	{
 		// Jump control
 		if (ctrl == CON_Jump)
 		{
-			if(proc == "WALK" && GetComDir() == COMD_Up)
+			if (proc == "WALK" && GetComDir() == COMD_Up)
 				SetComDir(COMD_Stop);
-			if(proc == "WALK")
+			if (proc == "WALK")
 			{
 				this->ObjectCommand("Jump");
 				return true;
@@ -325,6 +328,15 @@ global func ObjectControlMovement(int plr, int ctrl, int strength, bool release,
 		{
 			if (ctrl == CON_Left) SetDir(DIR_Left);
 			else if (ctrl == CON_Right) SetDir(DIR_Right);
+		}
+	}
+	else // release
+	{
+		// If rolling, allow to instantly switch to walking again.
+		if (GetAction() == "Roll")
+		{
+			if (ctrl == CON_Left && GetDir() == DIR_Left || ctrl == CON_Right && GetDir() == DIR_Right)
+				SetAction("Walk");
 		}
 	}
 	return ObjectControlUpdateComdir(plr);
@@ -380,8 +392,15 @@ global func ObjectControlUpdateComdir(int plr)
 }
 
 // selects the next/previous crew member (that is not disabled)
-global func ShiftCursor(int plr, bool back)
+global func ShiftCursor(int plr, bool back, bool force)
 {
+	// Is the selected Clonk busy at the moment? E.g. uncloseable menu open..
+	if (!force)
+	{
+		var cursor = GetCursor(plr);
+		if (cursor && cursor->~RejectShiftCursor()) return false;
+	}
+	
 	// get index of currently selected crew
 	var index = 0;
 	while (index < GetCrewCount(plr))
@@ -412,11 +431,19 @@ global func ShiftCursor(int plr, bool back)
 			if (index >= GetCrewCount(plr)) index = 0;
 		}
 		++cycle;
-	} while (!(GetCrew(plr,index)->GetCrewEnabled()) && cycle < maxcycle);
-
-	StopSelected();
-
-	return SetCursor(plr, GetCrew(plr,index));
+	} while (cycle < maxcycle && !(GetCrew(plr,index)->GetCrewEnabled()));
+	
+	// Changing the cursor closes all menus that are associated with the old cursor.
+	// However, if a menu is not closable, then it requires the attention of the player and switching the cursor is disabled..
+	var current_cursor = GetCursor(plr);
+	var new_cursor = GetCrew(plr, index);
+	if (current_cursor == new_cursor) return false;
+	
+	StopSelected(plr);
+	if (current_cursor)
+		current_cursor->~OnShiftCursor(new_cursor);
+		
+	return SetCursor(plr, new_cursor);
 }
 
 // Temporarily used for Debugging!
@@ -450,11 +477,12 @@ global func ComDir2XY(int comd)
 	return [[0,0,1,1,1,0,-1,-1,-1][comd], [0,-1,-1,0,1,1,1,0,-1][comd]];
 }
 
-global func ObjectCommand(string command, object target, int tx, int ty, object target2)
+global func ObjectCommand(string command, object target, int tx, int ty, object target2, /*any*/ data)
 {
 	// this function exists to be overloadable by ClonkControl.c4d
-	if(!this) return;
-	this->SetCommand(command,target,tx,ty, target2);
+	if (!this)
+		return;
+	this->SetCommand(command, target, tx, ty, target2, data);
 }
 
 // Let go from scaling or hangling
@@ -473,10 +501,10 @@ global func ObjectComLetGo(int vx, int vy)
 global func MouseHover(int player, object leaving, object entering, object dragged)
 {
 	// Leaving the hovering zone should be processed first.
-	if(leaving)
+	if (leaving)
 		leaving->~OnMouseOut(player, dragged);
 	// Then process entering a new hovering zone. 
-	if(entering)
+	if (entering)
 		entering->~OnMouseOver(player, dragged);
 	return true;
 }
@@ -487,6 +515,7 @@ global func MouseHover(int player, object leaving, object entering, object dragg
 global func MouseDragDrop(int plr, object source, object target)
 {
 	//Log("MouseDragDrop(%d, %s, %s)", plr, source->GetName(), target->GetName());
+	if (!source) return false; // can happen if source got deleted after control was queued
 	var src_drag = source->~OnMouseDrag(plr);
 	if (!src_drag) 
 		return false;
@@ -512,3 +541,15 @@ global func MouseDragDrop(int plr, object source, object target)
 	Log("%s%d, %s, %i, %d, %d, %d, %v, %v", rs, plr, GetPlayerControlName(ctrl), spec_id, x,y,strength, repeat, release);
 	return r;
 }*/
+
+/*
+This is used by Library_ClonkInventoryControl and needs to be a global function (in a non-appendto).
+This function returns the priority of an object when selecting an object to pick up.
+*/
+global func Library_ClonkInventoryControl_Sort_Priority(int x_position)
+{
+	// Objects are sorted by position, preferring the direction of the key press.
+	var priority_x = GetX() - x_position;
+	if (priority_x < 0) priority_x += 1000;
+	return priority_x; 
+}

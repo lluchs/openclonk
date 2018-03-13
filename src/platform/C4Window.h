@@ -2,7 +2,7 @@
  * OpenClonk, http://www.openclonk.org
  *
  * Copyright (c) 2005-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -19,9 +19,32 @@
 #ifndef INC_STDWINDOW
 #define INC_STDWINDOW
 
-#include <StdBuf.h>
+#include "C4ForbidLibraryCompilation.h"
 
-#if defined(USE_WIN32_WINDOWS) || defined(USE_X11) || defined(USE_CONSOLE)
+#if defined(USE_SDL_MAINLOOP)
+#include <SDL.h>
+#define MK_SHIFT (KMOD_LSHIFT | KMOD_RSHIFT)
+#define MK_CONTROL (KMOD_LCTRL | KMOD_RCTRL)
+#define MK_ALT (KMOD_LALT | KMOD_RALT)
+#elif defined(USE_CONSOLE)
+#ifndef _WIN32
+#define MK_SHIFT 0
+#define MK_CONTROL 0
+#endif
+#define MK_ALT 0
+#elif defined(USE_COCOA)
+// declare as extern variables and initialize them in StdMacWindow.mm so as to not include objc headers
+extern int MK_SHIFT;
+extern int MK_CONTROL;
+extern int MK_ALT;
+#elif defined(USE_WIN32_WINDOWS)
+#include "platform/C4windowswrapper.h"
+#ifndef MK_ALT
+#define MK_ALT 0x20 // as defined in oleidl.h
+#endif
+#endif
+
+#if defined(USE_WIN32_WINDOWS) || defined(USE_CONSOLE) || defined(USE_SDL_MAINLOOP)
 #define K_ESCAPE 1
 #define K_1 2
 #define K_2 3
@@ -170,63 +193,19 @@
 #define K_PRINT 99
 #define K_CENTER 76
 
-#elif defined(USE_SDL_MAINLOOP)
-#include <SDL.h>
-// FIXME
-#define K_SHIFT_L SDLK_LSHIFT
-#define K_SHIFT_R SDLK_RSHIFT
-#define K_ALT_L SDLK_LALT
-#define K_ALT_R SDLK_RALT
-#define K_F1 SDLK_F1
-#define K_F2 SDLK_F2
-#define K_F3 SDLK_F3
-#define K_F4 SDLK_F4
-#define K_F5 SDLK_F5
-#define K_F6 SDLK_F6
-#define K_F7 SDLK_F7
-#define K_F8 SDLK_F8
-#define K_F9 SDLK_F9
-#define K_F10 SDLK_F10
-#define K_F11 SDLK_F11
-#define K_F12 SDLK_F12
-#define K_ADD SDLK_KP_PLUS
-#define K_SUBTRACT SDLK_KP_MINUS
-#define K_MULTIPLY SDLK_KP_MULTIPLY
-#define K_ESCAPE SDLK_ESCAPE
-#define K_PAUSE SDLK_PAUSE
-#define K_TAB SDLK_TAB
-#define K_RETURN SDLK_RETURN
-#define K_DELETE SDLK_DELETE
-#define K_INSERT SDLK_INSERT
-#define K_BACK SDLK_BACKSPACE
-#define K_SPACE SDLK_SPACE
-#define K_UP SDLK_UP
-#define K_DOWN SDLK_DOWN
-#define K_LEFT SDLK_LEFT
-#define K_RIGHT SDLK_RIGHT
-#define K_HOME SDLK_HOME
-#define K_END SDLK_END
-#define K_SCROLL SDLK_SCROLLOCK
-#define K_MENU SDLK_MENU
-#define K_PAGEUP SDLK_PAGEUP
-#define K_PAGEDOWN SDLK_PAGEDOWN
-#define K_M SDLK_m
-#define K_T SDLK_t
-#define K_W SDLK_w
-#define K_I SDLK_i
-#define K_C SDLK_c
-#define K_V SDLK_v
-#define K_X SDLK_x
-#define K_A SDLK_a
 #elif defined(USE_COCOA)
-#import "ObjectiveCAssociated.h"
+#import "platform/ObjectiveCAssociated.h"
 // FIXME
 // declare as extern variables and initialize them in StdMacWindow.mm so as to not include objc headers
 const int CocoaKeycodeOffset = 300;
 extern C4KeyCode K_SHIFT_L;
 extern C4KeyCode K_SHIFT_R;
+extern C4KeyCode K_CONTROL_L;
+extern C4KeyCode K_CONTROL_R;
 extern C4KeyCode K_ALT_L;
 extern C4KeyCode K_ALT_R;
+extern C4KeyCode K_COMMAND_L;
+extern C4KeyCode K_COMMAND_R;
 extern C4KeyCode K_F1;
 extern C4KeyCode K_F2;
 extern C4KeyCode K_F3;
@@ -268,13 +247,12 @@ extern C4KeyCode K_C;
 extern C4KeyCode K_V;
 extern C4KeyCode K_X;
 extern C4KeyCode K_A;
+extern C4KeyCode K_S;
+extern C4KeyCode K_NUM;
+extern C4KeyCode K_PRINT;
+extern C4KeyCode K_CENTER;
 #endif
 
-#ifdef USE_X11
-// Forward declarations because xlib.h is evil
-typedef union _XEvent XEvent;
-typedef struct _XDisplay Display;
-#endif
 
 class C4Window
 #ifdef USE_COCOA
@@ -287,13 +265,15 @@ public:
 		W_GuiWindow,
 		W_Console,
 		W_Viewport,
-		W_Fullscreen
+		W_Fullscreen,
+		W_Control // wrapper to a render target control inside a window
 	};
 public:
 	C4Window ();
 	virtual ~C4Window ();
-	bool Active;
-	C4Surface * pSurface;
+	bool Active{false};
+	C4Surface * pSurface{nullptr};
+	WindowKind eKind;
 	virtual void Clear();
 	// Only when the wm requests a close
 	// For example, when the user clicks the little x in the corner or uses Alt-F4
@@ -317,32 +297,25 @@ public:
 	void SetSize(unsigned int cx, unsigned int cy); // resize
 	void SetTitle(const char * Title);
 	void FlashWindow();
+	void GrabMouse(bool grab);
 	// request that this window be redrawn in the near future (including immediately)
 	virtual void RequestUpdate();
 	// Invokes actual drawing code - should not be called directly
 	virtual void PerformUpdate();
 
-#ifdef USE_WIN32_WINDOWS
 public:
-	HWND hWindow;
-	HWND hRenderWindow;
+#if defined(USE_WIN32_WINDOWS)
+	HWND hWindow{nullptr};
 	virtual bool Win32DialogMessageHandling(MSG * msg) { return false; };
-#elif defined(WITH_GLIB)
-public:
-	/*GtkWidget*/void * window;
-	// Set by Init to the widget which is used as a
-	// render target, which can be the whole window.
-	/*GtkWidget*/void * render_widget;
-protected:
-	bool FindInfo(int samples, void** info);
-
-	unsigned long wnd;
-	unsigned long renderwnd;
-	// The XVisualInfo the window was created with
-	void * Info;
-	unsigned long handlerDestroy;
-
-	friend class C4X11AppImpl;
+#elif defined(USE_SDL_MAINLOOP)
+	SDL_Window * window;
+	void HandleSDLEvent(SDL_WindowEvent &e);
+#endif
+#ifdef USE_WGL
+	HWND renderwnd;
+#endif
+#ifdef WITH_QT_EDITOR
+	class QOpenGLWidget *glwidget{nullptr};
 #endif
 protected:
 	virtual C4Window * Init(WindowKind windowKind, C4AbstractApp * pApp, const char * Title, const C4Rect * size);

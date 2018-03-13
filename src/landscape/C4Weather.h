@@ -3,7 +3,7 @@
  *
  * Copyright (c) 1998-2000, Matthes Bender
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -20,7 +20,7 @@
 #ifndef INC_C4Weather
 #define INC_C4Weather
 
-#include <C4Landscape.h>
+#include "landscape/C4Landscape.h"
 class C4Weather
 {
 public:
@@ -48,10 +48,5 @@ public:
 	void CompileFunc(StdCompiler *pComp);
 };
 extern C4Weather Weather;
-
-inline int32_t GBackWind(int32_t x, int32_t y)
-{
-	return GBackIFT(x, y) ? 0: ::Weather.Wind;
-}
 
 #endif

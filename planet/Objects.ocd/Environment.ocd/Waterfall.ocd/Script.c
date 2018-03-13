@@ -16,8 +16,8 @@ protected func Initialize()
 
 global func CreateWaterfall(int x, int y, int strength, string mat)
 {
-	var fall = CreateObject(Waterfall, x, y, NO_OWNER);
-	if(!mat) mat = "Water";
+	var fall = CreateObjectAbove(Waterfall, x, y, NO_OWNER);
+	if (!mat) mat = "Water";
 	AddEffect("IntWaterfall", fall, 100, 1, fall, nil, x, y, strength, mat);
 	return fall;
 }
@@ -31,7 +31,7 @@ protected func FxIntWaterfallStart(object target, proplist effect, int temporary
 	effect.Strength = strength;
 	effect.Material = mat;
 	// Start sound.
-	target->Sound("Waterfall", false, 10 * effect.Strength, nil, 1);
+	target->Sound("Environment::Waterfall", false, 5 * effect.Strength, nil, 1);
 	return 1;
 }
 
@@ -47,8 +47,8 @@ protected func FxIntWaterfallStop(object target, proplist effect, bool temporary
 {
 	if (temporary)
 		return 1;
-	// Stop sound.	
-	target->Sound("Waterfall", false, 10 * effect.Strength, nil, -1);
+	// Stop sound.
+	target->Sound("Environment::Waterfall", false, 5 * effect.Strength, nil, -1);
 	return 1;
 }
 
@@ -84,6 +84,10 @@ public func SetDirection(int xdir, int ydir, int xvar, int yvar)
 public func SetSoundLocation(int x, int y)
 {
 	SetPosition(x, y);
+	// Update sound.
+	var effect = GetEffect("IntWaterfall", this);
+	if (effect)
+		Sound("Environment::Waterfall", false, 5 * effect.Strength, nil, 1);
 	return;
 }
 
@@ -97,12 +101,12 @@ func SaveScenarioObject(props)
 	props->RemoveCreation();
 	if (fx_waterfall)
 	{
-		props->Add(SAVEOBJ_Creation, "CreateWaterfall(%d,%d,%d,%v)",fx_waterfall.X, fx_waterfall.Y, fx_waterfall.Strength, fx_waterfall.Material);
+		props->Add(SAVEOBJ_Creation, "CreateWaterfall(%d, %d, %d, %v)",fx_waterfall.X, fx_waterfall.Y, fx_waterfall.Strength, fx_waterfall.Material);
 		if (fx_waterfall.X != GetX() || fx_waterfall.Y != GetY()) props->AddCall("Position", this, "SetSoundLocation", GetX(), GetY());
 		if (fx_waterfall.XDir || fx_waterfall.YDir || fx_waterfall.XVar || fx_waterfall.YVar)
 			props->AddCall("Direction", this, "SetDirection", fx_waterfall.XDir, fx_waterfall.YDir, fx_waterfall.XVar, fx_waterfall.YVar);
 	}
-	if (fx_drain) props->Add(SAVEOBJ_Creation, "CreateLiquidDrain(%d,%d,%d);",fx_drain.X, fx_drain.Y, fx_drain.Strength);
+	if (fx_drain) props->Add(SAVEOBJ_Creation, "CreateLiquidDrain(%d, %d, %d)",fx_drain.X, fx_drain.Y, fx_drain.Strength);
 	return true;
 }
 
@@ -112,7 +116,7 @@ func SaveScenarioObject(props)
 
 global func CreateLiquidDrain(int x, int y, int strength)
 {
-	var drain = CreateObject(Waterfall, x, y, NO_OWNER);
+	var drain = CreateObjectAbove(Waterfall, x, y, NO_OWNER);
 	AddEffect("IntLiquidDrain", drain, 100, 1, drain, nil, x, y, strength);
 	return drain;
 }

@@ -1,169 +1,288 @@
-/*-- Dynamite box --*/
+/**
+	Dynamite box
+	Contains five dynamite sticks which can be placed and detonated from a distance.
+	
+	@author: Newton
+*/
+
+#include Library_HasExtraSlot
 
 static const DYNA_MaxLength = 500;
 static const DYNA_MaxCount  = 5;
 
-public func Initialize()
-{
-	iCount = DYNA_MaxCount;
-	aDynamites = CreateArray(iCount);
-	aWires = CreateArray(iCount);
-	for(var i = 0; i < iCount; i++)
-	{
-		aDynamites[i] = nil;
-		aWires[i] = nil;
-	}
+/*-- Initialization --*/
 
-	this.PictureTransformation = Trans_Scale(); // Hide it TODO: Remove if the mesh isn't shown if there is a picture set
+public func Initialize(...)
+{
+	CreateContents(Dynamite, DYNA_MaxCount);
+	// Hide it TODO: Remove if the mesh isn't shown if there is a picture set
+	this.PictureTransformation = Trans_Scale();
 	UpdatePicture();
+	return _inherited(...);
 }
 
-private func Hit()
+public func Hit()
 {
-	Sound("DullWoodHit?");
+	Sound("Hits::Materials::Wood::DullWoodHit?");
 }
 
-public func HoldingEnabled() { return true; }
 
-public func GetCarryMode() { return CARRY_BothHands; }
-public func GetCarryPhase() { return 450; }
+/*-- Dynamite stick contents --*/
 
-local iCount;
-local aDynamites;
-local aWires;
-
-local pWire;
-
-public func ControlUse(object clonk, int x, int y)
+public func RejectCollect(id def, object obj, ...)
 {
-	var pDyna = aDynamites[iCount-1] = CreateContents(Dynamite);
-	if(!pDyna->ControlUse(clonk, x, y, 1))
-	{
-		pDyna->RemoveObject();
+	if (obj->GetID() != Dynamite)
 		return true;
-	}
-	if(pWire)
-		pWire->Connect(aDynamites[iCount], pDyna);
-	// First? then add Timer
-/*	else
-		AddEffect("IntLength", this, 1, 10, this);*/
+	// Max five dynamite sticks. However, longer sets of sticks can be constructed by putting more of them in while some are out on the wire
+	if (GetDynamiteCount() >= DYNA_MaxCount)
+		return true;
 
-	pWire = CreateObject(Fuse);
-	pWire->Connect(pDyna, this);
-	Sound("Connect");
-	aWires[iCount-1] = pWire;
-	
-	iCount--;
+	return _inherited(def, obj, ...);
+}
 
-	UpdatePicture();
-	
-//	Message("%d left", iCount);
-
-	if(iCount == 0)
+public func Ejection(...)
+{
+	if (GetDynamiteCount() == 0)
 	{
-		var pos = clonk->GetItemPos(this);
-		ChangeDef(Igniter);
-		SetGraphics("0", Fuse, 1, GFXOV_MODE_Picture);
-		clonk->UpdateAttach();
-		clonk->OnSlotFull(pos);
+		ChangeToIgniter();
 	}
+	else
+	{
+		UpdatePicture();
+	}
+	return _inherited(...);
+}
 
+public func ContentsDestruction(...)
+{
+	Ejection();
+	return _inherited(...);
+}
+
+public func Collection2(...)
+{
+	if (GetID() == Igniter)
+	{
+		ChangeToBox();
+	}
+	UpdatePicture();
+	return _inherited(...);
+}
+
+public func GetDynamiteCount()
+{
+	// Get number of contained dynamite sticks
+	return ContentsCount(Dynamite);
+}
+
+public func SetDynamiteCount(int new_count)
+{
+	// Adjust dynamite counts to given amount
+	var dyna;
+	var change = new_count - GetDynamiteCount();
+	if (change > 0) while (change--) CreateContents(Dynamite);
+	if (change < 0) while (change++) if ((dyna = FindObject(Find_ID(Dynamite), Find_Container(this)))) dyna->RemoveObject();
+}
+
+// Empty this box and turn it into an igniter
+public func ChangeToIgniter()
+{
+	if (GetID() == Igniter) return;
+	UpdatePicture();
+	ChangeDef(Igniter);
+	SetGraphics("Picture", Igniter, 1, GFXOV_MODE_Picture);
+	// Update carrier
+	var container = Contained();
+	if (container)
+	{
+		var pos = container->~GetItemPos(this);
+		container->~UpdateAttach();
+		container->~OnSlotFull(pos);
+	}
 	return true;
 }
 
-private func UpdatePicture()
+// Change back into a box
+public func ChangeToBox()
 {
-	var s = 400;
-	var yoffs = 14000;
-	var xoffs = 22000;
-
-	SetGraphics(Format("%d", iCount), Icon_Number, 12, GFXOV_MODE_Picture);
-	SetObjDrawTransform(s, 0, xoffs, 0, s, yoffs, 12);
-
-	SetGraphics(Format("%d", iCount), Fuse, 1, GFXOV_MODE_Picture);
+	if (GetID() == DynamiteBox) return;
+	ChangeDef(DynamiteBox);
+	UpdatePicture();
+	// Update carrier
+	if (Contained())
+	{
+		var pos = Contained()->~GetItemPos(this);
+		Contained()->~UpdateAttach();
+		Contained()->~OnSlotFull(pos);
+	}
+	
+	return true;
 }
 
-local fWarning;
-local fWarningColor;
-
-func FxIntLengthTimer(pTarget, effect, iTime)
+// Do not stack empty dynamite boxes with full ones.
+public func CanBeStackedWith(object other, ...)
 {
-	var iLength = 0;
-	var i = GetLength(aWires)-1;
-	while(i >= 0 && aWires[i])
-	{
-		iLength += aWires[i]->GetLineLength();
-		i--;
-	}
-	if(iLength > DYNA_MaxLength*4/5)
-	{
-		fWarning = 1;
-//		Message("Line too long! %d%%", iLength*100/DYNA_MaxLength);
-		if( (iTime % 5) == 0)
-		{
-			var fOn = 1;
-			if( fWarningColor == 1) fOn = 0;
-			fWarningColor = fOn;
-//			for(var i = 0; i < GetLength(aWires); i++)
-//				if(aWires[i]) aWires[i]->SetColorWarning(fOn);
-		}
-	}
-	else if(fWarning)
-	{
-		fWarning = 0;
-//		for(var i = 0; i < GetLength(aWires); i++)
-//			if(aWires[i]) aWires[i]->SetColorWarning(0);
-	}
-	if(iLength > DYNA_MaxLength)
-	{
-		var iMax = GetLength(aWires)-1;
-		aWires[iMax]->RemoveObject();
-		aDynamites[iMax]->Reset();
-		SetLength(aWires, iMax);
-		SetLength(aDynamites, iMax);
-//		Message("Line too long,|lost dynamite!|%d left.", iMax);
-		if(iMax == 0)
-		{
-			Contained()->Message("Line broken.");
-			RemoveObject();
-		}
-	}
+	if (GetID() != other->GetID()) return false;
+	if (this->GetDynamiteCount() != other->GetDynamiteCount()) return false;
+	return inherited(other, ...);
 }
 
-public func OnFuseFinished()
+// Drop connected or fusing boxes
+public func IsDroppedOnDeath(object clonk)
 {
-	DoExplode();
+	return GetEffect("Fuse", this) || GetLength(FindFuses());
+}
+
+
+/*-- Ignition --*/
+
+public func ActivateFuse()
+{
+	// Activate all fuses.
+	for (var obj in FindFuses())
+		obj->~StartFusing(this);
 }
 
 public func DoExplode()
 {
-	// Activate all fuses
-	for(var obj in FindObjects(Find_Category(C4D_StaticBack), Find_Func("IsFuse"), Find_ActionTargets(this)))
-		obj->~StartFusing(this);
+	// Activate all fuses.
+	ActivateFuse();
 	// Explode, calc the radius out of the area of a explosion of a single dynamite times the amount of dynamite
 	// This results to 18, 25, 31, 36, and 40
-	Explode(Sqrt(18**2*iCount));
+	Explode(Sqrt(18**2*GetDynamiteCount()));
 }
 
-protected func Incineration() { DoExplode(); }
-
-protected func Damage() { DoExplode(); }
-
-func FxIntLengthStop(pTarget, effect, iReason, fTmp)
+public func FxFuseTimer(object target, effect, int timer)
 {
-	for(var i = 0; i < GetLength(aWires); i++)
-			if(aWires[i]) aWires[i]->SetColorWarning(0);
+	CreateParticle("Fire", 0, 0, PV_Random(-10, 10), PV_Random(-20, 10), PV_Random(10, 40), Particles_Glimmer(), 6);
+	if (timer > 90)
+		DoExplode();
+	return FX_OK;
 }
+
+public func Incineration(int caused_by)
+{
+	ActivateFuse();
+	if (!GetEffect("Fuse", this)) AddEffect("Fuse", this, 100, 1, this);
+	Sound("Fire::Fuse");
+	SetController(caused_by);
+}
+
+public func Damage(int change, int type, int by_player)
+{
+	Incinerate(nil, by_player);
+}
+
+private func OnFuseFinished(object fuse)
+{
+	SetController(fuse->GetController());
+	DoExplode();
+}
+
+public func OnCannonShot(object cannon)
+{
+	Incinerate(nil, cannon->GetController());
+}
+
+public func IsExplosive() { return true; }
+
+/*-- Usage --*/
+
+public func ControlUse(object clonk, int x, int y)
+{
+	var dynamite = Contents();
+
+	if (!dynamite || dynamite->GetID() != Dynamite)
+		return false;
+
+	if (!dynamite->ControlPlace(clonk, x, y, 1))
+		return true;
+
+	// Connect with a fuse: Move last wire to dynamite
+	var wire = FindFuses()[0];
+	if(wire)
+		wire->Connect(wire->GetConnectedItem(this), dynamite);
+	// Create new wire from box to dynamite
+	Fuse->Create(dynamite, this);
+	Sound("Objects::Connect");
+
+	return true;
+}
+
+private func FindFuses()
+{
+	// return all fuses connected to this item
+	return FindObjects(Find_Category(C4D_StaticBack), Find_Func("IsFuse"), Find_ActionTargets(this));
+}
+
+
+/*-- Production --*/
 
 public func IsTool() { return true; }
 public func IsChemicalProduct() { return true; }
 
-func Definition(def) {
+/*-- Display --*/
+
+public func GetCarryMode(object clonk, bool idle)
+{
+	if (idle) return CARRY_Back;
+	if (clonk->~IsWalking() || clonk->~IsJumping()) return CARRY_BothHands;
+	return CARRY_Back;
+}
+
+public func GetCarryTransform(object clonk, bool idle, bool nohand, bool second_on_back)
+{
+	if (idle)
+	{
+		if (!second_on_back)
+			return Trans_Mul(Trans_Translate(0,3000, 00), Trans_Rotate(-45,0,1));
+		else
+			return Trans_Mul(Trans_Translate(-5000,3000), Trans_Rotate(-45,0,1));
+	}
+	if (nohand)
+		return Trans_Mul(Trans_Translate(0,-3000, -2200), Trans_Rotate(-45,0,1));
+}
+
+public func GetCarryPhase()
+{
+	return 450;
+}
+
+func UpdatePicture()
+{
+	SetGraphics(Format("%d", 6 - GetDynamiteCount()), DynamiteBox, 1, GFXOV_MODE_Picture);
+	// Update inventory if contained in a crew member.
+	if (Contained())
+		Contained()->~OnInventoryChange();
+}
+
+// Saving: Save custom dynamite stick count
+public func SaveScenarioObject(proplist props)
+{
+	if (!_inherited(props, ...)) return false;
+	var dyna_count = this->GetDynamiteCount();
+	if (dyna_count != DYNA_MaxCount)
+	{
+		props->AddCall("Dynamite", this, "SetDynamiteCount", dyna_count);
+	}
+	return true;
+}
+
+
+func Definition(def)
+{
 	SetProperty("PictureTransformation", Trans_Mul(Trans_Rotate(150, 1, 0, 0), Trans_Rotate(140, 0, 1, 0)), def);
 }
 
-local Collectible = 1;
+/*-- Properties --*/
+
+public func IsDynamiteBox() { return true; }
+
 local Name = "$Name$";
 local Description = "$Description$";
-local UsageHelp = "$UsageHelp$";
-local Rebuy = true;
+local Collectible = true;
+local BlastIncinerate = 1;
+local ContactIncinerate = 2;
+local NoBurnDecay = true;
+local Components = {Wood = 1, Coal = 2, Firestone = 2};
+local MaxContentsCount = 5;

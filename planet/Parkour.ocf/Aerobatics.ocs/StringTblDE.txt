@@ -1,0 +1,9 @@
+# Scenario option: number of checkpoints
+ScenParNrCheckPoint=Anzahl der Checkpoints
+ScenParNrCheckPointDesc=Wähle die Anzahl der Checkpoints für diese Runde; Mapgröße und Rundendauer verändert sich mit der Anzahl.
+
+# Scenario option: mode
+ScenParGameMode=Modus
+ScenParGameModeDesc=Spielmodus: Werden die Checkpoints geordnet (Horizontal), oder muss der Spieler vor- und zurückgehen (Zickzack)?
+ScenParGameModeZigZag=Zickzack
+ScenParGameModeHorizontal=Horizontal

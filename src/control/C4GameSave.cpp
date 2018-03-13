@@ -2,7 +2,7 @@
  * OpenClonk, http://www.openclonk.org
  *
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -15,24 +15,20 @@
  */
 // game saving functionality
 
-#include <C4Include.h>
-#include <C4GameSave.h>
+#include "C4Include.h"
+#include "control/C4GameSave.h"
 
-#include <C4Components.h>
-#include <C4Game.h>
-#include <C4League.h>
-#include <C4Console.h>
-#include <C4Log.h>
-#include <C4Player.h>
-#include <C4Landscape.h>
-#include <C4PXS.h>
-#include <C4MassMover.h>
-#include <C4ScriptHost.h>
-#include <C4PlayerList.h>
-#include <C4GameObjects.h>
-#include <C4RoundResults.h>
-#include <C4Record.h>
-#include <C4Version.h>
+#include "C4Version.h"
+#include "c4group/C4Components.h"
+#include "control/C4GameParameters.h"
+#include "control/C4Record.h"
+#include "control/C4RoundResults.h"
+#include "landscape/C4Landscape.h"
+#include "landscape/C4MassMover.h"
+#include "landscape/C4PXS.h"
+#include "player/C4PlayerList.h"
+#include "network/C4Network2.h"
+#include "script/C4Value.h"
 
 // *** C4GameSave main class
 
@@ -62,7 +58,6 @@ bool C4GameSave::SaveCore()
 	rC4S = Game.C4S;
 	// Always mark current engine version
 	rC4S.Head.C4XVer[0]=C4XVER1; rC4S.Head.C4XVer[1]=C4XVER2;
-	rC4S.Head.C4XVer[2]=C4XVER3;
 	// Some flags are not to be set for initial settings:
 	//  They depend on whether specific runtime data is present, which may simply not be stored into initial
 	//  saves, because they rely on any data present and up-to-date within the scenario!
@@ -77,13 +72,15 @@ bool C4GameSave::SaveCore()
 	// some values relevant for synced saves only
 	if (IsExact())
 	{
-		rC4S.Head.StartupPlayerCount = Game.StartupPlayerCount;
 		rC4S.Head.RandomSeed=Game.RandomSeed;
 	}
 	// reset some network flags
-	rC4S.Head.NetworkGame=0;
+	rC4S.Head.NetworkGame=false;
 	// Title in language game was started in (not: save scenarios and net references)
-	if (!GetKeepTitle()) SCopy(Game.ScenarioTitle.getData(), rC4S.Head.Title, C4MaxTitle);
+	if (!GetKeepTitle())
+	{
+		rC4S.Head.Title = Game.ScenarioTitle.getData();
+	}
 	// some adjustments for everything but saved scenarios
 	if (IsExact())
 	{
@@ -93,7 +90,7 @@ bool C4GameSave::SaveCore()
 		if (!Game.Parameters.Save(*pSaveGroup, &Game.C4S)) return false;
 	}
 	// clear MissionAccess in save games and records (sulai)
-	*rC4S.Head.MissionAccess = 0;
+	rC4S.Head.MissionAccess.clear();
 	// store origin
 	if (GetSaveOrigin())
 	{
@@ -124,7 +121,7 @@ bool C4GameSave::SaveScenarioSections()
 	{
 		// compose section filename
 		SCopy(C4CFN_ScenarioSections, fn);
-		SDelete(fn, 1, iWildcardPos); SInsert(fn, pSect->szName, iWildcardPos);
+		SDelete(fn, 1, iWildcardPos); SInsert(fn, pSect->name.getData(), iWildcardPos);
 		// do not save self, because that is implied in CurrentScenarioSection and the main landscape/object data
 		if (pSect == Game.pCurrentScenarioSection)
 			pSaveGroup->DeleteEntry(fn);
@@ -133,7 +130,7 @@ bool C4GameSave::SaveScenarioSections()
 			// modified section: delete current
 			pSaveGroup->DeleteEntry(fn);
 			// replace by new
-			pSaveGroup->Add(pSect->szTempFilename, fn);
+			pSaveGroup->Add(pSect->temp_filename.getData(), fn);
 		}
 	}
 	// done, success
@@ -143,12 +140,12 @@ bool C4GameSave::SaveScenarioSections()
 bool C4GameSave::SaveLandscape()
 {
 	// exact?
-	if (::Landscape.Mode == C4LSC_Exact || GetForceExactLandscape())
+	if (::Landscape.GetMode() ==  LandscapeMode::Exact || GetForceExactLandscape())
 	{
 		C4DebugRecOff DBGRECOFF;
 		// Landscape
 		bool fSuccess;
-		if (::Landscape.Mode == C4LSC_Exact)
+		if (::Landscape.GetMode() ==  LandscapeMode::Exact)
 			fSuccess = !!::Landscape.Save(*pSaveGroup);
 		else
 			fSuccess = !!::Landscape.SaveDiff(*pSaveGroup, !IsSynced());
@@ -164,7 +161,7 @@ bool C4GameSave::SaveLandscape()
 		if (!::MaterialMap.SaveEnumeration(*pSaveGroup)) return false;
 	}
 	// static / dynamic
-	if (::Landscape.Mode == C4LSC_Static)
+	if (::Landscape.GetMode() ==  LandscapeMode::Static)
 	{
 		// static map
 		// remove old-style landscape.bmp
@@ -178,7 +175,7 @@ bool C4GameSave::SaveLandscape()
 			if (!::Landscape.SaveTextures(*pSaveGroup)) return false;
 		}
 	}
-	else if (::Landscape.Mode != C4LSC_Exact)
+	else if (::Landscape.GetMode() !=  LandscapeMode::Exact)
 	{
 		// dynamic map by landscape.txt or scenario core: nothing to save
 		// in fact, it doesn't even make much sense to save the Objects.txt
@@ -191,7 +188,7 @@ bool C4GameSave::SaveRuntimeData()
 {
 	// Game.txt data (general runtime data and objects)
 	C4ValueNumbers numbers;
-	if (!Game.SaveData(*pSaveGroup, false, IsExact(), &numbers))
+	if (!Game.SaveData(*pSaveGroup, false, IsExact(), IsSynced(), &numbers))
 		{ Log(LoadResStr("IDS_ERR_SAVE_RUNTIMEDATA")); return false; }
 	// scenario sections (exact only)
 	if (IsExact()) if (!SaveScenarioSections())
@@ -240,19 +237,12 @@ bool C4GameSave::SaveDesc(C4Group &hToGroup)
 	// Unfortunately, there's no way to prealloc the buffer in an appropriate size
 	StdStrBuf sBuffer;
 
-	// Header
-	sBuffer.AppendFormat("{\\rtf1\\ansi\\ansicpg1252\\deff0\\deflang1031{\\fonttbl {\\f0\\fnil\\fcharset%d Times New Roman;}}", 0 /*FIXME: a number for UTF-8 here*/);
-	sBuffer.Append(LineFeed);
-
 	// Scenario title
-	sBuffer.AppendFormat("\\uc1\\pard\\ulnone\\b\\f0\\fs20 %s\\par",Game.ScenarioTitle.getData());
-	sBuffer.Append(LineFeed "\\b0\\fs16\\par" LineFeed);
+	sBuffer.Append(Game.ScenarioTitle.getData());
+	sBuffer.Append(LineFeed LineFeed);
 
 	// OK; each specializations has its own desc format
 	WriteDesc(sBuffer);
-
-	// End of file
-	sBuffer.Append(LineFeed "}" LineFeed);
 
 	// Generate Filename
 	StdStrBuf sFilename; char szLang[3];
@@ -266,7 +256,7 @@ bool C4GameSave::SaveDesc(C4Group &hToGroup)
 void C4GameSave::WriteDescLineFeed(StdStrBuf &sBuf)
 {
 	// paragraph end + cosmetics
-	sBuf.Append("\\par" LineFeed);
+	sBuf.Append(LineFeed LineFeed);
 }
 
 void C4GameSave::WriteDescDate(StdStrBuf &sBuf, bool fRecord)
@@ -297,7 +287,7 @@ void C4GameSave::WriteDescGameTime(StdStrBuf &sBuf)
 
 void C4GameSave::WriteDescEngine(StdStrBuf &sBuf)
 {
-	char ver[32]; sprintf(ver, "%d.%d.%d", (int)C4XVER1, (int)C4XVER2, (int)C4XVER3);
+	char ver[32]; sprintf(ver, "%d.%d", (int)C4XVER1, (int)C4XVER2);
 	sBuf.AppendFormat(LoadResStr("IDS_DESC_VERSION"), ver);
 	WriteDescLineFeed(sBuf);
 }
@@ -325,8 +315,6 @@ void C4GameSave::WriteDescDefinitions(StdStrBuf &sBuf)
 			// Get exe relative path
 			StdStrBuf sDefFilename;
 			sDefFilename.Copy(Config.AtRelativePath(szDef));
-			// Convert rtf backslashes
-			sDefFilename.Replace("\\", "\\\\");
 			// Append comma
 			if (cnt>0) sBuf.Append(", ");
 			// Apend to desc
@@ -342,7 +330,7 @@ void C4GameSave::WriteDescNetworkClients(StdStrBuf &sBuf)
 	// Desc
 	sBuf.Append(LoadResStr("IDS_DESC_CLIENTS"));
 	// Client names
-	for (C4Network2Client *pClient=::Network.Clients.GetNextClient(NULL); pClient; pClient=::Network.Clients.GetNextClient(pClient))
+	for (C4Network2Client *pClient=::Network.Clients.GetNextClient(nullptr); pClient; pClient=::Network.Clients.GetNextClient(pClient))
 		{ sBuf.Append(", ");  sBuf.Append(pClient->getName()); }
 	// End of line
 	WriteDescLineFeed(sBuf);
@@ -415,7 +403,7 @@ bool C4GameSave::Save(const char *szFilename)
 	C4Group *pLSaveGroup = new C4Group();
 	if (!SaveCreateGroup(szFilename, *pLSaveGroup))
 	{
-		LogF(LoadResStr("IDS_ERR_SAVE_TARGETGRP"), szFilename ? szFilename : "NULL!");
+		LogF(LoadResStr("IDS_ERR_SAVE_TARGETGRP"), szFilename ? szFilename : "nullptr!");
 		delete pLSaveGroup;
 		return false;
 	}
@@ -472,7 +460,7 @@ bool C4GameSave::Close()
 			delete pSaveGroup;
 			fOwnGroup = false;
 		}
-		pSaveGroup = NULL;
+		pSaveGroup = nullptr;
 	}
 	return fSuccess;
 }
@@ -539,8 +527,8 @@ void C4GameSaveRecord::AdjustCore(C4Scenario &rC4S)
 	rC4S.Head.Icon=29;
 	// default record title
 	char buf[1024 + 1];
-	sprintf(buf, "%03i %s [%d.%d.%d]", iNum, Game.ScenarioTitle.getData(), (int)C4XVER1, (int)C4XVER2, (int)C4XVER3);
-	SCopy(buf, rC4S.Head.Title, C4MaxTitle);
+	sprintf(buf, "%03i %s [%d.%d]", iNum, Game.ScenarioTitle.getData(), (int)C4XVER1, (int)C4XVER2);
+	rC4S.Head.Title = buf;
 }
 
 bool C4GameSaveRecord::SaveComponents()

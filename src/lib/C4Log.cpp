@@ -3,7 +3,7 @@
  *
  * Copyright (c) 1998-2000, Matthes Bender
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -17,20 +17,18 @@
 
 /* Log file handling */
 
-#include <C4Include.h>
-#include <C4Log.h>
+#include "C4Include.h"
+#include "lib/C4Log.h"
 
-#include <C4AulDebug.h>
-#include <C4Console.h>
-#include <C4GameLobby.h>
-#include <C4Game.h>
-#include <C4LogBuf.h>
-#include <C4Language.h>
-#include <C4Network2.h>
-#include <C4GraphicsSystem.h>
-#include <C4Config.h>
-#include <C4Components.h>
-#include <C4Window.h>
+#include "c4group/C4Components.h"
+#include "editor/C4Console.h"
+#include "game/C4GraphicsSystem.h"
+#include "graphics/C4Shader.h"
+#include "gui/C4GameLobby.h"
+#include "lib/C4LogBuf.h"
+#include "network/C4Network2.h"
+#include "platform/C4Window.h"
+#include "script/C4AulDebug.h"
 
 #ifdef HAVE_SYS_FILE_H
 #include <sys/file.h>
@@ -40,7 +38,8 @@
 #include <share.h>
 #endif
 
-FILE *C4LogFile=NULL;
+FILE *C4LogFile=nullptr;
+FILE *C4ShaderLogFile = nullptr;
 time_t C4LogStartTime;
 StdStrBuf sLogFileName;
 
@@ -52,13 +51,19 @@ bool OpenLog()
 	sLogFileName = C4CFN_Log; int iLog = 2;
 #ifdef _WIN32
 	while (!(C4LogFile = _fsopen(Config.AtUserDataPath(sLogFileName.getData()), "wt", _SH_DENYWR)))
-#elif HAVE_SYS_FILE_H
-	while (!(C4LogFile = fopen(Config.AtUserDataPath(sLogFileName.getData()), "wb")) || flock(fileno(C4LogFile),LOCK_EX|LOCK_NB))
+#elif defined(HAVE_SYS_FILE_H)
+	int fd = 0;
+	while (!(fd = open(Config.AtUserDataPath(sLogFileName.getData()), O_WRONLY | O_CREAT, 0644)) || flock(fd, LOCK_EX|LOCK_NB))
 #else
 	while (!(C4LogFile = fopen(Config.AtUserDataPath(sLogFileName.getData()), "wb")))
 #endif
 	{
-		if(C4LogFile) fclose(C4LogFile); // Already locked by another instance?
+		// Already locked by another instance?
+#if !defined(_WIN32) && defined(HAVE_SYS_FILE_H)
+		if (fd) close(fd);
+#else
+		if (C4LogFile) fclose(C4LogFile);
+#endif
 		// If the file does not yet exist, the directory is r/o
 		// don't go on then, or we have an infinite loop
 		if (access(Config.AtUserDataPath(sLogFileName.getData()), 0))
@@ -66,15 +71,44 @@ bool OpenLog()
 		// try different name
 		sLogFileName.Format(C4CFN_LogEx, iLog++);
 	}
+#if !defined(_WIN32) && defined(HAVE_SYS_FILE_H)
+	ftruncate(fd, 0);
+	C4LogFile = fdopen(fd, "wb");
+#endif
 	// save start time
 	time(&C4LogStartTime);
 	return true;
 }
 
+bool OpenExtraLogs()
+{
+	// shader log in editor mode (only one file)
+	bool success = true;
+	if (C4Shader::IsLogging())
+	{
+#ifdef _WIN32
+		C4ShaderLogFile = _fsopen(Config.AtUserDataPath(C4CFN_LogShader), "wt", _SH_DENYWR);
+#elif defined(HAVE_SYS_FILE_H)
+		C4ShaderLogFile = fopen(Config.AtUserDataPath(C4CFN_LogShader), "wb");
+		if (C4ShaderLogFile && flock(fileno(C4ShaderLogFile), LOCK_EX | LOCK_NB) != 0)
+		{
+			DebugLog("Couldn't lock shader log file, closing.");
+			fclose(C4ShaderLogFile);
+			C4ShaderLogFile = nullptr;
+		}
+#else
+		C4ShaderLogFile = fopen(Config.AtUserDataPath(C4CFN_LogShader), "wb");
+#endif
+		if (!C4ShaderLogFile) success = false;
+	}
+	return success;
+}
+
 bool CloseLog()
 {
 	// close
-	if (C4LogFile) fclose(C4LogFile); C4LogFile = NULL;
+	if (C4ShaderLogFile) fclose(C4ShaderLogFile); C4ShaderLogFile = nullptr;
+	if (C4LogFile) fclose(C4LogFile); C4LogFile = nullptr;
 	// ok
 	return true;
 }
@@ -119,23 +153,17 @@ bool LogSilent(const char *szMessage, bool fConsole)
 		}
 		*pDest++='\n'; *pDest = '\0';
 
-#ifdef HAVE_ICONV
-		StdStrBuf Line = Languages.IconvSystem(TimeMessage.getData());
-#else
-		const StdStrBuf &Line = TimeMessage;
-#endif
-
 		// Save into log file
 		if (C4LogFile)
 		{
-			fputs(Line.getData(),C4LogFile);
+			fputs(TimeMessage.getData(),C4LogFile);
 			fflush(C4LogFile);
 		}
 
 		// Save into record log file, if available
 		if(Control.GetRecord())
 		{
-			Control.GetRecord()->GetLogFile()->Write(Line.getData(), strlen(Line.getData()));
+			Control.GetRecord()->GetLogFile()->Write(TimeMessage.getData(), TimeMessage.getLength());
 			#ifdef IMMEDIATEREC
 				Control.GetRecord()->GetLogFile()->Flush();
 			#endif
@@ -145,12 +173,17 @@ bool LogSilent(const char *szMessage, bool fConsole)
 		// Write to console
 		if (fConsole)
 		{
-#if defined(_DEBUG) && defined(_WIN32)
-			// debug: output to VC console
-			OutputDebugString(Line.GetWideChar());
+#if defined(_WIN32)
+			// debug: output to VC console when running with debugger
+			// Otherwise, print to stdout to allow capturing the log.
+			if (IsDebuggerPresent())
+				OutputDebugString(TimeMessage.GetWideChar());
+			else
 #endif
-			fputs(Line.getData(),stdout);
-			fflush(stdout);
+			{
+				fputs(TimeMessage.getData(),stdout);
+				fflush(stdout);
+			}
 		}
 
 	}
@@ -186,9 +219,9 @@ bool Log(const char *szMessage)
 
 	// Add message to log buffer
 	bool fNotifyMsgBoard = false;
-	if (::GraphicsSystem.MessageBoard.Active)
+	if (::GraphicsSystem.MessageBoard)
 	{
-		::GraphicsSystem.MessageBoard.AddLog(szMessage);
+		::GraphicsSystem.MessageBoard->AddLog(szMessage);
 		fNotifyMsgBoard = true;
 	}
 
@@ -196,7 +229,7 @@ bool Log(const char *szMessage)
 	LogSilent(szMessage, true);
 
 	// Notify message board
-	if (fNotifyMsgBoard) ::GraphicsSystem.MessageBoard.LogNotify();
+	if (fNotifyMsgBoard) ::GraphicsSystem.MessageBoard->LogNotify();
 
 	return true;
 }
@@ -303,4 +336,25 @@ bool GetLogSection(size_t iStart, size_t iLength, StdStrBuf &rsOut)
 	rsOut.Copy(szBuf, szPosWrite - szBuf);
 	// done, success
 	return true;
+}
+
+bool ShaderLog(const char *szMessage)
+{
+	// security
+	if (!C4ShaderLogFile) return false;
+	if (!Application.AssertMainThread()) return false;
+	if (!szMessage) return false;
+	// output into shader log file
+	fputs(szMessage, C4ShaderLogFile);
+	fputs("\n", C4ShaderLogFile);
+	fflush(C4ShaderLogFile);
+	return true;
+}
+
+bool ShaderLogF(const char *strMessage ...)
+{
+	va_list args; va_start(args, strMessage);
+	StdStrBuf Buf;
+	Buf.FormatV(strMessage, args);
+	return ShaderLog(Buf.getData());
 }

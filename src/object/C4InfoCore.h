@@ -3,7 +3,7 @@
  *
  * Copyright (c) 1998-2000, Matthes Bender
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -20,10 +20,10 @@
 #ifndef INC_C4InfoCore
 #define INC_C4InfoCore
 
-#include <C4Id.h>
-#include <C4ValueMap.h>
-#include "C4Real.h"
-#include "C4InputValidation.h"
+#include "lib/C4InputValidation.h"
+#include "object/C4Id.h"
+#include "player/C4ScenarioParameters.h"
+#include "script/C4ValueMap.h"
 
 const int32_t C4MaxPhysical = 100000,
                               C4MaxDeathMsg = 75;
@@ -50,9 +50,7 @@ public:
 public:
 	bool Save(C4Group &hGroup, class C4DefList *pDefs);
 	bool Load(C4Group &hGroup);
-	void Default(C4ID n_id=C4ID::None, class C4DefList *pDefs=NULL, const char *cpNames=NULL);
-	//bool LoadNext(C4Group &hGroup); Old c4o support disabled...
-	//bool Add(C4Group &hGroup);
+	void Default(C4ID n_id=C4ID::None, class C4DefList *pDefs=nullptr, const char *cpNames=nullptr);
 	void Promote(int32_t iRank, C4RankSystem &rRanks, bool fForceRankName);
 	bool GetNextRankInfo(C4RankSystem &rDefaultRanks, int32_t *piNextRankExp, StdStrBuf *psNextRankName);
 	void CompileFunc(StdCompiler *pComp);
@@ -66,15 +64,13 @@ protected:
 class C4RoundResult
 {
 public:
-	C4RoundResult();
-public:
 	StdCopyStrBuf Title;
-	uint32_t Date;
-	int32_t Duration;
-	int32_t Won;
-	int32_t Score,FinalScore,TotalScore;
-	int32_t Bonus;
-	int32_t Level;
+	uint32_t Date = 0;
+	int32_t Duration = 0;
+	int32_t Won = 0;
+	int32_t Score = 0, FinalScore = 0, TotalScore = 0;
+	int32_t Bonus = 0;
+	int32_t Level = 0;
 public:
 	void Default();
 	void CompileFunc(StdCompiler *pComp);
@@ -101,15 +97,17 @@ public:
 	int32_t PrefMouse;
 	int32_t PrefColor;
 	uint32_t PrefColorDw, PrefColor2Dw;
-	int32_t PrefPosition;
 	int32_t PrefClonkSkin;
 	// Old control method - loaded for backwards compatilibity if PrefControl is unassigned
 	// and stored back so you can use the same player file for CR and OC
 	int32_t OldPrefControl;
 	int32_t OldPrefControlStyle;
 	int32_t OldPrefAutoContextMenu;
+
+	// achievements indexed by achievement name and scenario
+	C4ScenarioParameters Achievements; 
 public:
-	void Default(C4RankSystem *pRanks=NULL);
+	void Default(C4RankSystem *pRanks=nullptr);
 	void Promote(int32_t iRank, C4RankSystem &rRanks);
 	bool Load(C4Group &hGroup);
 	bool Save(C4Group &hGroup);

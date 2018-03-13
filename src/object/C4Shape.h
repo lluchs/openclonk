@@ -3,7 +3,7 @@
  *
  * Copyright (c) 1998-2000, Matthes Bender
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -20,9 +20,8 @@
 #ifndef INC_C4Shape
 #define INC_C4Shape
 
-#include "C4FacetEx.h"
-#include "C4Constants.h"
-#include "C4Rect.h"
+#include "config/C4Constants.h"
+#include "lib/C4Rect.h"
 
 #define C4D_VertexCpyPos (C4D_MaxVertex/2)
 
@@ -31,33 +30,29 @@ class C4DensityProvider
 {
 public:
 	virtual int32_t GetDensity(int32_t x, int32_t y) const;
-	virtual ~C4DensityProvider() {}
+	virtual ~C4DensityProvider() = default;
 };
 
 extern C4DensityProvider DefaultDensityProvider;
 
-class C4Shape: public C4Rect
+class C4Shape : public C4Rect
 {
 public:
-	C4Shape();
-public:
 	// remember to adjust C4Shape::CopyFrom and CreateOwnOriginalCopy when adding members here!
-	int32_t FireTop;
-	int32_t VtxNum;
-	int32_t VtxX[C4D_MaxVertex];
-	int32_t VtxY[C4D_MaxVertex];
-	int32_t VtxCNAT[C4D_MaxVertex];
-	int32_t VtxFriction[C4D_MaxVertex];
-	int32_t ContactDensity;
-	int32_t ContactCNAT;
-	int32_t ContactCount;
-	int32_t AttachMat;
-	int32_t VtxContactCNAT[C4D_MaxVertex];
-	int32_t VtxContactMat[C4D_MaxVertex];
-	int32_t iAttachX, iAttachY, iAttachVtx;
+	int32_t VtxNum = 0;
+	int32_t VtxX[C4D_MaxVertex] = { 0 };
+	int32_t VtxY[C4D_MaxVertex] = { 0 };
+	int32_t VtxCNAT[C4D_MaxVertex] = { 0 };
+	int32_t VtxFriction[C4D_MaxVertex] = { 0 };
+	int32_t ContactDensity = C4M_Solid;
+	int32_t ContactCNAT = 0;
+	int32_t ContactCount = 0;
+	int32_t AttachMat = MNone;
+	int32_t VtxContactCNAT[C4D_MaxVertex] = { 0 };
+	int32_t VtxContactMat[C4D_MaxVertex] = { 0 };
+	int32_t iAttachX = 0, iAttachY = 0, iAttachVtx = 0;
 public:
 	void Default();
-	void Clear();
 	void Rotate(C4Real Angle, bool bUpdateVertices);
 	void Stretch(int32_t iCon, bool bUpdateVertices);
 	void Jolt(int32_t iCon, bool bUpdateVertices);
@@ -68,7 +63,7 @@ public:
 	int32_t GetY() const { return y; }
 	bool AddVertex(int32_t iX, int32_t iY);
 	bool CheckContact(int32_t cx, int32_t cy);
-	bool ContactCheck(int32_t cx, int32_t cy, uint32_t *border_hack_contacts=0);
+	bool ContactCheck(int32_t cx, int32_t cy, uint32_t *border_hack_contacts=nullptr, bool collide_halfvehic=false);
 	bool Attach(int32_t &cx, int32_t &cy, BYTE cnat_pos);
 	bool LineConnect(int32_t tx, int32_t ty, int32_t cvtx, int32_t ld, int32_t oldx, int32_t oldy);
 	bool InsertVertex(int32_t iPos, int32_t tx, int32_t ty);
@@ -80,6 +75,8 @@ public:
 	bool CheckScaleToWalk(int x, int y);
 	void CreateOwnOriginalCopy(C4Shape &rFrom); // create copy of all vertex members in back area of own buffers
 	void CompileFunc(StdCompiler *pComp, const C4Shape *default_shape);
+private:
+	bool CheckTouchableMaterial(int32_t x, int32_t y, int32_t vtx_i, int32_t y_dir = 0, const C4DensityProvider &rDensityProvider = DefaultDensityProvider);
 };
 
 #endif // INC_C4Shape

@@ -56,9 +56,16 @@ FunctionEnd
 !define MUI_HEADERIMAGE_RIGHT
 !define MUI_HEADERIMAGE_BITMAP "${SRCDIR}/tools/install\header.bmp"
 
+; Music pack installation routines
+!include musicpack.nsh
+
 ; Installer pages
 ;!insertmacro MULTIUSER_PAGE_INSTALLMODE
 !insertmacro MUI_PAGE_DIRECTORY
+
+; Ask user to download music pack.
+!insertmacro MusicPackChoice
+
 !insertmacro MUI_PAGE_INSTFILES
 
 ; Uninstaller pages
@@ -93,15 +100,29 @@ Section
 
   File "*.dll"
 
+  SetOutPath "$INSTDIR\platforms"
+  File "platforms\"
+
+  SetOutPath "$INSTDIR"
+  
+  ; Delete any previously unpacked Music.ocg, which would block creation of the file.
+  RMDir /r "$INSTDIR\Music.ocg"
+
   File "*.oc?"
   
   ; delete obsolete folders
+  ; from 1.0
   Delete "BackToTheRocks.ocf"
+  ; from 2.0
   Delete "BeyondTheRocks.ocf"
-  ; these got in in release 4.0, bug #1029
+  ; from 3.0
+  Delete "Settlement.ocf"
+  ; from 4.0 (these accidentally got in in release, bug #1029)
   Delete "Issues.ocf"
   Delete "Experimental.ocd"
   Delete "Experimental.ocf"
+  ; from 6.0 (got renamed to Tutorials.ocf)
+  Delete "Tutorial.ocf"
 
   File "${SRCDIR}\planet\AUTHORS"
   File "${SRCDIR}\planet\COPYING"
@@ -215,6 +236,15 @@ Section
 
   ; Add a Firewall exception
   firewall::AddAuthorizedApplication "$INSTDIR\${PRODUCT_FILENAME}" "$(^Name)"
+  
+  ; Download and Install extra music pack
+  ; Do this after the other installation tasks so everything is in order if the user cancels during downloading.
+  Call MusicPackDownload
+  Call MusicPackInstall
+  
+  ; Unpack Music.ocg for faster music switching (regardless if it's the regular or the extended pack)
+  DetailPrint "Unpacking Music file..."
+  ExecShell "open" "$INSTDIR\c4group.exe" "Music.ocg -u" SW_HIDE
 
 SectionEnd
 
@@ -231,7 +261,10 @@ Section Uninstall
   Delete "$INSTDIR\c4group.exe"
 
   Delete "$INSTDIR\*.dll"
+  RMDir /r "$INSTDIR\platforms"
 
+  ; Music may or may not be unpacked.
+  RMDir /r "$INSTDIR\Music.ocg"
   Delete "$INSTDIR\*.oc?"
 
   Delete "$INSTDIR\AUTHORS"

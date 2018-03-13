@@ -3,18 +3,18 @@
 #include Library_Plant
 
 
-func Place(int amount, proplist rectangle, proplist settings)
+func Place(int amount, proplist area, proplist settings)
 {
 	var max_tries = 2 * amount;
 	var loc_area = nil;
-	if (rectangle) loc_area = Loc_InRect(rectangle);
+	if (area) loc_area = Loc_InArea(area);
 	
 	while ((amount > 0) && (--max_tries > 0))
 	{
 		var spot = FindLocation(Loc_Material("Water"), Loc_Wall(CNAT_Bottom), loc_area);
 		if (!spot) continue;
 		
-		var f = CreateObject(this, spot.x, spot.y, NO_OWNER);
+		var f = CreateObjectAbove(this, spot.x, spot.y, NO_OWNER);
 		--amount;
 	}
 	return true;
@@ -23,6 +23,8 @@ func Place(int amount, proplist rectangle, proplist settings)
 private func Initialize()
 {
 	SetAction("Sway");
+	SetPhase(this.Action.Length); // ensure that not all seaweed are synced on scenario load
+	return true;
 }
 
 private func Check()
@@ -30,10 +32,13 @@ private func Check()
 	if(!GBackLiquid()) SetAction("Limp");
 }
 
+// Not moved by tele glove and windbag, in contrast to most plants this plant does not per sé have a vertex that is stuck.
+public func RejectTeleGloveControl() { return true; }
+public func RejectWindbagForce() { return true; }
+
 func SaveScenarioObject(props)
 {
 	if (!inherited(props, ...)) return false;
-	if (GetPhase()) props->AddCall("Phase", this, "SetPhase", GetPhase()); // ensure that not all seaweed are synced on scenario load
 	return true;
 }
 

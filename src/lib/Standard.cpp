@@ -3,7 +3,7 @@
  *
  * Copyright (c) 1998-2000, Matthes Bender
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -18,7 +18,7 @@
 /* All kinds of valuable helpers */
 
 #include "C4Include.h"
-#include <StdSync.h>
+#include "lib/Standard.h"
 
 //------------------------------------- Basics ----------------------------------------
 
@@ -33,13 +33,35 @@ int32_t Distance(int32_t iX1, int32_t iY1, int32_t iX2, int32_t iY2)
 	return dist;
 }
 
-int Angle(int iX1, int iY1, int iX2, int iY2)
+// Angle between points (iX1, iY1) and (iX2, iY2) with range [0, 360), angle = 0 means vertically upward and increasing angles in clockwise direction.
+int32_t Angle(int32_t iX1, int32_t iY1, int32_t iX2, int32_t iY2, int32_t iPrec)
 {
-	int iAngle = (int) ( 180.0 * atan2( float(Abs(iY1-iY2)), float(Abs(iX1-iX2)) ) / M_PI );
-	if (iX2>iX1 )
-		{ if (iY2<iY1) iAngle = 90-iAngle; else iAngle = 90+iAngle; }
+	int32_t iAngle;
+	int32_t dx = iX2 - iX1, dy = iY2 - iY1;
+	if (!dx)
+	{
+		if (dy > 0) return 180 * iPrec;
+		else return 0;
+	}
+	if (!dy)
+	{
+		if (dx > 0) return 90 * iPrec;
+		else return 270 * iPrec;
+	}
+
+	iAngle = static_cast<int32_t>(180.0 * iPrec * atan2(static_cast<double>(Abs(dy)), static_cast<double>(Abs(dx))) / M_PI);
+
+	if (iX2 > iX1)
+	{
+		if (iY2 < iY1) iAngle = (90 * iPrec) - iAngle;
+		else iAngle = (90 * iPrec) + iAngle;
+	}
 	else
-		{ if (iY2<iY1) iAngle = 270+iAngle; else iAngle = 270-iAngle; }
+	{
+		if (iY2 < iY1) iAngle = (270 * iPrec) + iAngle;
+		else iAngle = (270 * iPrec) - iAngle;
+	}
+	
 	return iAngle;
 }
 
@@ -85,58 +107,6 @@ uint32_t SqrtI(uint32_t a)
 	return root >> 1;
 }
 
-bool ForLine(int32_t x1, int32_t y1, int32_t x2, int32_t y2,
-             bool (*fnCallback)(int32_t, int32_t, int32_t), int32_t iPar,
-             int32_t *lastx, int32_t *lasty)
-{
-	int d,dx,dy,aincr,bincr,xincr,yincr,x,y;
-	if (Abs(x2-x1)<Abs(y2-y1))
-	{
-		if (y1>y2) { Swap(x1,x2); Swap(y1,y2); }
-		xincr=(x2>x1) ? 1 : -1;
-		dy=y2-y1; dx=Abs(x2-x1);
-		d=2*dx-dy; aincr=2*(dx-dy); bincr=2*dx; x=x1; y=y1;
-		if (!fnCallback(x,y,iPar))
-		{
-			if (lastx) *lastx=x; if (lasty) *lasty=y;
-			return false;
-		}
-		for (y=y1+1; y<=y2; ++y)
-		{
-			if (d>=0) { x+=xincr; d+=aincr; }
-			else d+=bincr;
-			if (!fnCallback(x,y,iPar))
-			{
-				if (lastx) *lastx=x; if (lasty) *lasty=y;
-				return false;
-			}
-		}
-	}
-	else
-	{
-		if (x1>x2) { Swap(x1,x2); Swap(y1,y2); }
-		yincr=(y2>y1) ? 1 : -1;
-		dx=x2-x1; dy=Abs(y2-y1);
-		d=2*dy-dx; aincr=2*(dy-dx); bincr=2*dy; x=x1; y=y1;
-		if (!fnCallback(x,y,iPar))
-		{
-			if (lastx) *lastx=x; if (lasty) *lasty=y;
-			return false;
-		}
-		for (x=x1+1; x<=x2; ++x)
-		{
-			if (d>=0) { y+=yincr; d+=aincr; }
-			else d+=bincr;
-			if (!fnCallback(x,y,iPar))
-			{
-				if (lastx) *lastx=x; if (lasty) *lasty=y;
-				return false;
-			}
-		}
-	}
-	return true;
-}
-
 //--------------------------------- Characters ------------------------------------------
 
 bool IsIdentifier(char cChar)
@@ -169,8 +139,9 @@ static int ToNumber(char c)
 
 //------------------------------- Strings ------------------------------------------------
 
-int32_t StrToI32(const char *s, int base, const char **scan_end)
+int32_t StrToI32(const char *str, int base, const char **scan_end)
 {
+	const char *s = str;
 	int sign = 1;
 	int32_t result = 0;
 	if (*s == '-')
@@ -182,6 +153,12 @@ int32_t StrToI32(const char *s, int base, const char **scan_end)
 	{
 		s++;
 	}
+	if (!*s)
+	{
+		// Abort if there are no digits to parse
+		if (scan_end) *scan_end = str;
+		return 0;
+	}
 	while (IsNumber(*s,base))
 	{
 		int value = ToNumber(*s++);
@@ -189,13 +166,7 @@ int32_t StrToI32(const char *s, int base, const char **scan_end)
 		result *= base;
 		result += value;
 	}
-	if (scan_end != 0L) *scan_end = s;
-	if (result < 0)
-	{
-		//overflow
-		// we need 2147483648 (2^31) to be -2147483648 in order for -2147483648 to work
-		//result = INT_MAX;
-	}
+	if (scan_end != nullptr) *scan_end = s;
 	result *= sign;
 	return result;
 }
@@ -227,7 +198,7 @@ void SCopyUntil(const char *szSource, char *sTarget, char cUntil, int iMaxL, int
 
 void SCopyUntil(const char *szSource, char *sTarget, const char * sUntil, size_t iMaxL)
 {
-	size_t n = Min(strcspn(szSource, sUntil), iMaxL - 1);
+	size_t n = std::min(strcspn(szSource, sUntil), iMaxL - 1);
 	strncpy(sTarget, szSource, n);
 	sTarget[n] = 0;
 }
@@ -368,21 +339,6 @@ bool SCopySegmentEx(const char *szString, int iSegment, char *sTarget,
 	return true;
 }
 
-
-bool SCopyNamedSegment(const char *szString, const char *szName, char *sTarget,
-                       char cSeparator, char cNameSeparator, int iMaxL)
-{
-	// Advance to named segment
-	while (!( SEqual2(szString,szName) && (szString[SLen(szName)]==cNameSeparator) ))
-	{
-		if (SCharPos(cSeparator,szString)==-1) { sTarget[0]=0; return false; } // No more segments
-		szString += SCharPos(cSeparator,szString)+1;
-	}
-	// Copy segment contents
-	SCopyUntil(szString+SLen(szName)+1,sTarget,cSeparator,iMaxL);
-	return true;
-}
-
 unsigned int SCharCount(char cTarget, const char *szInStr, const char *cpUntil)
 {
 	unsigned int iResult=0;
@@ -426,40 +382,11 @@ void SCapitalize(char *str)
 	}
 }
 
-const char *SSearchIdentifier(const char *szString, const char *szIndex)
-{
-	// Does not check whether szIndex itself is an identifier.
-	// Just checks for space in front and back.
-	const char *cscr;
-	size_t indexlen,match=0;
-	bool frontok=true;
-	if (!szString || !szIndex) return NULL;
-	indexlen=SLen(szIndex);
-	for (cscr=szString; cscr && *cscr; cscr++)
-	{
-		// Match length
-		if (*cscr==szIndex[match]) match++;
-		else match=0;
-		// String is matched, front and back ok?
-		if (match>=indexlen)
-			if (frontok)
-				if (!IsIdentifier(*(cscr+1)))
-					return cscr+1;
-		// Currently no match, check for frontok
-		if (match==0)
-		{
-			if (IsIdentifier(*cscr)) frontok=false;
-			else frontok=true;
-		}
-	}
-	return NULL;
-}
-
 const char *SSearch(const char *szString, const char *szIndex)
 {
 	const char *cscr;
 	size_t indexlen,match=0;
-	if (!szString || !szIndex) return NULL;
+	if (!szString || !szIndex) return nullptr;
 	indexlen=SLen(szIndex);
 	for (cscr=szString; cscr && *cscr; cscr++)
 	{
@@ -467,14 +394,14 @@ const char *SSearch(const char *szString, const char *szIndex)
 		else match=0;
 		if (match>=indexlen) return cscr+1;
 	}
-	return NULL;
+	return nullptr;
 }
 
 const char *SSearchNoCase(const char *szString, const char *szIndex)
 {
 	const char *cscr;
 	size_t indexlen,match=0;
-	if (!szString || !szIndex) return NULL;
+	if (!szString || !szIndex) return nullptr;
 	indexlen=SLen(szIndex);
 	for (cscr=szString; cscr && *cscr; cscr++)
 	{
@@ -482,14 +409,14 @@ const char *SSearchNoCase(const char *szString, const char *szIndex)
 		else match=0;
 		if (match>=indexlen) return cscr+1;
 	}
-	return NULL;
+	return nullptr;
 }
 
 void SWordWrap(char *szText, char cSpace, char cSepa, int iMaxLine)
 {
 	if (!szText) return;
 	// Scan string
-	char *cPos,*cpLastSpace=NULL;
+	char *cPos,*cpLastSpace=nullptr;
 	int iLineRun=0;
 	for (cPos=szText; *cPos; cPos++)
 	{
@@ -508,25 +435,25 @@ void SWordWrap(char *szText, char cSpace, char cSepa, int iMaxLine)
 
 const char *SAdvanceSpace(const char *szSPos)
 {
-	if (!szSPos) return NULL;
+	if (!szSPos) return nullptr;
 	while (IsWhiteSpace(*szSPos)) szSPos++;
 	return szSPos;
 }
 
 const char *SRewindSpace(const char *szSPos, const char *pBegin)
 {
-	if (!szSPos || !pBegin) return NULL;
+	if (!szSPos || !pBegin) return nullptr;
 	while (IsWhiteSpace(*szSPos))
 	{
 		szSPos--;
-		if (szSPos<pBegin) return NULL;
+		if (szSPos<pBegin) return nullptr;
 	}
 	return szSPos;
 }
 
 const char *SAdvancePast(const char *szSPos, char cPast)
 {
-	if (!szSPos) return NULL;
+	if (!szSPos) return nullptr;
 	while (*szSPos)
 	{
 		if (*szSPos==cPast) { szSPos++; break; }
@@ -595,71 +522,6 @@ int SLineGetCharacters(const char *szText, const char *cpPosition)
 	return iChars;
 }
 
-void SRemoveComments(char *szScript)
-{
-	const char *pScriptCont;
-	if (!szScript) return;
-	while (*szScript)
-	{
-		// Advance to next slash
-		while (*szScript && (*szScript!='/')) szScript++;
-		if (!(*szScript)) return; // No more comments
-		// Line comment
-		if (szScript[1]=='/')
-		{
-			if ((pScriptCont = SSearch(szScript+2,LineFeed)))
-				SCopy(pScriptCont-SLen(LineFeed),szScript);
-			else
-				szScript[0]=0;
-		}
-		// Block comment
-		else if (szScript[1]=='*')
-		{
-			if ((pScriptCont = SSearch(szScript+2,"*/")))
-				SCopy(pScriptCont,szScript);
-			else
-				szScript[0]=0;
-		}
-		// No comment
-		else
-		{
-			szScript++;
-		}
-	}
-}
-
-bool SCopyPrecedingIdentifier(const char *pBegin, const char *pIdentifier, char *sTarget, int iSize)
-{
-	// Safety
-	if (!pIdentifier || !sTarget || !pBegin) return false;
-	// Empty default
-	sTarget[0]=0;
-	// Identifier is at begin
-	if (!(pIdentifier>pBegin)) return false;
-	// Rewind space
-	const char *cPos;
-	if (!(cPos = SRewindSpace(pIdentifier-1,pBegin))) return false;
-	// Rewind to beginning of identifier
-	while ((cPos>pBegin) && IsIdentifier(cPos[-1])) cPos--;
-	// Copy identifier
-	SCopyIdentifier(cPos,sTarget,iSize);
-	// Success
-	return true;
-}
-
-const char *SSearchFunction(const char *szString, const char *szIndex)
-{
-	// Safety
-	if (!szString || !szIndex) return NULL;
-	// Ignore failsafe
-	if (szIndex[0]=='~') szIndex++;
-	// Buffer to append colon
-	char szDeclaration[256+2];
-	SCopy(szIndex,szDeclaration,256); SAppendChar(':',szDeclaration);
-	// Search identifier
-	return SSearchIdentifier(szString,szDeclaration);
-}
-
 void SInsert(char *szString, const char *szInsert, int iPosition, int iMaxLen)
 {
 	// Safety
@@ -686,7 +548,7 @@ bool SCopyEnclosed(const char *szSource, char cOpen, char cClose, char *sTarget,
 	if (!szSource || !sTarget) return false;
 	if ((iPos = SCharPos(cOpen,szSource)) < 0) return false;
 	if ((iLen = SCharPos(cClose,szSource+iPos+1)) < 0) return false;
-	SCopy(szSource+iPos+1,sTarget,Min(iLen,iSize));
+	SCopy(szSource+iPos+1,sTarget,std::min(iLen,iSize));
 	return true;
 }
 
@@ -719,7 +581,7 @@ bool SAddModule(char *szList, const char *szModule, bool fCaseSensitive)
 	// Safety / no empties
 	if (!szList || !szModule || !szModule[0]) return false;
 	// Already a module?
-	if (SIsModule(szList,szModule,NULL,fCaseSensitive)) return false;
+	if (SIsModule(szList,szModule,nullptr,fCaseSensitive)) return false;
 	// New segment, add string
 	SNewSegment(szList);
 	SAppend(szModule,szList);
@@ -792,7 +654,7 @@ bool SWildcardMatchEx(const char *szString, const char *szWildcard)
 	if (!szString || !szWildcard) return false;
 	// match char-wise
 	const char *pWild = szWildcard, *pPos = szString;
-	const char *pLWild = NULL, *pLPos = NULL; // backtracking
+	const char *pLWild = nullptr, *pLPos = nullptr; // backtracking
 	while (*pWild || pLWild)
 		// string wildcard?
 		if (*pWild == '*')
@@ -812,22 +674,6 @@ bool SWildcardMatchEx(const char *szString, const char *szWildcard)
 	// match complete if both strings are fully matched
 	return !*pWild && !*pPos;
 }
-
-/* Some part of the Winapi */
-
-#ifdef NEED_FALLBACK_ATOMIC_FUNCS
-static CStdCSec SomeMutex;
-long InterlockedIncrement(long * var)
-{
-	CStdLock Lock(&SomeMutex);
-	return ++(*var);
-}
-long InterlockedDecrement(long * var)
-{
-	CStdLock Lock(&SomeMutex);
-	return --(*var);
-}
-#endif
 
 // UTF-8 conformance checking
 namespace
@@ -987,4 +833,29 @@ int GetCharacterCount(const char * s)
 		else assert(false);
 	}
 	return l;
+}
+
+std::string vstrprintf(const char *format, va_list args)
+{
+	va_list argcopy;
+	va_copy(argcopy, args);
+	int size = vsnprintf(nullptr, 0, format, argcopy);
+	if (size < 0)
+		throw std::invalid_argument("invalid argument to strprintf");
+	va_end(argcopy);
+	std::string s;
+	s.resize(size + 1);
+	size = vsnprintf(&s[0], s.size(), format, args);
+	assert(size >= 0);
+	s.resize(size);
+	return s;
+}
+
+std::string strprintf(const char *format, ...)
+{
+	va_list args;
+	va_start(args, format);
+	std::string s = vstrprintf(format, args);
+	va_end(args);
+	return s;
 }

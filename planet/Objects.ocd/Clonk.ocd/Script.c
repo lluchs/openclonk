@@ -10,40 +10,46 @@
 #include Library_HUDAdapter
 // standard controls
 #include Library_ClonkControl
+#include Library_CarryHeavyControl
 // manager for aiming
 #include Library_AimManager
 
 #include Clonk_Animations
 
-// un-comment them as soon as the new controls work with context menus etc.^
-// Context menu
-//#include Library_ContextMenu
-// Auto production
-//#include Library_AutoProduction
+static const CLONK_MESH_TRANSFORM_SLOT_Turn = 0;             // for turning the clonk
+static const CLONK_MESH_TRANSFORM_SLOT_Rotation_Scaling = 1; // for adjusting the rotation while scaling
+static const CLONK_MESH_TRANSFORM_SLOT_Translation_Hook = 2; // for adjusting the rotation while scaling
+static const CLONK_MESH_TRANSFORM_SLOT_Rotation_Hook = 3;    // for adjusting the rotation while scaling
+static const CLONK_MESH_TRANSFORM_SLOT_Rotation_Ladder = 5;  // for adjusting the rotation while climbing a rope ladder
+static const CLONK_MESH_TRANSFORM_SLOT_Scale = 6;            // for scaling the size of the clonk
+static const CLONK_MESH_TRANSFORM_SLOT_Translation_Dive = 7; // for adjusting the position while diving
 
 // ladder climbing
 #include Library_CanClimbLadder
 
-local pInventory;
-
 /* Initialization */
 
-protected func Construction()
+func Construction()
 {
 	_inherited(...);
-
-	SetAction("Walk");
-	SetDir(Random(2));
-	// Broadcast for rules
-	GameCallEx("OnClonkCreation", this);
 
 	AddEffect("IntTurn", this, 1, 1, this);
 	AddEffect("IntEyes", this, 1, 35+Random(4), this);
 
 	AttachBackpack();
-	iHandMesh = [0,0];
+
+	this.hand_display = {};
+	this.hand_display.hand_mesh = [0,0];
+	this.hand_display.hand_action = 0;
+	this.hand_display.both_handed = false;
+	this.hand_display.on_back = false;
 
 	SetSkin(0);
+
+	SetAction("Walk");
+	SetDir(Random(2));
+	// Broadcast for rules
+	GameCallEx("OnClonkCreation", this);
 }
 
 /* When adding to the crew of a player */
@@ -83,7 +89,7 @@ protected func ControlCommand(szCommand, pTarget, iTx, iTy, pTarget2, Data)
 		}
 	}
 	// No overloaded command
-	return 0;
+	return _inherited(szCommand, pTarget, iTx, iTy, pTarget2, Data, ...);
 }
 
 
@@ -108,30 +114,32 @@ public func Redefine(idTo)
 protected func CatchBlow()
 {
 	if (GetAction() == "Dead") return;
-	if (!Random(5)) Hurt();
+	if (!Random(5)) PlaySoundHurt();
 }
-	
-protected func Hurt()
+
+protected func OnEnergyChange(int change, int cause, int caused_by)
 {
-	if(gender == 0)
-		Sound("Hurt?");
-	else
-		Sound("FHurt?");
+	if (change < 0 && GetCursor(GetOwner()) == this)
+		PlayRumble(GetOwner(), Min(300 + 1000 * -change / this.MaxEnergy, 1000), 150);
+	return _inherited(change, cause, caused_by, ...);
 }
 	
 protected func Grab(object pTarget, bool fGrab)
 {
-	Sound("Grab");
+	if (fGrab)
+		Sound("Clonk::Action::Grab");
+	else
+		Sound("Clonk::Action::UnGrab");
 }
 
 protected func Get()
 {
-	Sound("Grab");
+	Sound("Clonk::Action::Grab");
 }
 
 protected func Put()
 {
-	Sound("Grab");
+	Sound("Clonk::Action::Grab");
 }
 
 protected func Death(int killed_by)
@@ -147,34 +155,44 @@ protected func Death(int killed_by)
 		return;
 	
 	// Some effects on dying.
-	if(gender == 0)
-		Sound("Die");
-	else
-		Sound("FDie");
+	if (!this.silent_death)
+	{
+		PlaySkinSound("Die*");
+		DeathAnnounce();
+		
+		// When killed by a team member, the other Clonk randomly plays a sound.
+		if (!Random(5) && killed_by != NO_OWNER && killed_by != GetOwner() && !Hostile(killed_by, GetOwner()))
+		{
+			var other_cursor = GetCursor(killed_by);
+			if (other_cursor)
+				other_cursor->~PlaySoundTaunt();
+		}
+	}
 	CloseEyes(1);
-	
-	DeathAnnounce();
-	return;
+
+	return true;
 }
 
-protected func Destruction()
+protected func Destruction(...)
 {
 	_inherited(...);
 	// If the clonk wasn't dead yet, he will be now.
-	if (GetAlive())
-		GameCallEx("OnClonkDeath", this, GetKiller());
-	// If this is the last crewmember, do broadcast.
-	if (GetCrew(GetOwner()) == this)
-	if (GetCrewCount(GetOwner()) == 1)
-		// Only if the player is still alive and not yet elimnated.
-			if (GetPlayerName(GetOwner()))
-				GameCallEx("RelaunchPlayer", GetOwner(), GetKiller());
-	return;
+	// Always kill clonks first. This will ensure relaunch scripts, enemy kill counters, etc. are called
+	// even if clonks die in some weird way that causes direct removal
+	// (To prevent a death callback, you can use SetAlive(false); RemoveObject();)
+	if (GetAlive()) { this.silent_death=true; Kill(); }
+	return true;
 }
 
 protected func DeepBreath()
 {
-	Sound("Breath");
+	Sound("Clonk::Action::Breathing");
+}
+
+public func Incineration()
+{
+	PlaySoundShock();
+	return _inherited(...);
 }
 
 protected func CheckStuck()
@@ -187,17 +205,36 @@ protected func CheckStuck()
 
 public func Eat(object food)
 {
-	if(GetProcedure() == "WALK")
-	{
-		DoEnergy(food->NutritionalValue());
-		food->RemoveObject();
-		Sound("Munch?");
-		SetAction("Eat");
-	}
+	Heal(food->NutritionalValue());
+	food->RemoveObject();
+	Sound("Clonk::Action::Munch?");
+	SetAction("Eat");
 }
 
+// Called when an object was dug free.
 func DigOutObject(object obj)
 {
+	// Some materials can only be transported/collected with a bucket.
+	if (obj->~IsBucketMaterial())
+	{
+		// Assume we might already be carrying a filled bucket and the object is stackable, try it!
+		var handled = obj->~MergeWithStacksIn(this);
+		if (!handled)
+		{
+			// Otherwise, force into empty buckets!
+			var empty_bucket = FindObject(Find_Container(this), Find_Func("IsBucket"), Find_Func("IsBucketEmpty"));
+			if (empty_bucket)
+			{
+				obj->Enter(empty_bucket);
+				handled = true;
+			}
+		}
+		// Those objects can only be carried with a bucket, sadly...
+		if (!handled)
+			obj->RemoveObject();
+		// Object might have been removed now.
+		return;
+	}
 	// Collect fragile objects when dug out
 	if (obj->GetDefFragile())
 		return Collect(obj,nil,nil,true);
@@ -230,13 +267,44 @@ public func IsPrey() { return true; }
 
 public func IsJumping(){return WildcardMatch(GetAction(), "*Jump*");}
 public func IsWalking(){return GetProcedure() == "WALK";}
+public func IsSwimming(){return GetProcedure() == "SWIM";}
 public func IsBridging(){return WildcardMatch(GetAction(), "Bridge*");}
+
+// Clonks act as containers for the interaction menu as long as they are alive.
+public func IsContainer() { return GetAlive(); }
+
+// You can not interact with dead Clonks.
+// This would be the place to show a death message etc.
+public func RejectInteractionMenu(object to)
+{
+	if (!GetAlive())
+		return Format("$MsgDeadClonk$", GetName());
+	return _inherited(to, ...);
+}
+
+public func GetSurroundingEntryMessage(object for_clonk)
+{
+	if (!GetAlive()) return Format("{{Clonk_Grave}} %s", Clonk_Grave->GetInscriptionForClonk(this));
+}
 
 /* Carry items on the clonk */
 
 local iHandMesh;
 local fHandAction;
 local fBothHanded;
+
+// Mesh attachment handling
+local hand_display;
+/* Features 4 properties:
+	hand_mesh: Array of attachment numbers for items on the clonk.
+	hand_action: Determines whether the clonk's hands are busy if items can be used.
+		one of three ints: -1, 0 or 1
+		-1: no items are drawn on the clonk but they are usable
+		 0: items are drawn and can be used
+		+1: items are not drawn and cannot be used
+	both_handed: The first item held is held with both hands, so draw the second one differently.
+	on_back: The first item is currently on the clonk's back, so draw the second one differently (if it also goes on the back).
+*/
 
 func OnSelectionChanged(int oldslot, int newslot, bool secondaryslot)
 {
@@ -264,9 +332,14 @@ public func DetachObject(object obj)
 
 func DetachHandItem(bool secondary)
 {
-	if(iHandMesh[secondary])
-		DetachMesh(iHandMesh[secondary]);
-	iHandMesh[secondary] = 0;
+	if(this.hand_display.hand_mesh[secondary])
+	{
+		DetachMesh(this.hand_display.hand_mesh[secondary]);
+		var anim = "Close2Hand";
+		if (secondary) anim = "Close1Hand";
+		PlayAnimation(anim, CLONK_ANIM_SLOT_Hands + secondary, Anim_Const(0));
+	}
+	this.hand_display.hand_mesh[secondary] = 0;
 }
 
 func AttachHandItem(bool secondary)
@@ -278,32 +351,47 @@ func AttachHandItem(bool secondary)
 func UpdateAttach()
 {
 	StopAnimation(GetRootAnimation(6));
+
+	if (this.hand_display.hand_mesh)
+	{
+		DetachHandItem(0);
+		DetachHandItem(1);
+	}
+
 	DoUpdateAttach(0);
 	DoUpdateAttach(1);
 }
 
-func DoUpdateAttach(bool sec)
+func DoUpdateAttach(int sec)
 {
 	var obj = GetHandItem(sec);
 	var other_obj = GetHandItem(!sec);
 	if(!obj) return;
-	var iAttachMode = obj->~GetCarryMode(this);
-	if(iAttachMode == CARRY_None) return;
 
-	if(iHandMesh[sec])
+	var attach_mode = obj->~GetCarryMode(this, sec);
+	if(attach_mode == CARRY_None) return;
+
+	if(!sec)
 	{
-		DetachMesh(iHandMesh[sec]);
-		iHandMesh[sec] = 0;
+		this.hand_display.both_handed = false;
+		this.hand_display.on_back = false;
+	}
+
+	if(this.hand_display.hand_mesh[sec])
+	{
+		DetachMesh(this.hand_display.hand_mesh[sec]);
+		this.hand_display.hand_mesh[sec] = 0;
 	}
 
 	var bone = "main";
 	var bone2;
-	if(obj->~GetCarryBone())  bone  = obj->~GetCarryBone(this);
-	if(obj->~GetCarryBone2()) bone2 = obj->~GetCarryBone2(this);
+	if(obj->~GetCarryBone())  bone  = obj->~GetCarryBone(this, sec);
+	if(obj->~GetCarryBone2()) bone2 = obj->~GetCarryBone2(this, sec);
 	else bone2 = bone;
-	var nohand = 0;
-	if(!HasHandAction(sec, 1)) nohand = 1;
-	var trans = obj->~GetCarryTransform(this, sec, nohand);
+	var nohand = false;
+	if(!HasHandAction(sec, 1)) nohand = true;
+	
+	var trans = obj->~GetCarryTransform(this, sec, nohand, this.hand_display.on_back);
 
 	var pos_hand = "pos_hand2";
 	if(sec) pos_hand = "pos_hand1";
@@ -311,94 +399,128 @@ func DoUpdateAttach(bool sec)
 	if(sec) pos_back = "pos_back2";
 	var closehand = "Close2Hand";
 	if(sec) closehand = "Close1Hand";
-
-	if(!sec) fBothHanded = 0;
+	var pos_belt = "skeleton_leg_upper.R";
+	if (sec) pos_belt = "skeleton_leg_upper.L";
 
 	var special = obj->~GetCarrySpecial(this);
 	var special_other;
-	if(other_obj) special_other = other_obj->~GetCarrySpecial(this);
+	if(other_obj) special_other = other_obj->~GetCarrySpecial(this, sec);
 	if(special)
 	{
-		iHandMesh[sec] = AttachMesh(obj, special, bone, trans);
-		iAttachMode = 0;
+		this.hand_display.hand_mesh[sec] = AttachMesh(obj, special, bone, trans);
+		attach_mode = 0;
 	}
 
-	if(iAttachMode == CARRY_Hand)
+	if(attach_mode == CARRY_Hand)
 	{
 		if(HasHandAction(sec, 1))
 		{
-			iHandMesh[sec] = AttachMesh(obj, pos_hand, bone, trans);
-			PlayAnimation(closehand, 6, Anim_Const(GetAnimationLength(closehand)), Anim_Const(1000));
+			this.hand_display.hand_mesh[sec] = AttachMesh(obj, pos_hand, bone, trans);
+			PlayAnimation(closehand, CLONK_ANIM_SLOT_Hands + sec, Anim_Const(GetAnimationLength(closehand)));
 		}
 	}
-	else if(iAttachMode == CARRY_HandBack)
+	else if(attach_mode == CARRY_HandBack)
 	{
 		if(HasHandAction(sec, 1))
 		{
-			iHandMesh[sec] = AttachMesh(obj, pos_hand, bone, trans);
-			PlayAnimation(closehand, 6, Anim_Const(GetAnimationLength(closehand)), Anim_Const(1000));
+			this.hand_display.hand_mesh[sec] = AttachMesh(obj, pos_hand, bone, trans);
+			PlayAnimation(closehand, CLONK_ANIM_SLOT_Hands + sec, Anim_Const(GetAnimationLength(closehand)));
 		}
 		else
-			iHandMesh[sec] = AttachMesh(obj, pos_back, bone2, trans);
+		{
+			this.hand_display.hand_mesh[sec] = AttachMesh(obj, pos_back, bone2, trans);
+			if (!sec)
+				this.hand_display.on_back = true;
+		}
 	}
-	else if(iAttachMode == CARRY_HandAlways)
+	else if(attach_mode == CARRY_HandAlways)
 	{
-		iHandMesh[sec] = AttachMesh(obj, pos_hand, bone, trans);
-		PlayAnimation(closehand, 6, Anim_Const(GetAnimationLength(closehand)), Anim_Const(1000));
+		this.hand_display.hand_mesh[sec] = AttachMesh(obj, pos_hand, bone, trans);
+		PlayAnimation(closehand, CLONK_ANIM_SLOT_Hands + sec, Anim_Const(GetAnimationLength(closehand)));
 	}
-	else if(iAttachMode == CARRY_Back)
+	else if(attach_mode == CARRY_Back)
 	{
-		iHandMesh[sec] = AttachMesh(obj, pos_back, bone2, trans);
+		this.hand_display.hand_mesh[sec] = AttachMesh(obj, pos_back, bone2, trans);
+		if (!sec)
+			this.hand_display.on_back = true;
 	}
-	else if(iAttachMode == CARRY_BothHands)
+	else if(attach_mode == CARRY_BothHands)
 	{
 		if(sec) return;
+
 		if(HasHandAction(sec, 1) && !sec && !special_other)
 		{
-			iHandMesh[sec] = AttachMesh(obj, "pos_tool1", bone, trans);
-			PlayAnimation("CarryArms", 6, Anim_Const(obj->~GetCarryPhase(this)), Anim_Const(1000));
-			fBothHanded = 1;
+			this.hand_display.hand_mesh[sec] = AttachMesh(obj, "pos_tool1", bone, trans);
+			PlayAnimation("CarryArms", CLONK_ANIM_SLOT_Hands + sec, Anim_Const(obj->~GetCarryPhase(this)));
+			this.hand_display.both_handed = true;
 		}
 	}
-	else if(iAttachMode == CARRY_Spear)
+	else if(attach_mode == CARRY_Spear)
+	{
+		// This is a one sided animation, so switch to back if not in the main hand
+		if(HasHandAction(sec, 1) && !sec)
+		{
+			this.hand_display.hand_mesh[sec] = AttachMesh(obj, pos_hand, bone, trans);
+			PlayAnimation("CarrySpear", CLONK_ANIM_SLOT_Hands + sec, Anim_Const(0));
+		}
+		else
+		{
+			this.hand_display.hand_mesh[sec] = AttachMesh(obj, pos_back, bone2, trans);
+			if (!sec)
+				this.hand_display.on_back = true;
+		}
+	}
+	else if(attach_mode == CARRY_Blunderbuss)
 	{
 		if(HasHandAction(sec, 1) && !sec)
 		{
-			PlayAnimation("CarrySpear", 6, Anim_Const(0), Anim_Const(1000));
+			this.hand_display.hand_mesh[sec] = AttachMesh(obj, "pos_hand2", bone, trans);
+			PlayAnimation("CarryMusket", CLONK_ANIM_SLOT_Hands + sec, Anim_Const(0), Anim_Const(1000));
+			this.hand_display.both_handed = true;
 		}
 		else
-			iHandMesh[sec] = AttachMesh(obj, pos_back, bone2, trans);
+		{
+			this.hand_display.hand_mesh[sec] = AttachMesh(obj, pos_back, bone2, trans);
+			if (!sec)
+				this.hand_display.on_back = true;
+		}
 	}
-	else if(iAttachMode == CARRY_Musket)
+	else if(attach_mode == CARRY_Grappler)
 	{
 		if(HasHandAction(sec, 1) && !sec)
 		{
-			iHandMesh[sec] = AttachMesh(obj, "pos_hand2", bone, trans);
-			PlayAnimation("CarryMusket", 6, Anim_Const(0), Anim_Const(1000));
-			fBothHanded = 1;
+			this.hand_display.hand_mesh[sec] = AttachMesh(obj, "pos_hand2", bone, trans);
+			PlayAnimation("CarryCrossbow", CLONK_ANIM_SLOT_Hands + sec, Anim_Const(0), Anim_Const(1000));
+			this.hand_display.both_handed = true;
 		}
 		else
-			iHandMesh[sec] = AttachMesh(obj, pos_back, bone2, trans);
-	}
-	else if(iAttachMode == CARRY_Grappler)
-	{
-		if(HasHandAction(sec, 1) && !sec)
 		{
-			iHandMesh[sec] = AttachMesh(obj, "pos_hand2", bone, trans);
-			PlayAnimation("CarryCrossbow", 6, Anim_Const(0), Anim_Const(1000));
-			fBothHanded = 1;
+			this.hand_display.hand_mesh[sec] = AttachMesh(obj, pos_back, bone2, trans);
+			if (!sec)
+				this.hand_display.on_back = true;
 		}
-		else
-			iHandMesh[sec] = AttachMesh(obj, pos_back, bone2, trans);
 	}
-}//AttachMesh(DynamiteBox, "pos_tool1", "main", Trans_Translate(0,0,0));
+	else if(attach_mode == CARRY_Belt)
+	{
+		// Do some extra transforms for this kind of carrying
+		if (trans)
+			trans = Trans_Mul(trans, Trans_Rotate(160,0,0,1), Trans_Rotate(5,0,1), Trans_Rotate(30,1), Trans_Translate(-2500,0,700), Trans_Scale(700));
+		else
+			trans = Trans_Mul(Trans_Rotate(160,0,0,1), Trans_Rotate(5,0,1), Trans_Rotate(30,1), Trans_Translate(-2500,0,800), Trans_Scale(700));
+		this.hand_display.hand_mesh[sec] = AttachMesh(obj, pos_belt, bone, trans);
+	}
+	else if(attach_mode == CARRY_Sword)
+	{
+		this.hand_display.hand_mesh[sec] = AttachMesh(obj, "skeleton_hips", bone, trans);
+	}
+}
 
 public func GetHandMesh(object obj)
 {
 	if(GetHandItem(0) == obj)
-		return iHandMesh[0];
+		return this.hand_display.hand_mesh[0];
 	if(GetHandItem(1) == obj)
-		return iHandMesh[1];
+		return this.hand_display.hand_mesh[1];
 }
 
 static const CARRY_None         = 0;
@@ -408,30 +530,41 @@ static const CARRY_HandAlways   = 3;
 static const CARRY_Back         = 4;
 static const CARRY_BothHands    = 5;
 static const CARRY_Spear        = 6;
-static const CARRY_Musket       = 7;
+static const CARRY_Blunderbuss  = 7;
 static const CARRY_Grappler     = 8;
+static const CARRY_Belt         = 9;
+static const CARRY_Sword        = 10;
 
-func HasHandAction(sec, just_wear)
+func HasHandAction(sec, just_wear, bool force_landscape_letgo)
 {
-	if(sec && fBothHanded)
+	// Check if the clonk is currently able to use hands
+	// sec: Needs both hands (e.g. CarryHeavy?)
+	// just_wear: ???
+	// force_landscape_letgo: Also allow from actions where hands are currently grabbing the landscape (scale, hangle)
+	if(sec && this.hand_display.both_handed)
 		return false;
 	if(just_wear)
 	{
-		if( HasActionProcedure() && !fHandAction ) // For wear purpose fHandAction==-1 also blocks
+		if( HasActionProcedure(force_landscape_letgo) && !this.hand_display.hand_action )
+		// For wear purpose this.hand_display.hand_action==-1 also blocks
 			return true;
 	}
 	else
 	{
-		if( HasActionProcedure() && (!fHandAction || fHandAction == -1) )
+		if( HasActionProcedure(force_landscape_letgo) && (!this.hand_display.hand_action || this.hand_display.hand_action == -1) )
 			return true;
 	}
 	return false;
 }
 
-func HasActionProcedure()
+func HasActionProcedure(bool force_landscape_letgo)
 {
+	// Check if the clonk is currently in an action where he could use his hands
+	// if force_landscape_letgo is true, also allow during scale/hangle assuming the clonk will let go
 	var action = GetAction();
 	if (action == "Walk" || action == "Jump" || action == "WallJump" || action == "Kneel" || action == "Ride" || action == "BridgeStand")
+		return true;
+	if (force_landscape_letgo) if (action == "Scale" || action == "Hangle")
 		return true;
 	return false;
 }
@@ -446,19 +579,32 @@ public func ReadyToAction(fNoArmCheck)
 public func SetHandAction(bool fNewValue)
 {
 	if(fNewValue > 0)
-		fHandAction = 1; // 1 means can't use items and doesn't draw items in hand
+		this.hand_display.hand_action = 1; // 1 means can't use items and doesn't draw items in hand
 	else if(fNewValue < 0)
-		fHandAction = -1; // just don't draw items in hand can still use them
+		this.hand_display.hand_action = -1; // just don't draw items in hand can still use them
 	else
-		fHandAction = 0;
+		this.hand_display.hand_action = 0;
 	UpdateAttach();
 }
 
 public func GetHandAction()
 {
-	if(fHandAction == 1)
+	if(this.hand_display.hand_action == 1)
 		return true;
 	return false;
+}
+
+/* Enable the Clonk to pick up stuff from its surrounding in the interaction menu */
+public func OnInteractionMenuOpen(object menu)
+{
+	_inherited(menu, ...);
+	
+	// Allow picking up stuff from the surrounding only if not in a container itself.
+	if (!Contained())
+	{
+		var surrounding = CreateObject(Helper_Surrounding);
+		surrounding->InitFor(this, menu);
+	}
 }
 
 /* Mesh transformations */
@@ -491,7 +637,7 @@ func AttachBackpack()
 {
 	//Places a backpack onto the clonk
 	backpack = AttachMesh(BackpackGraphic, "skeleton_body", "main",       
-	                      Trans_Mul(Trans_Rotate(180,0,1,0), Trans_Scale(700,700,400), Trans_Translate(0,4000,1000)));
+	                      Trans_Mul(Trans_Rotate(180,1,0,0), Trans_Scale(700,400,700), Trans_Translate(4000,-1000,0)));
 }
 
 func RemoveBackpack()
@@ -542,90 +688,226 @@ func FxBubbleTimer(pTarget, effect, iTime)
 	}
 }
 
-func QueryCatchBlow(object obj)
+public func QueryCatchBlow(object obj)
 {
-	var r=0;
-	var e=0;
-	var i=0;
+	var fx;
+	var index = 0;
 	// Blocked by object effects?
-	while(e=GetEffect("*", obj, i++))
-		if(EffectCall(obj, e, "QueryHitClonk", this))
+	while (fx = GetEffect("*", obj, index++))
+		if (EffectCall(obj, fx, "QueryHitClonk", this))
 			return true;
 	// Blocked by Clonk effects?
-	i=0;
-	while(e=GetEffect("*Control*", this, i++))
-	{
-		if(EffectCall(this, e, "QueryCatchBlow", obj))
-		{
-			r=true;
-			break;
-		}
-		
-	}
-	if(r) return r;
-	// No blocking
+	index = 0;
+	while (fx = GetEffect("*Control*", this, index++))
+		if (EffectCall(this, fx, "QueryCatchBlow", obj))
+			return true;
+	// Default blocking.
 	return _inherited(obj, ...);
 }
 
-local gender;
+local gender, skin, skin_name;
 
-func SetSkin(int skin)
+func SetSkin(int new_skin)
 {
+	// Remember skin
+	skin = new_skin;
+	
 	//Adventurer
 	if(skin == 0)
-	{	SetGraphics();
+	{	SetGraphics(skin_name = nil);
 		gender = 0;	}
 
 	//Steampunk
 	if(skin == 1)
-	{	SetGraphics("Steampunk");
+	{	SetGraphics(skin_name = "Steampunk");
 		gender = 1; }
 
 	//Alchemist
 	if(skin == 2)
-	{	SetGraphics("Alchemist");
+	{	SetGraphics(skin_name = "Alchemist");
 		gender = 0;	}
 	
 	//Farmer
 	if(skin == 3)
-	{	SetGraphics("Farmer");
+	{	SetGraphics(skin_name = "Farmer");
 		gender = 1;	}
 
 	RemoveBackpack(); //add a backpack
 	AttachBackpack();
-	SetAction("Jump"); //refreshes animation
+	//refreshes animation (whatever that means?)
+	// Go back to original action afterwards and hope
+	// that noone calls SetSkin during more compex activities
+	var prev_action = GetAction();
+	SetAction("Jump");
+	SetAction(prev_action);
 
 	return skin;
 }
 func GetSkinCount() { return 4; }
+
+func GetSkin() { return skin; }
+func GetSkinName() { return skin_name; }
+
+
+// Returns the skin name as used to select the right sound subfolder.
+public func GetSoundSkinName()
+{
+	if (skin_name == nil) return "Adventurer";
+	return skin_name;
+}
+
+public func PlaySkinSound(string sound, ...)
+{
+	Sound(Format("Clonk::Skin::%s::%s", GetSoundSkinName(), sound), ...);
+}
+
+/*
+Helper functions to play some sounds. This are encapsulated here in case sound names change.
+*/
+public func PlaySoundConfirm(...)
+{
+	if (GetSoundSkinName() != "Farmer")
+		PlaySkinSound("Confirm*", ...);
+}
+public func PlaySoundDecline(...)
+{
+	if (GetSoundSkinName() != "Farmer")
+		PlaySkinSound("Decline*", ...);
+}
+// Doubtful sound, e.g. when trying a clearly impossible action.
+public func PlaySoundDoubt(...)
+{
+	if (GetSoundSkinName() != "Farmer")
+		PlaySkinSound("Doubt*", ...);
+}
+
+public func PlaySoundHurt(...) { PlaySkinSound("Hurt*", ...); }
+// Sound that is supposed to be funny in situations where the Clonk maybe did something "evil" like killing a teammate.
+public func PlaySoundTaunt(...)
+{
+	if (GetSoundSkinName() == "Alchemist")
+		PlaySkinSound("EvilConfirm*", ...);
+	else if (GetSoundSkinName() == "Steampunk")
+		PlaySkinSound("Laughter*", ...);
+}
+// Surprised sounds, e.g. when catching fire.
+public func PlaySoundShock(...)
+{
+	if (GetSoundSkinName() == "Steampunk" || GetSoundSkinName() == "Adventurer")
+		PlaySkinSound("Shock*", ...);
+}
+public func PlaySoundScream() { PlaySkinSound("Scream*"); }
+// General idle sounds, played when also playing an idle animation.
+public func PlaySoundIdle(...)
+{
+	if (GetSoundSkinName() == "Steampunk")
+		PlaySkinSound("Singing*", ...);
+}
+//Portrait definition of this Clonk for messages
+func GetPortrait()
+{
+	return this.portrait ?? { Source = GetID(), Name = Format("Portrait%s", skin_name ?? ""), Color = GetColor() };
+}
+
+func SetPortrait(proplist custom_portrait)
+{
+	this.portrait = custom_portrait;
+	return true;
+}
+
+// Callback from the engine when a command failed.
+public func CommandFailure(string command, object target)
+{
+	// Don't play a sound when an exit command fails (this is a hotfix, because exiting fails all the time).
+	if (command == "Exit")
+		return; 
+	// Otherwise play a sound that the clonk is doubting this command.
+	PlaySoundDoubt();
+	return;
+}
+
+/* Magic */
+
+local magic_energy;
+
+public func GetMagicEnergy(int precision)
+{
+	if (precision == nil) precision = 1000;
+
+	if (precision)
+		return magic_energy / precision;
+	else
+		return magic_energy;
+}
+
+public func GetMaxMagicEnergy(int precision)
+{
+	if (precision == nil) precision = 1000;
+
+	if (precision)
+		return this.MaxMagic / precision;
+	else
+		return this.MaxMagic;
+}
+
+public func SetMagicEnergy(int val, int precision)
+{
+	if (precision == nil) precision = 1000;
+
+	magic_energy = BoundBy(val * precision, 0, this.MaxMagic);
+	this->~OnMagicEnergyChange(val);
+
+	return true;
+}
+
+// Adjusts the magic energy but only if change can be applied completely. Returns true if successful, false otherwise.
+// Use partial to bypass the completeness check
+public func DoMagicEnergy(int change, bool partial, int precision)
+{
+	if (precision == nil) precision = 1000;
+	change = change * precision;
+
+	// Can't apply fully?
+	if (!Inside(magic_energy + change, 0, this.MaxMagic) && !partial)
+		return false;
+
+	magic_energy = BoundBy(magic_energy + change, 0, this.MaxMagic);
+	this->~OnMagicEnergyChange(change);
+	return true;
+}
+
+/* Max energy */
+
+func SetMaxEnergy(int new_max_energy)
+{
+	// Update max energy, inform HUD adapter and clamp current energy
+	MaxEnergy = new_max_energy;
+	var current_energy = GetEnergy();
+	if (current_energy > MaxEnergy/1000)
+		DoEnergy(MaxEnergy - current_energy*1000, true);
+	else
+		OnEnergyChange();
+	return true;
+}
 
 /* Scenario saving */
 
 func SaveScenarioObject(props)
 {
 	if (!inherited(props, ...)) return false;
+	// Skins override mesh material
+	if (skin)
+	{
+		props->Remove("MeshMaterial");
+		props->AddCall("Skin", this, "SetSkin", skin);
+	}
 	// Direction is randomized at creation and there's no good way to find
 	// out if the user wanted that specific direction. So just always save
 	// it, because that's what scenario designer usually wants.
 	if (!props->HasProp("Dir")) props->AddCall("Dir", this, "SetDir", GetConstantNameByValueSafe(GetDir(),"DIR_"));
+	// Custom portraits for dialogues
+	if (this.portrait) props->AddCall("Portrait", this, "SetPortrait", this.portrait);
 	return true;
-}
-
-
-/* AI editor helper */
-
-func EditCursorSelection()
-{
-	var ai = S2AI->GetAI(this);
-	if (ai) Call(S2AI.EditCursorSelection, ai);
-	return _inherited(...);
-}
-
-func EditCursorDeselection()
-{
-	var ai = S2AI->GetAI(this);
-	if (ai) Call(S2AI.EditCursorDeselection, ai);
-	return _inherited(...);
 }
 
 
@@ -637,7 +919,7 @@ Walk = {
 	Name = "Walk",
 	Procedure = DFA_WALK,
 	Accel = 16,
-	Decel = 22,
+	Decel = 48,
 	Speed = 200,
 	Directions = 2,
 	FlipDir = 0,
@@ -693,7 +975,8 @@ Roll = {
 	Y = 0,
 	Wdt = 8,
 	Hgt = 20,
-	StartCall = "StartRoll",
+	StartCall = "OnStartRoll",
+	AbortCall = "OnAbortRoll",
 	NextAction = "Walk",
 	InLiquidAction = "Swim",
 },
@@ -802,6 +1085,7 @@ Swim = {
 //	SwimOffset = -5,
 	StartCall = "StartSwim",
 	AbortCall = "StopSwim",
+	Sound = "Clonk::Movement::DivingLoop*",
 },
 Hangle = {
 	Prototype = Action,
@@ -967,17 +1251,47 @@ Eat = {
 	Attach=CNAT_Bottom,
 },
 };
+
 local Name = "Clonk";
+local Description = "$Description$";
 local MaxEnergy = 50000;
 local MaxBreath = 720; // Clonk can breathe for 20 seconds under water.
+local MaxMagic = 50000;
 local JumpSpeed = 400;
 local ThrowSpeed = 294;
-local NoBurnDecay = 1;
+local NoBurnDecay = true;
 local ContactIncinerate = 10;
+local FireproofContainer = true; // Don't burn down all tools/resources when the clonk dips into lava for a short time
+local BorderBound = C4D_Border_Sides;
 
 func Definition(def) {
 	// Set perspective
 	SetProperty("PictureTransformation", Trans_Mul(Trans_Translate(0,1000,5000), Trans_Rotate(70,0,1,0)), def);
 
+	if (!def.EditorProps) def.EditorProps = {};
+	def.EditorProps.skin = { Name="$Skin$", EditorHelp="$SkinHelp$", Type="enum", Set="SetSkin", Options = [
+	{ Value=0, Name="Adventurer"},
+	{ Value=1, Name="Steampunk"},
+	{ Value=2, Name="Alchemist"},
+	{ Value=3, Name="Farmer"}
+	]};
+	
+	UserAction->AddEvaluator("Action", "Clonk", "$SetMaxContentsCount$", "$SetMaxContentsCountHelp$", "clonk_set_max_contents_count", [def, def.EvalAct_SetMaxContentsCount], { }, { Type="proplist", Display="{{Target}}: {{MaxContentsCount}}", EditorProps = {
+		Target = UserAction->GetObjectEvaluator("IsClonk", "Clonk"),
+		MaxContentsCount = new UserAction.Evaluator.Integer { Name="$MaxContentsCount$", EmptyName = Format("$Default$ (%d)", def.MaxContentsCount) }
+		} } );
+		
+	// Turn around
+	if (!def.EditorActions) def.EditorActions = {};
+	def.EditorActions.turn_around = { Name="$TurnAround$", EditorHelp="$TurnAroundHelp$", Command="SetDir(1-GetDir())" };
+	
 	_inherited(def);
+}
+
+private func EvalAct_SetMaxContentsCount(proplist props, proplist context)
+{
+	// Set max contents count. nil defaults to Clonk.MaxContentsCount.
+	var clonk = UserAction->EvaluateValue("Object", props.Target, context);
+	var number = BoundBy(UserAction->EvaluateValue("Integer", props.MaxContentsCount, context) ?? clonk->GetID().MaxContentsCount, 0, 10);
+	if (clonk) clonk->~SetMaxContentsCount(number);
 }

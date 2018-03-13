@@ -2,7 +2,7 @@
  * OpenClonk, http://www.openclonk.org
  *
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -15,8 +15,8 @@
  */
 /* string table: holds all strings used by script engine */
 
-#include <C4Include.h>
-#include <C4StringTable.h>
+#include "C4Include.h"
+#include "script/C4StringTable.h"
 
 
 // *** C4Set
@@ -40,7 +40,6 @@ bool C4Set<C4String *>::Equals<const char *>(C4String * const & a, const char * 
 // *** C4String
 
 C4String::C4String(StdStrBuf strString)
-: RefCnt(0)
 {
 	// take string
 	Data.Take(std::move(strString));
@@ -49,19 +48,20 @@ C4String::C4String(StdStrBuf strString)
 	Strings.Set.Add(this);
 }
 
-C4String::C4String()
-: RefCnt(0)
-{
-}
+C4String::C4String() = default;
 
 C4String::~C4String()
 {
 	// unreg
+#ifdef _DEBUG
 	static bool remove = false;
-	assert(!remove);
+	assert(!remove); (void)remove;
 	remove = true;
+#endif
 	Strings.Set.Remove(this);
+#ifdef _DEBUG
 	remove = false;
+#endif
 }
 
 void C4String::operator=(const char * s)
@@ -85,6 +85,13 @@ C4StringTable::C4StringTable()
 	P[P_Interval] = "Interval";
 	P[P_CommandTarget] = "CommandTarget";
 	P[P_Time] = "Time";
+	P[P_Construction] = "Construction";
+	P[P_Destruction] = "Destruction";
+	P[P_Start] = "Start";
+	P[P_Stop] = "Stop";
+	P[P_Timer] = "Timer";
+	P[P_Effect] = "Effect";
+	P[P_Damage] = "Damage";
 	P[P_Collectible] = "Collectible";
 	P[P_Touchable] = "Touchable";
 	P[P_ActMap] = "ActMap";
@@ -99,10 +106,19 @@ C4StringTable::C4StringTable()
 	P[P_Delay] = "Delay";
 	P[P_X] = "X";
 	P[P_Y] = "Y";
+	P[P_x] = "x";
+	P[P_y] = "y";
 	P[P_Wdt] = "Wdt";
 	P[P_Hgt] = "Hgt";
+	P[P_wdt] = "wdt";
+	P[P_hgt] = "hgt";
+	P[P_Vertices] = "Vertices";
+	P[P_Edges] = "Edges";
+	P[P_LineWidth] = "LineWidth";
 	P[P_OffX] = "OffX";
 	P[P_OffY] = "OffY";
+	P[P_Proplist] = "Proplist";
+	P[P_proplist] = "proplist";
 	P[P_FacetBase] = "FacetBase";
 	P[P_FacetTopFace] = "FacetTopFace";
 	P[P_FacetTargetStretch] = "FacetTargetStretch";
@@ -127,7 +143,6 @@ C4StringTable::C4StringTable()
 	P[P_Parallaxity] = "Parallaxity";
 	P[P_LineColors] = "LineColors";
 	P[P_LineAttach] = "LineAttach";
-	P[P_LineMaxDistance] = "LineMaxDistance";
 	P[P_MouseDrag] = "MouseDrag";
 	P[P_MouseDragImage] = "MouseDragImage";
 	P[P_PictureTransformation] = "PictureTransformation";
@@ -142,14 +157,33 @@ C4StringTable::C4StringTable()
 	P[P_Blasted] = "Blasted";
 	P[P_IncineratingObj] = "IncineratingObj";
 	P[P_Plane] = "Plane";
+	P[P_BorderBound] = "BorderBound";
+	P[P_ContactCalls] = "ContactCalls";
 	P[P_SolidMaskPlane] = "SolidMaskPlane";
 	P[P_Tooltip] = "Tooltip";
 	P[P_Placement] = "Placement";
+	P[P_ContainBlast] = "ContainBlast";
 	P[P_BlastIncinerate] = "BlastIncinerate";
 	P[P_ContactIncinerate] = "ContactIncinerate";
+	P[P_MaterialIncinerate] = "MaterialIncinerate";
 	P[P_Global] = "Global";
 	P[P_Scenario] = "Scenario";
 	P[P_JumpSpeed] = "JumpSpeed";
+	P[P_BackgroundColor] = "BackgroundColor";
+	P[P_Decoration] = "Decoration";
+	P[P_Symbol] = "Symbol";
+	P[P_Target] = "Target";
+	P[P_Std] = "Std";
+	P[P_Text] = "Text";
+	P[P_GraphicsName] = "GraphicsName";
+	P[P_OnClick] = "OnClick";
+	P[P_OnMouseIn] = "OnMouseIn";
+	P[P_OnMouseOut] = "OnMouseOut";
+	P[P_OnClose] = "OnClose";
+	P[P_ID] = "ID";
+	P[P_Style] = "Style";
+	P[P_Player] = "Player";
+	P[P_Margin] = "Margin";
 	P[P_Algo] = "Algo";
 	P[P_Layer] = "Layer";
 	P[P_Seed] = "Seed";
@@ -180,9 +214,105 @@ C4StringTable::C4StringTable()
 	P[P_Phase] = "Phase";
 	P[P_Stretch] = "Stretch";
 	P[P_CollisionVertex] = "CollisionVertex";
+	P[P_CollisionDensity] = "CollisionDensity";
 	P[P_OnCollision] = "OnCollision";
 	P[P_Distance] = "Distance";
 	P[P_Smoke] = "Smoke";
+	P[P_Source] = "Source";
+	P[P_Color] = "Color";
+	P[P_EditCursorCommands] = "EditCursorCommands";
+	P[P_IsPointContained] = "IsPointContained";
+	P[P_GetRandomPoint] = "GetRandomPoint";
+	P[P_Type] = "Type";
+	P[P_Reverb_Density] = "Reverb_Density";
+	P[P_Reverb_Diffusion] = "Reverb_Diffusion";
+	P[P_Reverb_Gain] = "Reverb_Gain";
+	P[P_Reverb_GainHF] = "Reverb_GainHF";
+	P[P_Reverb_Decay_Time] = "Reverb_Decay_Time";
+	P[P_Reverb_Decay_HFRatio] = "Reverb_Decay_HFRatio";
+	P[P_Reverb_Reflections_Gain] = "Reverb_Reflections_Gain";
+	P[P_Reverb_Reflections_Delay] = "Reverb_Reflections_Delay";
+	P[P_Reverb_Late_Reverb_Gain] = "Reverb_Late_Reverb_Gain";
+	P[P_Reverb_Late_Reverb_Delay] = "Reverb_Late_Reverb_Delay";
+	P[P_Reverb_Air_Absorption_GainHF] = "Reverb_Air_Absorption_GainHF";
+	P[P_Reverb_Room_Rolloff_Factor] = "Reverb_Room_Rolloff_Factor";
+	P[P_Reverb_Decay_HFLimit] = "Reverb_Decay_HFLimit";
+	P[P_Echo_Delay] = "Echo_Delay";
+	P[P_Echo_LRDelay] = "Echo_LRDelay";
+	P[P_Echo_Damping] = "Echo_Damping";
+	P[P_Echo_Feedback] = "Echo_Feedback";
+	P[P_Echo_Spread] = "Echo_Spread";
+	P[P_Equalizer_Low_Gain] = "Equalizer_Low_Gain";
+	P[P_Equalizer_Low_Cutoff] = "Equalizer_Low_Cutoff";
+	P[P_Equalizer_Mid1_Gain] = "Equalizer_Mid1_Gain";
+	P[P_Equalizer_Mid1_Center] = "Equalizer_Mid1_Center";
+	P[P_Equalizer_Mid1_Width] = "Equalizer_Mid1_Width";
+	P[P_Equalizer_Mid2_Gain] = "Equalizer_Mid2_Gain";
+	P[P_Equalizer_Mid2_Center] = "Equalizer_Mid2_Center";
+	P[P_Equalizer_Mid2_Width] = "Equalizer_Mid2_Width";
+	P[P_Equalizer_High_Gain] = "Equalizer_High_Gain";
+	P[P_Equalizer_High_Cutoff] = "Equalizer_High_Cutoff";
+	P[P_LightOffset] = "LightOffset";
+	P[P_PlayList] = "PlayList";
+	P[P_MusicBreakMin] = "MusicBreakMin";
+	P[P_MusicBreakMax] = "MusicBreakMax";
+	P[P_MusicBreakChance] = "MusicBreakChance";
+	P[P_MusicMaxPositionMemory] = "MusicMaxPositionMemory";
+	P[P_InflameLandscape] = "InflameLandscape";
+	P[P_OptionKey] = "OptionKey";
+	P[P_ValueKey] = "ValueKey";
+	P[P_Value] = "Value";
+	P[P_DefaultValueFunction] = "DefaultValueFunction";
+	P[P_Delegate] = "Delegate";
+	P[P_VertexDelegate] = "VertexDelegate";
+	P[P_EdgeDelegate] = "EdgeDelegate";
+	P[P_HorizontalFix] = "HorizontalFix";
+	P[P_VerticalFix] = "VerticalFix";
+	P[P_StructureFix] = "StructureFix";
+	P[P_OnUpdate] = "OnUpdate";
+	P[P_EditorPropertyChanged] = "EditorPropertyChanged";
+	P[P_Min] = "Min";
+	P[P_Max] = "Max";
+	P[P_Set] = "Set";
+	P[P_SetGlobal] = "SetGlobal";
+	P[P_SetRoot] = "SetRoot";
+	P[P_Options] = "Options";
+	P[P_Key] = "Key";
+	P[P_AsyncGet] = "AsyncGet";
+	P[P_Get] = "Get";
+	P[P_Relative] = "Relative";
+	P[P_CanMoveCenter] = "CanMoveCenter";
+	P[P_StartFromObject] = "StartFromObject";
+	P[P_Storage] = "Storage";
+	P[P_Elements] = "Elements";
+	P[P_EditOnSelection] = "EditOnSelection";
+	P[P_EditorProps] = "EditorProps";
+	P[P_DefaultEditorProp] = "DefaultEditorProp";
+	P[P_EditorActions] = "EditorActions";
+	P[P_CopyDefault] = "CopyDefault";
+	P[P_Display] = "Display";
+	P[P_DefaultValue] = "DefaultValue";
+	P[P_DefinitionPriority] = "DefinitionPriority";
+	P[P_Group] = "Group";
+	P[P_Command] = "Command";
+	P[P_Select] = "Select";
+	P[P_DescendPath] = "DescendPath";
+	P[P_EmptyName] = "EmptyName";
+	P[P_ShortName] = "ShortName";
+	P[P_EditorHelp] = "EditorHelp";
+	P[P_Description] = "Description";
+	P[P_AllowEditing] = "AllowEditing";
+	P[P_EditorInitialize] = "EditorInitialize";
+	P[P_EditorPlacementLimit] = "EditorPlacementLimit";
+	P[P_EditorCollection] = "EditorCollection";
+	P[P_Sorted] = "Sorted";
+	P[P_Uniforms] = "Uniforms";
+	P[P_ForceSerialization] = "ForceSerialization";
+	P[P_DrawArrows] = "DrawArrows";
+	P[P_SCENPAR] = "SCENPAR";
+	P[P_Translatable] = "Translatable";
+	P[P_Function] = "Function";
+	P[P_Translate] = "Translate";
 	P[DFA_WALK] = "WALK";
 	P[DFA_FLIGHT] = "FLIGHT";
 	P[DFA_KNEEL] = "KNEEL";
@@ -199,7 +329,11 @@ C4StringTable::C4StringTable()
 	P[DFA_CONNECT] = "CONNECT";
 	P[DFA_PULL] = "PULL";
 	// Prevent the individual strings from being deleted, they are not created with new
-	for (unsigned int i = 0; i < P_LAST; ++i) P[i].IncRef();
+	for (auto & i : P)
+	{
+		assert(i.GetCStr()); // all strings should be assigned
+		i.IncRef();
+	}
 }
 
 C4StringTable::~C4StringTable()
@@ -239,7 +373,7 @@ C4String *C4StringTable::RegString(StdStrBuf String)
 		return new C4String(String);
 }
 
-C4String *C4StringTable::FindString(const char *strString)
+C4String *C4StringTable::FindString(const char *strString) const
 {
 	return Set.Get(strString);
 }

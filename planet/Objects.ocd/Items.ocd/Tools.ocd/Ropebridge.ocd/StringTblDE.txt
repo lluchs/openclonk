@@ -1,1 +1,5 @@
-Name=H�ngebr�cke
+Name=Hängebrücke
+Description=Eine kleine Hängebrücke, die man über kleine Abgründe in der Landschaft bauen kann. Drücke [Benutzen], um das linke Ende, und nochmal, um das rechte zu platzieren.
+MsgBridgeLong=Pfahl kann hier nicht platziert werden: Brücke zu lang!
+MsgBridgeShort=Pfahl kann hier nicht platziert werden: Brücke zu kurz!
+MsgBridgeUneven=Pfahl kann hier nicht platziert werden: Höhenunterschied der Pfähle zu groß!

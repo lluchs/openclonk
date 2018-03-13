@@ -2,7 +2,7 @@
  * OpenClonk, http://www.openclonk.org
  *
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -18,22 +18,22 @@
 #ifndef INC_C4GameObjects
 #define INC_C4GameObjects
 
-#include <C4ObjectList.h>
-#include <C4FindObject.h>
-#include <C4Sector.h>
+#include "object/C4FindObject.h"
+#include "object/C4ObjectList.h"
+#include "object/C4Sector.h"
 
 // main object list class
 class C4GameObjects : public C4NotifyingObjectList
 {
 public:
 	C4GameObjects(); // constructor
-	~C4GameObjects(); // destructor
-	void Default();
+	~C4GameObjects() override; // destructor
+	void Default() override;
 	void Init(int32_t iWidth, int32_t iHeight);
 	void Clear(bool fClearInactive); // clear objects
 	// don't use default parameters so we get a correct vtbl entry
 	// don't clear internal objects, because they should not be cleared on section load
-	void Clear() { Clear(false); }
+	void Clear() override { Clear(false); }
 
 private:
 	uint32_t LastUsedMarker; // last used value for C4Object::Marker
@@ -45,12 +45,12 @@ public:
 
 	using C4ObjectList::Add;
 	bool Add(C4Object *nObj); // add object
-	bool Remove(C4Object *pObj); // clear pointers to object
+	bool Remove(C4Object *pObj) override; // clear pointers to object
 
 	C4ObjectList &ObjectsAt(int ix, int iy); // get object list for map pos
 
 	void CrossCheck(); // various collision-checks
-	C4Object *AtObject(int ctx, int cty, DWORD &ocf, C4Object *exclude=NULL); // find object at ctx/cty
+	C4Object *AtObject(int ctx, int cty, DWORD &ocf, C4Object *exclude=nullptr); // find object at ctx/cty
 	void Synchronize(); // network synchronization
 	void UpdateSolidMasks();
 
@@ -71,9 +71,9 @@ public:
 
 	void DeleteObjects(bool fDeleteInactive); // delete all objects and links
 
-	bool ValidateOwners();
-	bool AssignInfo();
-	void AssignPlrViewRange();
+	bool ValidateOwners() override;
+	bool AssignInfo() override;
+	void AssignLightRange();
 	void SyncClearance();
 	void ResetAudibility();
 	void OnSynchronized();

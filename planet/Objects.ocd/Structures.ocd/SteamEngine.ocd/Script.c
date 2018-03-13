@@ -1,127 +1,259 @@
-/*-- Steam engine --*/
+/**
+ 	Steam Engine 
+ 	Burns fuels like coal, wood and oil to produce power. The steam engine
+ 	produces 120 units of power independent of the fuel. However, the fuel 
+ 	determines the amount of fuel and thereby the burn time.
+ 	
+ 	@author Maikel (orignal script), Marky (fuel liquid)
+*/
 
 #include Library_Structure
 #include Library_Ownable
 #include Library_PowerProducer
 #include Library_Flag
+#include Library_Tank
 
 local DefaultFlagRadius = 200;
 
-static const SteamEngine_produced_power = 300;
+static const SteamEngine_produced_power = 120;
 
-local iFuelAmount;
-local power_seconds;
+local fuel_amount;
 
-func Construction(object creator)
+public func Construction()
 {
-	iFuelAmount = 0;
-	power_seconds = 0;
-
 	SetAction("Default");
-	AddTimer("ContentsCheck", 30);
-	return _inherited(creator, ...);
+	return _inherited(...);
 }
 
+protected func Initialize()
+{
+	fuel_amount = 0;
+	AddTimer("ContentsCheck", 10);
+	return _inherited(...);
+}
+
+public func IsHammerBuildable() { return true; }
+// This structure has a collection zone, which can not be flipped.
+public func NoConstructionFlip() { return true; }
 public func IsContainer() { return true; }
 
-func RejectCollect(id item, object obj)
+protected func RejectCollect(id item, object obj)
 {
+	// Accept fuel only
 	if (obj->~IsFuel())
 		return false;
+
+	// Is the object a container? If so, try to empty it.
+	if (obj->~IsContainer() || obj->~IsLiquidContainer())
+	{
+		GrabContents(obj);
+	}
 	return true;
 }
 
-func Collection(object obj, bool put)
+protected func Collection(object obj, bool put)
 {
-	Sound("Clonk");
+	Sound("Objects::Clonk");
 }
 
-func ContentsCheck()
+public func ContentsCheck()
 {
-	//Ejects non fuel items immediately
+	// Ejects non fuel items immediately
 	var fuel;
-	if(fuel = FindObject(Find_Container(this), Find_Not(Find_Func("IsFuel")))) 
+	if (fuel = FindObject(Find_Container(this), Find_Not(Find_Func("IsFuel"))))
 	{
-		fuel->Exit(-53,21, -20, -1, -1, -30);
-		Sound("Chuff"); //I think a 'chuff' or 'metal clonk' sound could be good here -Ringwaul
+		fuel->Exit(-45, 21, -20, -1, -1, -30);
+		Sound("Chuff");
 	}
 	
-	// Still active?
-	if(GetAction() == "Work") return true;
-	// or still warm water in the tank?!
-	if(GetEffect("CreatesPower", this))
-		return true;
-	
-	// not needed?
-	if(GetPendingPowerAmount() == 0)
-		return false;
-	
-	// Still has some fuel?
-	if(iFuelAmount) return SetAction("Work");
-	
-	// Search for new fuel
-	if(fuel = FindObject(Find_Container(this), Find_Func("IsFuel")))
-	{
-		iFuelAmount += fuel->~GetFuelAmount() / 2;
-		fuel->RemoveObject();
-		SetAction("Work");
-		return true;
-	}
+	// If active don't do anything.
+	if (IsWorking()) 
+		return;
 
+	// If there is fuel available let the network know.
+	if (GetFuelAmount() > 0 || GetFuelContents())
+		RegisterPowerProduction(SteamEngine_produced_power);
+	return;
+}
+
+
+public func GetFuelAmount()
+{
+	return fuel_amount;
+}
+
+
+/*-- Power Production --*/
+
+// Produces power on demand, so not steady.
+public func IsSteadyPowerProducer() { return false; }
+
+// Low priority so that other sources of power are drained before burning fuel.
+public func GetProducerPriority() { return 0; }
+
+// Callback from the power library for production of power request.
+public func OnPowerProductionStart(int amount) 
+{ 
+	// Check if there is fuel.
+	RefillFuel();
+	// There is enough fuel so start producing power and notify network of this.
+	if (GetAction() == "Default") 
+		SetAction("Work");
+	return true;
+}
+
+// Callback from the power library requesting to stop power production.
+public func OnPowerProductionStop(int amount)
+{
+	// Set action to idle when it was working.
+	if (IsWorking())
+		SetAction("Default");
+	return true;
+}
+
+// Start call from working action.
+protected func WorkStart()
+{
+	Sound("Structures::SteamEngine", {loop_count = 1});
+	return;
+}
+
+// Status?
+protected func IsWorking(){ return GetAction() == "Work";}
+
+// Phase call from working action, every two frames.
+protected func Working()
+{
+	DoFuelAmount(-2); // Reduce the fuel amount by 1 per frame
+	RefillFuel(); // Check if there is still enough fuel available.
+
+	if (!GetFuelAmount())
+	{
+		// Set action to idle and unregister this producer as available from the network.
+		SetAction("Default");
+		UnregisterPowerProduction();
+	}
+	Smoking(); // Smoke from the exhaust shaft.
+	return;
+}
+
+// Stop call from working action.
+protected func WorkStop()
+{
+	// Don't kill the sound in this call, since that would interupt the sound effect.
+	return;
+}
+
+// Abort call from working action.
+protected func WorkAbort()
+{
+	// Sound can be safely stopped here since this action will always end with an abort call.
+	Sound("Structures::SteamEngine", {loop_count = -1});
+	return;	
+}
+
+func RefillFuel()
+{
+	// Check if there is still enough fuel available.
+	var no_fuel = GetFuelAmount() <= 0;
+	// The reserve is probably not necessary
+	var should_keep_reserve = IsWorking() && GetNeutralPipe() && GetFuelAmount() < 100;
+	if (no_fuel || should_keep_reserve)
+	{
+		var fuel_extracted;
+	
+		// Search for new fuel among the contents.
+		var fuel = GetFuelContents();
+		if (fuel)
+		{
+			fuel_extracted = fuel->~GetFuelAmount();
+			if (!fuel->~OnFuelRemoved(fuel_extracted)) fuel->RemoveObject();
+	
+			DoFuelAmount(fuel_extracted * 18);
+		}
+	}
+}
+
+func GetFuelContents()
+{
+	return FindObject(Find_Container(this), Find_Func("IsFuel"));
+}
+
+func DoFuelAmount(int amount)
+{
+	fuel_amount += amount;
+}
+
+func Smoking()
+{
+	// Smoke from the exhaust shaft
+	Smoke(-20 * GetCalcDir() + RandomX(-2, 2), -26, 10);
+	Smoke(-20 * GetCalcDir() + RandomX(-2, 2), -24, 8);
+	Smoke(-20 * GetCalcDir() + RandomX(-2, 2), -24, 10);
+}
+
+
+public func IsLiquidContainerForMaterial(string liquid)
+{
+	return WildcardMatch("Oil", liquid);
+}
+
+public func GetLiquidContainerMaxFillLevel(liquid_name)
+{
+	return 300;
+}
+
+// The foundry may have one drain and one source.
+public func QueryConnectPipe(object pipe, bool do_msg)
+{
+	if (GetDrainPipe() && GetSourcePipe())
+	{
+		if (do_msg) pipe->Report("$MsgHasPipes$");
+		return true;
+	}
+	else if (GetSourcePipe() && pipe->IsSourcePipe())
+	{
+		if (do_msg) pipe->Report("$MsgSourcePipeProhibited$");
+		return true;
+	}
+	else if (GetDrainPipe() && pipe->IsDrainPipe())
+	{
+		if (do_msg) pipe->Report("$MsgDrainPipeProhibited$");
+		return true;
+	}
+	else if (pipe->IsAirPipe())
+	{
+		if (do_msg) pipe->Report("$MsgPipeProhibited$");
+		return true;
+	}
 	return false;
 }
 
-func ConsumeFuel()
-{	
-	if(iFuelAmount > 0)
+// Set to source or drain pipe.
+public func OnPipeConnect(object pipe, string specific_pipe_state)
+{
+	if (PIPE_STATE_Source == specific_pipe_state)
 	{
-		// every fuel unit gives power for one second
-		--iFuelAmount;
-		power_seconds += 1;
-		if(!GetEffect("CreatesPower", this))
-			AddEffect("CreatesPower", this, 1, 36, this);
+		SetSourcePipe(pipe);
+		pipe->SetSourcePipe();
 	}
-	
-	// All used up?
-	if(!iFuelAmount || ((GetPendingPowerAmount() == 0) && (GetCurrentPowerBalance() >= SteamEngine_produced_power)))
+	else if (PIPE_STATE_Drain == specific_pipe_state)
 	{
-		SetAction("Default");
-		ContentsCheck();
+		SetDrainPipe(pipe);
+		pipe->SetDrainPipe();
 	}
+	else
+	{
+		if (!GetDrainPipe())
+			OnPipeConnect(pipe, PIPE_STATE_Drain);
+		else if (!GetSourcePipe())
+			OnPipeConnect(pipe, PIPE_STATE_Source);
+	}
+	pipe->Report("$MsgConnectedPipe$");
 }
 
-func FxCreatesPowerStart(target, effect, temp)
-{
-	if(temp) return;
-	// fixed amount
-	MakePowerProducer(SteamEngine_produced_power);
-	
-	AddEffect("Smoking", this, 1, 5, this);
-	Sound("SteamEngine", false, nil, nil, 1);
-}
 
-func FxCreatesPowerTimer(target, effect)
-{
-	if(power_seconds == 0) return -1;
-	--power_seconds;
-}
-
-func FxCreatesPowerStop(target, effect, reason, temp)
-{
-	if(temp) return;
-	// disable producer
-	MakePowerProducer(0);
-	
-	if(GetEffect("Smoking", this))
-		RemoveEffect("Smoking", this);
-	Sound("SteamEngine", false, nil, nil, -1);
-}
-
-func FxSmokingTimer()
-{
-	Smoke(-20 * GetCalcDir(), -15, 10);
-	return 1;
-}
+/*-- Properties --*/
 
 local ActMap = {
 	Default = {
@@ -132,7 +264,7 @@ local ActMap = {
 		FlipDir = 1,
 		Length = 1,
 		Delay = 0,
-		FacetBase=1,
+		FacetBase = 1,
 		NextAction = "Default",
 	},
 	Work = {
@@ -146,14 +278,24 @@ local ActMap = {
 		FacetBase = 1,
 		NextAction = "Work",
 		Animation = "Work",
-		EndCall = "ConsumeFuel",
+		PhaseCall = "Working",
+		StartCall = "WorkStart",
+		EndCall = "WorkStop",
+		AbortCall = "WorkAbort",
 	},
 };
 
-func Definition(def) {
-	SetProperty("MeshTransformation", Trans_Mul(Trans_Rotate(25,0,1,0), Trans_Scale(625)), def);
+protected func Definition(def) 
+{
+	SetProperty("MeshTransformation", Trans_Mul(Trans_Rotate(25, 0, 1, 0), Trans_Scale(625)), def);
+	SetProperty("PictureTransformation", Trans_Mul(Trans_Translate(-4000, -18000, 60000), Trans_Rotate(25, 0, 1, 0), Trans_Scale(625)), def);
+	return _inherited(def, ...);
 }
+
+local ContainBlast = true;
 local BlastIncinerate = 130;
 local HitPoints = 100;
+local FireproofContainer = true;
 local Name = "$Name$";
 local Description = "$Description$";
+local Components = {Rock = 6, Metal = 3};

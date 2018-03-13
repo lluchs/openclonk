@@ -1,26 +1,21 @@
-/*-- Sproutberry --*/
+/**
+	Sproutberry
+	Fresh from nature's garden.
+*/
 
-protected func Hit()
+#include Library_Edible
+
+/*-- Engine Callbacks --*/
+
+public func Construction()
 {
-	Sound("SoftHit1");
+	this.MeshTransformation = Trans_Scale(1500, 1500, 1500);
 }
 
-
-/* Eating */
-
-protected func ControlUse(object clonk, int iX, int iY)
+func Hit()
 {
-	clonk->Eat(this);
+	Sound("Hits::SoftHit1");
 }
-
-public func NutritionalValue() { return 10; }
-
-local Name = "$Name$";
-local Description = "$Description$";
-local UsageHelp = "$UsageHelp$";
-local Collectible = 1;
-local Rebuy = false;
-
 
 // sproutberries are extremely unstable and likely to grow a new plant if not carried
 func Departure(object what)
@@ -28,6 +23,17 @@ func Departure(object what)
 	if(!GetEffect("SproutCheck", this))
 		AddEffect("SproutCheck", this, 1, 10, this);
 }
+
+func SaveScenarioObject(props, ...)
+{
+	// Do not save berries that are still attached to bushes
+	if (Contained())
+		if (Contained()->GetID() == SproutBerryBush_Sprout)
+			return false;
+	return inherited(props, ...);
+}
+
+/*-- Sprouting --*/
 
 func FxSproutCheckTimer(target, effect, time)
 {
@@ -74,7 +80,7 @@ func FxSproutCheckTimer(target, effect, time)
 	}
 	
 	// create a bush!
-	var bush = CreateObject(SproutBerryBush, 0, y + 8, NO_OWNER);
+	var bush = CreateObjectAbove(SproutBerryBush, 0, y + 8, NO_OWNER);
 	
 	// no insta-bush please..
 	bush->GrowNormally();
@@ -124,3 +130,21 @@ func FxShrinkTimer(target, effect, time)
 		SetClrModulation(RGB(255 - effect.color_sub / 3, 255 - effect.color_sub / 2, 255 - effect.color_sub));
 	}
 }
+
+/*-- Display --*/
+
+public func GetCarryMode()
+{
+	return CARRY_Hand;
+}
+
+public func GetCarryBone()
+{
+	return "Main";
+}
+
+/*-- Properties --*/
+
+local Name = "$Name$";
+local Description = "$Description$";
+local Collectible = true;

@@ -1,28 +1,44 @@
 /**
 	Treasure Hunt
-	Find the treasure and sell it
+	Find the treasure and swap it for a barrel of oil
 	
 	@authors Sven2
 */
 
 static g_is_initialized; // set after first player join
 static g_max_player_num; // max number of players that were ever joined
-static g_plr_inventory; // array indexed by players: Array containing inventory of Clonk jsut before it died
+
+// Set in Objects.c
+//static npc_dagobert, npc_tarzan, g_golden_shovel, g_flagpole, g_golden_idol, g_last_stone_door;
+static g_got_gem_task, g_got_oil, g_goal, g_treasure_collected;
+static npc_pyrit;
 
 func DoInit(int first_player)
 {
-	CreateObject(Flagpole, 210,1185, first_player);
+	var relaunch_rule = GetRelaunchRule();
+	relaunch_rule->SetInventoryTransfer(true);
+	relaunch_rule->SetFreeCrew(true);
+	relaunch_rule->SetRespawnDelay(1);
+	relaunch_rule->SetBaseRespawn(true);
+	relaunch_rule->SetDefaultRelaunchCount(nil);
+	relaunch_rule->SetAllowPlayerRestart(true);
+	relaunch_rule->SetLastClonkRespawn(true);
+	relaunch_rule->SetInitialRelaunch(false);
 	ClearFreeRect(530,1135, 50,2);
-	// Intro. Show message twice for longer duration.
-	Schedule(nil, Format("GameCall(%v, %d)", "DoIntroMessage", first_player), 50, 1);
-	Schedule(nil, Format("GameCall(%v, %d)", "DoIntroMessage", first_player), 100, 1);
-	return true;
-}
-
-func DoIntroMessage(int first_player)
-{
-	var talker = GetCursor(first_player);
-	if (talker) DialogueSimple->MessageBoxAll("$MsgIntro1$", talker, false);
+	if (g_last_stone_door) g_last_stone_door->DoDamage(170 - g_last_stone_door->GetDamage());
+	if (g_golden_idol)
+	{
+		g_golden_idol->SetLightRange(150,15);
+		g_golden_idol->SetLightColor(0xffc000);
+	}
+	if (g_golden_shovel)
+	{
+		g_golden_shovel->SetLightRange(25,15);
+		g_golden_shovel->SetLightColor(0xffc000);
+	}
+	npc_dagobert->SetAlternativeSkin("Beggar");
+	// Start Intro.
+	StartSequence("Intro", 0, g_flagpole);
 	return true;
 }
 
@@ -50,23 +66,6 @@ func InitializePlayer(int plr)
 	return true;
 }
 
-func RelaunchPlayer(int plr)
-{
-	var clonk = CreateObject(Clonk, 200, 1175, plr);
-	clonk->MakeCrewMember(plr);
-	SetCursor(plr, clonk);
-	JoinPlayer(plr);
-	// Recover carried objects
-	// Do not recover pipes, because that would draw ugly lines across the landscape
-	if (g_plr_inventory && g_plr_inventory[plr])
-	{
-		for (var obj in g_plr_inventory[plr])
-			if (obj && obj->GetID() != Pipe) obj->Enter(clonk);
-		g_plr_inventory[plr] = nil;
-	}
-	return true;
-}
-
 func JoinPlayer(int plr)
 {
 	// Place in village
@@ -78,26 +77,8 @@ func JoinPlayer(int plr)
 		crew->SetPosition(x , y);
 		crew->SetDir(DIR_Right);
 		crew->DoEnergy(1000);
-		AddEffect("IntRememberInventory", crew, 1, 0);
 	}
 	return true;
-}
-
-global func FxIntRememberInventoryStop(object clonk, fx, int reason, bool temp)
-{
-	if (!temp && reason == FX_Call_RemoveDeath)
-	{
-		var plr = clonk->GetOwner();
-		if (plr != NO_OWNER)
-		{
-			if (!g_plr_inventory) g_plr_inventory = [];
-			g_plr_inventory[plr] = [];
-			var i=0,obj;
-			while (obj=clonk->Contents(i)) g_plr_inventory[plr][i++] = obj;
-		}
-	}
-	return FX_OK;
-
 }
 
 
@@ -105,13 +86,13 @@ global func FxIntRememberInventoryStop(object clonk, fx, int reason, bool temp)
 
 func EncounterCastle(object enemy, object player)
 {
-	DialogueSimple->MessageBoxAll("$MsgEncounterCastle$", enemy);
+	Dialogue->MessageBoxAll("$MsgEncounterCastle$", enemy, true);
 	return true;
 }
 
 func EncounterFinal(object enemy, object player)
 {
-	DialogueSimple->MessageBoxAll("$MsgEncounterFinal$", enemy);
+	Dialogue->MessageBoxAll("$MsgEncounterFinal$", enemy, true);
 	return true;
 }
 
@@ -120,24 +101,65 @@ func EncounterFinal(object enemy, object player)
 
 func OnTreasureCollected(object treasure)
 {
-	DialogueSimple->MessageBoxAll("$MsgTreasureCollected$", treasure->Contained());
+	g_treasure_collected = true;
+	Dialogue->MessageBoxAll("$MsgTreasureCollected$", treasure->Contained(), true);
+	// Dagobert has something new to say now
+	if (npc_dagobert)
+	{
+		var dlg = Dialogue->FindByTarget(npc_dagobert);
+		if (dlg) dlg->AddAttention();
+	}
 	return true;
+}
+
+func OnPlaneLoaded(object plane, object oil)
+{
+	if (!plane || !oil) return false; // disappeared in that one frame?
+	oil->Enter(plane);
+	g_goal->OnOilDelivered();
+	return StartSequence("Outro", 0, plane);
 }
 
 static g_num_goldbars;
 static const MAX_GOLD_BARS = 20;
 
-func OnGoldBarCollected(object collecter)
+func OnGoldBarCollected(object collector)
 {
 	++g_num_goldbars;
+	var sAchievement = "";
+	if (g_num_goldbars==MAX_GOLD_BARS/4)
+	{
+		sAchievement = "|$Achieve5$";
+		GainScenarioAchievement("Bars", 1);
+	}
+	else if (g_num_goldbars==MAX_GOLD_BARS/2)
+	{
+		sAchievement = "|$Achieve10$";
+		GainScenarioAchievement("Bars", 2);
+	}
+	else if (g_num_goldbars==MAX_GOLD_BARS)
+	{
+		sAchievement = "|$Achieve20$";
+		GainScenarioAchievement("Bars", 3);
+	}
 	UpdateLeagueScores();
-	DialogueSimple->MessageBoxAll(Format("$MsgGoldBarCollected$", g_num_goldbars, MAX_GOLD_BARS), collecter);
+	Dialogue->MessageBoxAll(Format("$MsgGoldBarCollected$%s", g_num_goldbars, MAX_GOLD_BARS, sAchievement), collector, true);
+	return true;
+}
+
+public func OnGoalsFulfilled()
+{
+	SetNextMission("Missions.ocf/DarkCastle.ocs");
+	GainScenarioAchievement("Done");
+	GainMissionAccess("S2Treasure");
+	UpdateLeagueScores();
+	// Return true to force goal rule to not call GameOver() yet, as it will be done by outro sequence
 	return true;
 }
 
 func OnGameOver()
 {
-	// Treasure was collected!
+	// In case gems are collected after game end.
 	UpdateLeagueScores();
 	return true;
 }
@@ -145,8 +167,7 @@ func OnGameOver()
 func UpdateLeagueScores()
 {
 	// +50 for finishing and +5 for every gold bar
-	var goal = FindObject(Find_ID(Goal_TreasureHunt));
-	var goal_finished = (goal && goal->IsFulfilled());
+	var goal_finished = (g_goal && g_goal->IsFulfilled());
 	return SetLeagueProgressScore(g_num_goldbars, g_num_goldbars * 5 + goal_finished * 50);
 }
 
@@ -158,7 +179,7 @@ func OnInvincibleDamage(object damaged_target)
 		var observer = damaged_target->FindObject(Find_ID(Clonk), Find_OCF(OCF_Alive), damaged_target->Sort_Distance());
 		if (observer)
 		{
-			DialogueSimple->MessageBoxAll("$MsgStoneDoorNoDamage$", observer);
+			Dialogue->MessageBoxAll("$MsgStoneDoorNoDamage$", observer, true);
 		}
 	}
 	return true;

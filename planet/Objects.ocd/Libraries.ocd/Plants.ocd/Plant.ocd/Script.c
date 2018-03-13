@@ -13,11 +13,23 @@ public func IsPlant()
 
 /** Automated positioning via RootSurface, make sure to call this if needed (in case Construction is overloaded)
 */
-protected func Construction()
+protected func Construction(...)
 {
 	Schedule(this, "RootSurface()", 1);
-	AddTimer("Seed", 72);
+	UpdateSeedTimer();
+	AddTimer("Seed", 72 + Random(10));
 	_inherited(...);
+}
+
+public func InitChild(object parent)
+{
+	// Copy settings from parent plant
+	KeepArea(parent.Confinement);
+	SetSeedChance(parent->SeedChance());
+	SetSeedArea(parent->SeedArea());
+	SetSeedAmount(parent->SeedAmount());
+	SetSeedOffset(parent->SeedOffset());
+	return true;
 }
 
 /* Placement */
@@ -28,25 +40,25 @@ protected func Construction()
 	@param settings A proplist defining further setttings: { growth = 100000, keep_area = false }. Growth will get passed over to PlaceVegetation, keep_area will confine the plants and their offspring to rectangle.
 	@return Returns an array of all objects created.
 */
-public func Place(int amount, proplist rectangle, proplist settings)
+public func Place(int amount, proplist area, proplist settings)
 {
 	// No calls to objects, only definitions
 	if (GetType(this) == C4V_C4Object) return;
 	// Default parameters
 	if (!settings) settings = { growth = 100000, keep_area = false };
 	if (!settings.growth) settings.growth = 100000;
-	if (!rectangle)
-		rectangle = Rectangle(0,0, LandscapeWidth(), LandscapeHeight());
+	var rectangle;
+	if (area) rectangle = area->GetBoundingRectangle(); else rectangle = Shape->LandscapeRectangle();
 
 	var plants = CreateArray(), plant;
 	for (var i = 0 ; i < amount ; i++)
 	{
-		plant = PlaceVegetation(this, rectangle.x, rectangle.y, rectangle.w, rectangle.h, settings.growth);
+		plant = PlaceVegetation(this, rectangle.x, rectangle.y, rectangle.wdt, rectangle.hgt, settings.growth, area);
 		if (plant)
 		{
 			plants[GetLength(plants)] = plant;
-			if (settings.keep_area)
-				plant->KeepArea(rectangle);
+			if (settings.keep_area && area)
+				plant->KeepArea(area);
 		}
 		plant = nil;
 	}
@@ -56,194 +68,196 @@ public func Place(int amount, proplist rectangle, proplist settings)
 /* Reproduction */
 
 /** Will confine the the plant and its offspring to a certain area.
-	@params rectangle The confinement area.
+	@params area The confinement area.
 */
-func KeepArea(proplist rectangle)
+func KeepArea(proplist area)
 {
-	this.Confinement = rectangle;
+	this.Confinement = area;
 }
 
-/** Chance to reproduce plant. Chances are one out of return value. Default is 500.
-	@return the chance, higher = less chance.
+/** Chance to reproduce plant. Chances are one out of return value. From 0 to 10000. Default is 20.
+	@return the chance, higher = more chance. 0 = does not reproduce.
 */
-private func SeedChance()
+
+local plant_seed_chance = 20;
+
+public func SeedChance()
 {
-	return 500;
+	return plant_seed_chance;
+}
+
+public func SetSeedChance(int v)
+{
+	plant_seed_chance = v;
+	return UpdateSeedTimer();
+}
+
+private func UpdateSeedTimer()
+{
+	RemoveTimer("Seed");
+	if (plant_seed_chance) AddTimer("Seed", 72 + Random(10));
+	return true;
 }
 
 /** Distance the seeds may travel. Default is 250.
 	@return the maximum distance.
 */
-private func SeedArea()
+
+local plant_seed_area = 250;
+
+public func SeedArea()
 {
-	return 250;
+	return plant_seed_area;
+}
+
+public func SetSeedArea(int v)
+{
+	plant_seed_area = v;
+	return true;
 }
 
 /** The amount of plants allowed within SeedAreaSize. Default is 10.
 	@return the maximum amount of plants.
 */
+
+local plant_seed_amount = 10;
+
 private func SeedAmount()
 {
-	return 10;
+	return plant_seed_amount;
+}
+
+public func SetSeedAmount(int v)
+{
+	plant_seed_amount = v;
+	return true;
 }
 
 /** The closest distance a new plant may seed to its nearest neighbour. Default is 20.
-	@return the maximum amount of plants.
+	@return the closest distance to another plant.
 */
-private func SeedOffset()
+
+local plant_seed_offset = 20;
+
+public func SeedOffset()
 {
-	return 20;
+	return plant_seed_offset;
+}
+
+public func SetSeedOffset(int v)
+{
+	plant_seed_offset = v;
+	return true;
+}
+
+/** Evaluates parameters for this definition to determine if seeding should occur.
+ @par offx X offset added to context position for check.
+ @par offy Y offset added to context position for check.
+ @plant_id plant to check for whether it's already too crowded. Default to GetID().
+ @return true iff seeding should occur
+*/
+public func CheckSeedChance(int offx, int offy, id plant_id)
+{
+	// Find number of plants in seed area.
+	// Ignored confinement - that's only used for actual placement
+	var size = this->SeedArea();
+	var amount = this->SeedAmount();
+	var plant_cnt = ObjectCount(Find_ID(plant_id ?? GetID()), Find_InRect(offx - size / 2, offy - size / 2, size, size));
+	// Increase seed chance by number of missing plants to reach maximum amount
+	// Note the chance will become negative if the maximum has been reached, in which case the random check will never succeed.
+	// That's intended
+	var chance = this->SeedChance() * (amount - plant_cnt);
+	if (!chance) return;
+	// Place a plant if we are lucky
+	return (Random(10000) < chance);
 }
 
 /** Reproduction of plants: Called every 2 seconds by a timer.
 */
-public func Seed()
+private func Seed()
 {
-	// Find number of plants in seed area.
-	var size = SeedArea();
-	var amount = SeedAmount();
-	var area = Rectangle(size / -2, size / -2, size, size);
-	if (this.Confinement)
-		area = RectangleEnsureWithin(area, this.Confinement);
-	var plant_cnt = ObjectCount(Find_ID(GetID()), Find_InRect(area.x, area.y, area.w, area.h));
-	// If there are not much plants in the seed area compared to seed amount
-	// the chance of seeding is improved, if there are much the chance is reduced.
-	var chance = SeedChance();
-	var chance = chance / Max(1, amount - plant_cnt) + chance * Max(0, plant_cnt - amount);
-	// Place a plant if we are lucky, in principle there can be more than seed amount.
-	if (!Random(chance))
+	if (OnFire()) return;
+
+	// Place a plant if we are lucky, but no more than seed amount.
+	var plant;
+	if (CheckSeedChance())
 	{
-		// Place the plant but check if it is not close to another one.	
-		var plant = PlaceVegetation(GetID(), area.x, area.y, area.w, area.h, 3);
+		plant = DoSeed(true);
+		// Check if it is not close to another one.
 		if (plant)
 		{
-			var neighbour = FindObject(Find_ID(GetID()), Find_Exclude(plant), Sort_Distance(plant->GetX() - GetX(), plant->GetY() - GetY()));
-			var distance = ObjectDistance(plant, neighbour);
+			var neighbours = FindObjects(Find_Func("IsPlant"), Find_Exclude(plant),
+			                           Sort_Multiple(Sort_Distance(plant->GetX() - GetX(), plant->GetY() - GetY()), Sort_Reverse(Sort_Func("SeedOffset"))));
+			// Only check the nearest 3 plants
+			var too_close = false;
+			for (var i = 0; i < GetLength(neighbours) && i < 3; i++)
+			{
+				var neighbour = neighbours[i];
+				var x_distance = plant->SeedOffset() + 1;
+				var y_distance = 151;
+				if (neighbour)
+				{
+					x_distance = Abs(neighbour->GetX() - plant->GetX());
+					y_distance = Abs(neighbour->GetY() - plant->GetY());
+				}
+				if ((x_distance < plant->SeedOffset() || x_distance < neighbour->~SeedOffset()) && y_distance < 151)
+				{
+					too_close = true;
+					break;
+				}
+			}
 			// Closeness check
-			if (distance < SeedOffset())
+			if (too_close)
 				plant->RemoveObject();
-			else if (this.Confinement)
-				plant->KeepArea(this.Confinement);
+			else
+				plant->InitChild(this);
 		}
 	}
-	return;
+	return plant;
 }
 
-/* Chopping */
-
-/** Determines whether this plant gives wood (we assume that are 'trees').
-	@return \c true if the plant is choppable by the axe, \c false otherwise (default).
-*/
-public func IsTree()
+/** Forcefully places a seed of the plant, without random chance
+    or other sanity checks. This is useful for testing.
+ */
+public func DoSeed(bool no_init)
 {
-	return false;
-}
-
-/** Determines whether the tree can still be chopped down (i.e. has not been chopped down).
-	@return \c true if the tree is still a valid axe target.
-*/
-public func IsStanding()
-{
-	return GetCategory() & C4D_StaticBack;
-}
-
-/** Maximum damage the tree can take before it falls. Each blow from the axe deals 10 damage.
-	@return \c the maximum amount of damage.
-*/
-private func MaxDamage()
-{
-	return 50;
-}
-
-protected func Damage()
-{
-	// do not grow for a few seconds
-	var g = GetGrowthValue();
-	if(g)
+	// Apply confinement for plant placement
+	var size = SeedArea();
+	var area = Shape->Rectangle(GetX() - size / 2, GetY() - size / 2, size, size);
+	var confined_area = nil;
+	if (this.Confinement)
 	{
-		StopGrowth();
-		ScheduleCall(this, "RestartGrowth", 36 * 10, 0, g);
+		confined_area = Shape->Intersect(this.Confinement, area);
+		// Quick-check if intersection to confinement yields an empty area
+		// to avoid unnecessery search by PlaceVegetation
+		area = confined_area->GetBoundingRectangle();
+		if (area.wdt <= 0 || area.hgt <= 0) return;
 	}
-	
-	// Max damage reached -> fall down
-	if (GetDamage() > MaxDamage() && IsStanding()) ChopDown();
-	_inherited(...);
-}
-
-// restarts the growing of the tree (for example after taking damage)
-func RestartGrowth(int old_value)
-{
-	var g = GetGrowthValue(); // safety
-	if(g) StopGrowth();
-	g = Max(g, old_value);
-	StartGrowth(g);
-}
-
-/** Called when the trees shall fall down (has taken max damage). Default behaviour is unstucking (5 pixel movement max) and removing C4D_StaticBack.
-*/
-public func ChopDown()
-{
-	// stop growing!
-	ClearScheduleCall(this, "RestartGrowth");
-	StopGrowth();
-	this.Touchable = 1;
-	this.Plane = 300;
-	SetCategory(GetCategory()&~C4D_StaticBack);
-	if (Stuck())
-	{
-		var i = 5;
-		while(Stuck() && i)
-		{
-			SetPosition(GetX(), GetY()-1);
-			i--;
-		}
-	}
-	Sound("TreeCrack");
-	AddEffect("TreeFall", this, 1, 1, this);
-}
-
-// determine a random falling direction and passes it on to the FxTreeFallTimer.
-func FxTreeFallStart(object target, proplist effect)
-{
-	effect.direction = Random(2); 
-	if (effect.direction == 0) effect.direction -= 1;
-}
-
-/* animates the falling of the tree: First 10 slow degress then speed up and play the landing sound at 80+ degrees. 
-remember that degrees range from -180 to 180. */
-func FxTreeFallTimer(object target, proplist effect)
-{
-	//simple falling if tree is not fully grown
-	if (target->GetCon() <= 50)
-	{
-		target->SetRDir(effect.direction * 10);
-	} 
-	//else rotate slowly first until about 10 degree. This will be the time needed for the crack sound and makes sense as a tree will start falling slowly.
 	else
 	{
-		if (Abs(target->GetR()) < 10) 
-		{
-			target->SetRDir(effect.direction * 1);
-			//Turn of gravity so the tree doesn't get stuck before its done falling.
-			target->SetYDir(0);
-		} 
-		else 
-		{
-			//Then speed up and let gravity do the rest.
-			target->SetRDir(effect.direction * 10);
-		}	
+		// Place the new plant in the original area
+		confined_area = area;
 	}
-	//if the tree does not lend on a cliff or sth. (is rotated more then 80 degrees in the plus or minus direction) Play the landing sound of the tree.
-	if (Abs(target->GetR()) > 80)
+	// Place the plant
+	var plant = PlaceVegetation(GetID(), 0, 0, 0, 0, 3, confined_area);
+	if (!no_init && plant)
+		plant->InitChild(this);
+
+	return plant;
+}
+
+private func RemoveInTunnel()
+{
+	if (GetMaterial() == Material("Tunnel") || GetMaterial(0, -10) == Material("Tunnel"))
 	{
-		target->SetRDir(0);
-		if (target->GetCon() > 50) target->Sound("TreeLanding", false);
-		return -1;
-	}
-	//check every frame if the tree is stuck and stop rotation in that case this is necessary as a tree could get stuck before reaching 80 degrees
-	if ((target->GetContact(-1, CNAT_Left) | target->GetContact(-1, CNAT_Right)) > 0)
-	{
-		target->SetRDir(0);
-		return -1;
-	}
+		RemoveObject();
+	} 
+}
+
+/* Editor */
+
+public func Definition(def, ...)
+{
+	Library_Seed->AddSeedEditorProps(def);
+	return _inherited(def, ...);
 }

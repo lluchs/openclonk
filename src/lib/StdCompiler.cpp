@@ -2,7 +2,7 @@
  * OpenClonk, http://www.openclonk.org
  *
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -14,12 +14,7 @@
  * for the above references.
  */
 #include "C4Include.h"
-#include "StdCompiler.h"
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <ctype.h>
-#include <C4Log.h>
+#include "lib/StdCompiler.h"
 
 // *** StdCompiler
 
@@ -55,6 +50,19 @@ char StdCompiler::SeparatorToChar(Sep eSep)
 	return ' ';
 }
 
+bool StdCompiler::IsStringEnd(char c, RawCompileType eType)
+{
+	switch (eType)
+	{
+	case RCT_Escaped: return c == '"' || !c || c == '\n' || c == '\r';
+	case RCT_All: return !c || c == '\n' || c == '\r';
+		// '-' is needed for Layers in Scenario.txt (C4NameList) and other Material-Texture combinations
+	case RCT_Idtf: case RCT_IdtfAllowEmpty: case RCT_ID: return !isalnum((unsigned char)c) && c != '_' && c != '-';
+	}
+	// unreachable
+	return true;
+}
+
 // *** StdCompilerBinWrite
 
 void StdCompilerBinWrite::DWord(int32_t &rInt)   { WriteValue(rInt); }
@@ -75,6 +83,11 @@ void StdCompilerBinWrite::String(char **pszString, RawCompileType eType)
 		WriteData(*pszString, strlen(*pszString) + 1);
 	else
 		WriteValue('\0');
+}
+
+void StdCompilerBinWrite::String(std::string &str, RawCompileType type)
+{
+	WriteData(str.c_str(), str.size() + 1);
 }
 
 template <class T>
@@ -148,8 +161,26 @@ void StdCompilerBinRead::String(char **pszString, RawCompileType eType)
 		if (iPos >= Buf.getSize())
 			{ excEOF(); return; }
 	// Allocate and copy data
-	*pszString = new char [iPos - iStart];
+	*pszString = (char *) malloc(iPos - iStart);
 	memcpy(*pszString, Buf.getPtr(iStart), iPos - iStart);
+}
+
+void StdCompilerBinRead::String(std::string &str, RawCompileType type)
+{
+	// At least one byte data needed
+	if (iPos >= Buf.getSize())
+	{
+		excEOF(); return;
+	}
+	int iStart = iPos;
+	// Search string end
+	while (*getBufPtr<char>(Buf, iPos++))
+		if (iPos >= Buf.getSize())
+		{
+			excEOF(); return;
+		}
+	// Copy data
+	str.assign(getBufPtr<char>(Buf, iStart), getBufPtr<char>(Buf, iPos));
 }
 
 void StdCompilerBinRead::Raw(void *pData, size_t iSize, RawCompileType eType)
@@ -169,7 +200,7 @@ StdStrBuf StdCompilerBinRead::getPosition() const
 template <class T>
 inline void StdCompilerBinRead::ReadValue(T &rValue)
 {
-	// Pufferüberhang prüfen
+	// PufferÃ¼berhang prÃ¼fen
 	if (iPos + sizeof(T) > Buf.getSize())
 		{ excEOF(); return; }
 	// Kopieren
@@ -201,9 +232,6 @@ bool StdCompilerINIWrite::Name(const char *szName)
 
 void StdCompilerINIWrite::NameEnd(bool fBreak)
 {
-	// Nothing written? Do not put name.
-	//if(fPutName) PutName(false);
-
 	// Append newline
 	if (!fPutName && !fInSection)
 		Buf.Append("\r\n");
@@ -279,11 +307,16 @@ void StdCompilerINIWrite::Character(char &rChar)
 
 void StdCompilerINIWrite::String(char *szString, size_t iMaxLength, RawCompileType eType)
 {
+	StringN(szString, strnlen(szString, iMaxLength), eType);
+}
+
+void StdCompilerINIWrite::StringN(const char *szString, size_t iLength, RawCompileType eType)
+{
 	PrepareForValue();
 	switch (eType)
 	{
 	case RCT_Escaped:
-		WriteEscaped(szString, szString + strlen(szString));
+		WriteEscaped(szString, szString + iLength);
 		break;
 	case RCT_All:
 	case RCT_Idtf:
@@ -295,8 +328,10 @@ void StdCompilerINIWrite::String(char *szString, size_t iMaxLength, RawCompileTy
 
 void StdCompilerINIWrite::String(char **pszString, RawCompileType eType)
 {
+	assert(pszString);
 	char cNull = '\0';
-	String(*pszString ? *pszString : &cNull, 0, eType);
+	char * szString = *pszString ? *pszString : &cNull;
+	String(szString, strlen(szString), eType);
 }
 
 void StdCompilerINIWrite::Raw(void *pData, size_t iSize, RawCompileType eType)
@@ -314,10 +349,14 @@ void StdCompilerINIWrite::Raw(void *pData, size_t iSize, RawCompileType eType)
 	}
 }
 
+void StdCompilerINIWrite::String(std::string &str, RawCompileType type)
+{
+	StringN(str.c_str(), str.size(), type);
+}
 
 void StdCompilerINIWrite::Begin()
 {
-	pNaming = NULL;
+	pNaming = nullptr;
 	fPutName = false;
 	iDepth = 0;
 	fInSection = false;
@@ -356,17 +395,17 @@ void StdCompilerINIWrite::WriteEscaped(const char *szString, const char *pEnd)
 			fLastNumEscape = false;
 			switch (*pPos)
 			{
-			case '\a': Buf.Append("\\a"); break;
-			case '\b': Buf.Append("\\b"); break;
-			case '\f': Buf.Append("\\f"); break;
-			case '\n': Buf.Append("\\n"); break;
-			case '\r': Buf.Append("\\r"); break;
-			case '\t': Buf.Append("\\t"); break;
-			case '\v': Buf.Append("\\v"); break;
-			case '\"': Buf.Append("\\\""); break;
-			case '\\': Buf.Append("\\\\"); break;
+			case '\a': Buf.Append(R"(\a)"); break;
+			case '\b': Buf.Append(R"(\b)"); break;
+			case '\f': Buf.Append(R"(\f)"); break;
+			case '\n': Buf.Append(R"(\n)"); break;
+			case '\r': Buf.Append(R"(\r)"); break;
+			case '\t': Buf.Append(R"(\t)"); break;
+			case '\v': Buf.Append(R"(\v)"); break;
+			case '\"': Buf.Append(R"(\")"); break;
+			case '\\': Buf.Append(R"(\\)"); break;
 			default:
-				Buf.AppendFormat("\\%o", *reinterpret_cast<const unsigned char *>(pPos));
+				Buf.AppendFormat(R"(\%o)", *reinterpret_cast<const unsigned char *>(pPos));
 				fLastNumEscape = true;
 			}
 			// Set pointer
@@ -406,11 +445,7 @@ void StdCompilerINIWrite::PutName(bool fSection)
 
 // *** StdCompilerINIRead
 
-StdCompilerINIRead::StdCompilerINIRead()
-		: pNameRoot(NULL), iDepth(0), iRealDepth(0)
-{
-
-}
+StdCompilerINIRead::StdCompilerINIRead() = default;
 
 StdCompilerINIRead::~StdCompilerINIRead()
 {
@@ -446,7 +481,7 @@ bool StdCompilerINIRead::Name(const char *szName)
 	// Save tree position, indicate success
 	pName = pNode;
 	pPos = pName->Pos;
-	pReenter = NULL;
+	pReenter = nullptr;
 	iRealDepth++;
 	return true;
 }
@@ -460,7 +495,7 @@ void StdCompilerINIRead::NameEnd(bool fBreak)
 		{
 			// Report unused entries
 			if (pNode->Pos && !fBreak)
-				Warn("Unexpected %s \"%s\"!", pNode->Section ? "section" : "value", pNode->Name.getData());
+				Warn(R"(Unexpected %s "%s"!)", pNode->Section ? "section" : "value", pNode->Name.getData());
 			// delete node
 			pNext = pNode->NextChild;
 			delete pNode;
@@ -477,7 +512,7 @@ void StdCompilerINIRead::NameEnd(bool fBreak)
 	// Decrease depth
 	iDepth--;
 	// This is the middle of nowhere
-	pPos = NULL; pReenter = NULL;
+	pPos = nullptr; pReenter = nullptr;
 }
 
 bool StdCompilerINIRead::FollowName(const char *szName)
@@ -515,13 +550,13 @@ bool StdCompilerINIRead::Separator(Sep eSep)
 		return Name(CurrName.getData());
 	}
 	// Position saved back from separator mismatch?
-	if (pReenter) { pPos = pReenter; pReenter = NULL; }
+	if (pReenter) { pPos = pReenter; pReenter = nullptr; }
 	// Nothing to read?
 	if (!pPos) return false;
 	// Read (while skipping over whitespace)
 	SkipWhitespace();
 	// Separator mismatch? Let all read attempts fail until the correct separator is found or the naming ends.
-	if (*pPos != SeparatorToChar(eSep)) { pReenter = pPos; pPos = NULL; return false; }
+	if (*pPos != SeparatorToChar(eSep)) { pReenter = pPos; pPos = nullptr; return false; }
 	// Go over separator, success
 	pPos++;
 	return true;
@@ -530,7 +565,7 @@ bool StdCompilerINIRead::Separator(Sep eSep)
 void StdCompilerINIRead::NoSeparator()
 {
 	// Position saved back from separator mismatch?
-	if (pReenter) { pPos = pReenter; pReenter = NULL; }
+	if (pReenter) { pPos = pReenter; pReenter = nullptr; }
 }
 
 int StdCompilerINIRead::NameCount(const char *szName)
@@ -545,6 +580,21 @@ int StdCompilerINIRead::NameCount(const char *szName)
 		if (pNode->Pos && (!szName || pNode->Name == szName))
 			++iCount;
 	return iCount;
+}
+
+const char *StdCompilerINIRead::GetNameByIndex(size_t idx) const
+{
+	// not in virtual naming
+	if (iDepth > iRealDepth || !pName) return nullptr;
+	// count within current name
+	NameNode *pNode;
+	for (pNode = pName->FirstChild; pNode; pNode = pNode->NextChild)
+		// all valid subsections are counted
+		if (pNode->Pos)
+				if (!idx--)
+					return pNode->Name.getData();
+	// index out of range
+	return nullptr;
 }
 
 // Various data readers
@@ -562,15 +612,15 @@ void StdCompilerINIRead::Word(int16_t &rShort)
 	int iNum = ReadNum();
 	if (iNum < MIN || iNum > MAX)
 		Warn("number out of range (%d to %d): %d ", MIN, MAX, iNum);
-	rShort = BoundBy(iNum, MIN, MAX);
+	rShort = Clamp(iNum, MIN, MAX);
 }
 void StdCompilerINIRead::Word(uint16_t &rShort)
 {
-	const unsigned int MIN = 0, MAX = (1 << 15) - 1;
+	const unsigned int MIN = 0, MAX = (1 << 16) - 1;
 	unsigned int iNum = ReadUNum();
 	if (iNum > MAX)
 		Warn("number out of range (%u to %u): %u ", MIN, MAX, iNum);
-	rShort = BoundBy(iNum, MIN, MAX);
+	rShort = Clamp(iNum, MIN, MAX);
 }
 void StdCompilerINIRead::Byte(int8_t &rByte)
 {
@@ -578,7 +628,7 @@ void StdCompilerINIRead::Byte(int8_t &rByte)
 	int iNum = ReadNum();
 	if (iNum < MIN || iNum > MAX)
 		Warn("number out of range (%d to %d): %d ", MIN, MAX, iNum);
-	rByte = BoundBy(iNum, MIN, MAX);
+	rByte = Clamp(iNum, MIN, MAX);
 }
 void StdCompilerINIRead::Byte(uint8_t &rByte)
 {
@@ -586,7 +636,7 @@ void StdCompilerINIRead::Byte(uint8_t &rByte)
 	unsigned int iNum = ReadUNum();
 	if (iNum > MAX)
 		Warn("number out of range (%u to %u): %u ", MIN, MAX, iNum);
-	rByte = BoundBy(iNum, MIN, MAX);
+	rByte = Clamp(iNum, MIN, MAX);
 }
 void StdCompilerINIRead::Boolean(bool &rBool)
 {
@@ -624,6 +674,14 @@ void StdCompilerINIRead::String(char **pszString, RawCompileType eType)
 	// Set
 	*pszString = reinterpret_cast<char *>(Buf.GrabPointer());
 }
+void StdCompilerINIRead::String(std::string &str, RawCompileType type)
+{
+	// Get length
+	size_t iLength = GetStringLength(type);
+	// Read data
+	StdBuf Buf = ReadString(iLength, type, true);
+	str = getBufPtr<char>(Buf);
+}
 void StdCompilerINIRead::Raw(void *pData, size_t iSize, RawCompileType eType)
 {
 	// Read data
@@ -635,16 +693,48 @@ void StdCompilerINIRead::Raw(void *pData, size_t iSize, RawCompileType eType)
 	MemCopy(Buf.getData(), pData, iSize);
 }
 
+uint32_t StdCompilerINIRead::getLineNumberOfPos(const char *pos) const
+{
+	// Figure out quickly whether we already know which line this is
+	auto entry = std::lower_bound(lineBreaks.begin(), lineBreaks.end(), pos);
+	if (entry != lineBreaks.end())
+	{
+		return std::distance(lineBreaks.begin(), entry) + 1;
+	}
+	// Otherwise search through the buffer until we find out, filling the
+	// cache in the process
+	const char *cursor = Buf.getData();
+	if (!lineBreaks.empty())
+		cursor = *(lineBreaks.end() - 1) + 1;
+	for (;;)
+	{
+		if (*cursor == '\0' || *cursor == '\n')
+		{
+			lineBreaks.push_back(cursor);
+
+			// If we're at the end of the file or have found the line break
+			// past the requested position, we're done for now
+			if (*cursor == '\0' || pos < cursor)
+			{
+				break;
+			}
+		}
+		++cursor;
+	}
+	return std::distance(lineBreaks.begin(),
+		std::lower_bound(lineBreaks.begin(), lineBreaks.end(), pos)) + 1;
+}
+
 StdStrBuf StdCompilerINIRead::getPosition() const
 {
 	if (pPos)
-		return FormatString("line %d", SGetLine(Buf.getData(), pPos));
+		return FormatString("line %d", getLineNumberOfPos(pPos));
 	else if (iDepth == iRealDepth)
-		return FormatString(pName->Section ? "section \"%s\", after line %d" : "value \"%s\", line %d", pName->Name.getData(), SGetLine(Buf.getData(), pName->Pos));
+		return FormatString(pName->Section ? R"(section "%s", after line %d)" : R"(value "%s", line %d)", pName->Name.getData(), getLineNumberOfPos(pName->Pos));
 	else if (iRealDepth)
-		return FormatString("missing value/section \"%s\" inside section \"%s\" (line %d)", NotFoundName.getData(), pName->Name.getData(), SGetLine(Buf.getData(), pName->Pos));
+		return FormatString(R"(missing value/section "%s" inside section "%s" (line %d))", NotFoundName.getData(), pName->Name.getData(), getLineNumberOfPos(pName->Pos));
 	else
-		return FormatString("missing value/section \"%s\"", NotFoundName.getData());
+		return FormatString(R"(missing value/section "%s")", NotFoundName.getData());
 }
 
 void StdCompilerINIRead::Begin()
@@ -655,7 +745,7 @@ void StdCompilerINIRead::Begin()
 	CreateNameTree();
 	// Start must be inside a section
 	iDepth = iRealDepth = 0;
-	pPos = NULL; pReenter = NULL;
+	pPos = nullptr; pReenter = nullptr;
 }
 void StdCompilerINIRead::End()
 {
@@ -729,7 +819,7 @@ void StdCompilerINIRead::FreeNameTree()
 {
 	// free all nodes
 	FreeNameNode(pNameRoot);
-	pName = pNameRoot = NULL;
+	pName = pNameRoot = nullptr;
 }
 
 void StdCompilerINIRead::FreeNameNode(NameNode *pDelNode)
@@ -748,7 +838,7 @@ void StdCompilerINIRead::FreeNameNode(NameNode *pDelNode)
 			else
 			{
 				pNode = pNode->Parent;
-				if (pNode) pNode->FirstChild = NULL;
+				if (pNode) pNode->FirstChild = nullptr;
 			}
 			delete pDelete;
 		}
@@ -773,7 +863,7 @@ long StdCompilerINIRead::ReadNum()
 		{ notFound("Number"); return 0; }
 	// Skip whitespace
 	SkipWhitespace();
-	// Read number. If this breaks, Günther is to blame!
+	// Read number. If this breaks, GÃ¼nther is to blame!
 	const char *pnPos = pPos;
 	long iNum = strtol(pPos, const_cast<char **>(&pnPos), 10);
 	// Could not read?
@@ -790,7 +880,7 @@ unsigned long StdCompilerINIRead::ReadUNum()
 		{ notFound("Number"); return 0; }
 	// Skip whitespace
 	SkipWhitespace();
-	// Read number. If this breaks, Günther is to blame!
+	// Read number. If this breaks, GÃ¼nther is to blame!
 	const char *pnPos = pPos;
 	unsigned long iNum = strtoul(pPos, const_cast<char **>(&pnPos), 10);
 	// Could not read?
@@ -879,19 +969,6 @@ StdBuf StdCompilerINIRead::ReadString(size_t iLength, RawCompileType eRawType, b
 	OutBuf.Shrink(iLength);
 	// Done
 	return OutBuf;
-}
-
-bool StdCompilerINIRead::TestStringEnd(RawCompileType eType)
-{
-	switch (eType)
-	{
-	case RCT_Escaped: return *pPos == '"' || !*pPos || *pPos == '\n' || *pPos == '\r';
-	case RCT_All: return !*pPos || *pPos == '\n' || *pPos == '\r';
-		// '-' is needed for Layers in Scenario.txt (C4NameList) and other Material-Texture combinations
-	case RCT_Idtf: case RCT_IdtfAllowEmpty: case RCT_ID: return !isalnum((unsigned char)*pPos) && *pPos != '_' && *pPos != '-';
-	}
-	// unreachable
-	return true;
 }
 
 char StdCompilerINIRead::ReadEscapedChar()

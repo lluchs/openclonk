@@ -9,24 +9,20 @@
 #include Library_Map
 
 
-// Scenario properties which can be set later by the lobby options.
-static const SCENOPT_MapSize = 1;
-
 // Called be the engine: draw the complete map here.
 protected func InitializeMap(proplist map)
 {
 	// Retrieve the settings according to the MapSize setting.
 	var map_size;
-	if (SCENOPT_MapSize == 1)
+	if (SCENPAR_MapSize == 1)
 		map_size = [150, 150]; 
-	if (SCENOPT_MapSize == 2)
+	if (SCENPAR_MapSize == 2)
 		map_size = [150, 175];
-	if (SCENOPT_MapSize == 3)
+	if (SCENPAR_MapSize == 3)
 		map_size = [150, 200];
 	
 	// Set the map size.
 	map->Resize(map_size[0], map_size[1]);
-	
 	
 	// Draw the main surface: a mountain with the polygon algorithm.
 	var wdt = map.Wdt;
@@ -51,12 +47,12 @@ protected func InitializeMap(proplist map)
 public func DrawMountainMaterials(proplist surface)
 {
 	// Draw all the materials.
-	DrawMaterial("Earth-earth_dry", surface);
-	DrawMaterial("Earth-earth_rough", surface);
+	DrawMaterial("Earth-earth_root", surface);
+	DrawMaterial("Earth-earth_spongy", surface);
 	DrawMaterial("Granite", surface);
-	DrawMaterial("Rock-rock_cracked", surface);
+	DrawMaterial("Rock", surface);
 	DrawMaterial("Snow-snow1", surface);
-	DrawMaterial("Ice-ice3", surface);
+	DrawMaterial("Ice-ice2", surface);
 	DrawMaterial("Rock-rock", surface);
 	DrawMaterial("Tunnel", surface);
 	DrawMaterial("Ore", surface);
@@ -78,27 +74,11 @@ public func DrawMountainMaterials(proplist surface)
 public func DrawMountainBorder(proplist surface)
 {
 	var border = {Algo = MAPALGO_Border, Op = surface, Top = 5, Left = 5, Right = 5};
-	DrawMaterial("Earth-earth_dry", border);
-	DrawMaterial("Ice-ice3", border, 3, 20);
+	DrawMaterial("Earth-earth_root", border);
+	DrawMaterial("Ice-ice2", border, 3, 20);
 	DrawMaterial("Tunnel", border, 3, 20);
 	DrawMaterial("Granite", border, 3, 25);
 	DrawMaterial("Rock-rock", border, 2, 25);
-	DrawMaterial("Rock-rock_cracked", border, 3, 30);
-	return;
-}
-
-// Draws some material inside an island.
-public func DrawMaterial(string mat, proplist onto_mask, int speck_size, int ratio)
-{
-	if (!speck_size)
-		speck_size = 3;
-	if (!ratio)
-		ratio = 15;
-	// Use random checker algorithm to draw patches of the material. 
-	var rnd_checker = {Algo = MAPALGO_RndChecker, Ratio = ratio, Wdt = speck_size, Hgt = speck_size};
-	rnd_checker = {Algo = MAPALGO_Turbulence, Iterations = 4, Op = rnd_checker};
-	var algo = {Algo = MAPALGO_And, Op = [onto_mask, rnd_checker]};
-	Draw(mat, algo);
-	
+	DrawMaterial("Rock-rock", border, 3, 30);
 	return;
 }

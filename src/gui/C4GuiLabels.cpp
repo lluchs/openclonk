@@ -2,7 +2,7 @@
  * OpenClonk, http://www.openclonk.org
  *
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -16,13 +16,12 @@
 // generic user interface
 // eye candy
 
-#include <C4Include.h>
-#include <C4Gui.h>
-#include <C4FullScreen.h>
-#include <C4LoaderScreen.h>
-#include <C4Application.h>
-#include <C4MouseControl.h>
-#include <C4GraphicsResource.h>
+#include "C4Include.h"
+#include "gui/C4Gui.h"
+
+#include "graphics/C4Draw.h"
+#include "graphics/C4GraphicsResource.h"
+#include "gui/C4MouseControl.h"
 
 namespace C4GUI
 {
@@ -37,7 +36,7 @@ namespace C4GUI
 	}
 
 	Label::Label(const char *szLblText, int32_t iX0, int32_t iTop, int32_t iAlign, DWORD dwFClr, CStdFont *pFont, bool fMakeReadableOnBlack, bool fMarkup)
-			: Element(), dwFgClr(dwFClr), x0(iX0), iAlign(iAlign), pFont(pFont), cHotkey(0), fAutosize(true), fMarkup(fMarkup), pClickFocusControl(NULL)
+			: Element(), dwFgClr(dwFClr), x0(iX0), iAlign(iAlign), pFont(pFont), cHotkey(0), fAutosize(true), fMarkup(fMarkup), pClickFocusControl(nullptr)
 	{
 		// make color readable
 		if (fMakeReadableOnBlack) MakeColorReadableOnBlack(dwFgClr);
@@ -50,7 +49,7 @@ namespace C4GUI
 	}
 
 	Label::Label(const char *szLblText, const C4Rect &rcBounds, int32_t iAlign, DWORD dwFClr, CStdFont *pFont, bool fMakeReadableOnBlack, bool fAutosize, bool fMarkup)
-			: Element(), dwFgClr(dwFClr), iAlign(iAlign), pFont(pFont), cHotkey(0), fAutosize(fAutosize), fMarkup(fMarkup), pClickFocusControl(NULL)
+			: Element(), dwFgClr(dwFClr), iAlign(iAlign), pFont(pFont), cHotkey(0), fAutosize(fAutosize), fMarkup(fMarkup), pClickFocusControl(nullptr)
 	{
 		// make color readable
 		if (fMakeReadableOnBlack) MakeColorReadableOnBlack(dwFgClr);
@@ -153,7 +152,7 @@ namespace C4GUI
 			if (tNow >= tLastChangeTime + iAutoScrollDelay)
 			{
 				if (!iScrollDir) iScrollDir=1;
-				int32_t iMaxScroll = Max<int32_t>(pFont->GetTextWidth(sText.getData(), true) + (x0 - rcBounds.x) + iXOff + GetRightIndent() - rcBounds.Wdt, 0);
+				int32_t iMaxScroll = std::max<int32_t>(pFont->GetTextWidth(sText.getData(), true) + (x0 - rcBounds.x) + iXOff + GetRightIndent() - rcBounds.Wdt, 0);
 				if (iMaxScroll)
 				{
 					iScrollPos += iScrollDir;
@@ -177,7 +176,7 @@ namespace C4GUI
 	int32_t WoodenLabel::GetDefaultHeight(CStdFont *pUseFont)
 	{
 		if (!pUseFont) pUseFont = &(::GraphicsResource.TextFont);
-		return Max<int32_t>(pUseFont->GetLineHeight(), C4GUI_MinWoodBarHgt);
+		return std::max<int32_t>(pUseFont->GetLineHeight(), C4GUI_MinWoodBarHgt);
 	}
 
 	void WoodenLabel::SetIcon(const C4Facet &rfctIcon)
@@ -248,7 +247,7 @@ namespace C4GUI
 		// size by line count
 		int32_t iIndex = 0; const char *szLine; int32_t iHgt = 0;
 		CStdFont *pLineFont; bool fNewPar;
-		while ((szLine = Lines.GetLine(iIndex, &pLineFont, NULL, &fNewPar)))
+		while ((szLine = Lines.GetLine(iIndex, &pLineFont, nullptr, &fNewPar)))
 		{
 			int32_t iFontLineHeight = pLineFont->GetLineHeight();
 			// indents between separate messages
@@ -257,7 +256,7 @@ namespace C4GUI
 			iHgt += iFontLineHeight;
 			++iIndex;
 		}
-		rcBounds.Hgt = Max<int32_t>(iHgt, 5);
+		rcBounds.Hgt = std::max<int32_t>(iHgt, 5);
 		// update parent container
 		Element::UpdateSize();
 	}
@@ -308,7 +307,6 @@ namespace C4GUI
 		// calc progress width
 		int32_t iProgressWdt = (rcBounds.Wdt-4) * iProgress / iMax;
 		// draw progress
-		//pDraw->DrawBoxDw(cgo.Surface, cgo.TargetX+rcBounds.x+2, cgo.TargetY+rcBounds.y+2, cgo.TargetX+rcBounds.x+iProgressWdt, cgo.TargetY+rcBounds.y+rcBounds.Hgt-2, C4GUI_ProgressBarColor);
 		::GraphicsResource.fctProgressBar.DrawX(cgo.Surface, cgo.TargetX+rcBounds.x+2, cgo.TargetY+rcBounds.y+2, iProgressWdt, rcBounds.Hgt-2);
 		// print out progress text
 		char szPrg[32+1];
@@ -398,10 +396,10 @@ namespace C4GUI
 	{
 		// draw inner image
 		C4Facet cgo2 = cgo;
-		cgo2.X = rcBounds.x + cgo.TargetX + iBorderSize * rcBounds.Wdt / Max<int>(OverlayImage.Wdt, 1);
-		cgo2.Y = rcBounds.y + cgo.TargetY + iBorderSize * rcBounds.Hgt / Max<int>(OverlayImage.Hgt, 1);
-		cgo2.Wdt = rcBounds.Wdt - 2 * iBorderSize * rcBounds.Wdt / Max<int>(OverlayImage.Wdt, 1);
-		cgo2.Hgt = rcBounds.Hgt - 2 * iBorderSize * rcBounds.Hgt / Max<int>(OverlayImage.Hgt, 1);
+		cgo2.X = rcBounds.x + cgo.TargetX + iBorderSize * rcBounds.Wdt / std::max<int>(OverlayImage.Wdt, 1);
+		cgo2.Y = rcBounds.y + cgo.TargetY + iBorderSize * rcBounds.Hgt / std::max<int>(OverlayImage.Hgt, 1);
+		cgo2.Wdt = rcBounds.Wdt - 2 * iBorderSize * rcBounds.Wdt / std::max<int>(OverlayImage.Wdt, 1);
+		cgo2.Hgt = rcBounds.Hgt - 2 * iBorderSize * rcBounds.Hgt / std::max<int>(OverlayImage.Hgt, 1);
 		Facet.Draw(cgo2, fAspect);
 		// draw outer image
 		cgo2.X = rcBounds.x + cgo.TargetX;
@@ -431,12 +429,18 @@ namespace C4GUI
 	C4Facet Icon::GetIconFacet(Icons icoIconIndex)
 	{
 		if (icoIconIndex == Ico_None) return C4Facet();
-		C4Facet &rFacet = (icoIconIndex & Ico_Extended) ? ::GraphicsResource.fctIconsEx : ::GraphicsResource.fctIcons;
-		icoIconIndex = Icons(icoIconIndex & (Ico_Extended-1));
+		C4Facet *rFacet;
+		switch (icoIconIndex & ~0xff)
+		{
+		case Ico_Extended:    rFacet = &::GraphicsResource.fctIconsEx; break;
+		case Ico_Controller:  rFacet = &::GraphicsResource.fctControllerIcons; break;
+		default:              rFacet = &::GraphicsResource.fctIcons;
+		}
+		icoIconIndex = Icons(icoIconIndex & 0xff);
 		int32_t iXMax, iYMax;
-		rFacet.GetPhaseNum(iXMax, iYMax);
+		rFacet->GetPhaseNum(iXMax, iYMax);
 		if (!iXMax) iXMax = 6;
-		return rFacet.GetPhase(icoIconIndex % iXMax, icoIconIndex / iXMax);
+		return rFacet->GetPhase(icoIconIndex % iXMax, icoIconIndex / iXMax);
 	}
 
 
@@ -445,15 +449,10 @@ namespace C4GUI
 
 	void PaintBox::MouseInput(CMouse &rMouse, int32_t iButton, int32_t iX, int32_t iY, DWORD dwKeyParam)
 	{
-		// only if a valid surface is present
-		// C4Surface::Surface was always != 0
-		//if (!fctPaint.GetFace().Surface) return;
 	}
 
 	void PaintBox::DrawElement(C4TargetFacet &cgo)
 	{
-		// only if a valid surface is present
-		//if (!fctPaint.GetFace().Surface) return;
 		// draw it
 		fctPaint.Draw(cgo.Surface, rcBounds.x+cgo.TargetX, rcBounds.y+cgo.TargetY);
 	}
@@ -468,16 +467,14 @@ namespace C4GUI
 		fctPaint.Create(iSfcWdt, iSfcHgt);
 	}
 
-	PaintBox::~PaintBox()
-	{
-	}
+	PaintBox::~PaintBox() = default;
 
 
 // --------------------------------------------------
 // TextWindow
 
 	TextWindow::TextWindow(C4Rect &rtBounds, size_t iPicWdt, size_t iPicHgt, size_t iPicPadding, size_t iMaxLines, size_t iMaxTextLen, const char *szIndentChars, bool fAutoGrow, const C4Facet *pOverlayPic, int iOverlayBorder, bool fMarkup)
-			: Control(rtBounds), pLogBuffer(NULL), fDrawBackground(true), fDrawFrame(true), iPicPadding(iPicPadding)
+			: Control(rtBounds), pLogBuffer(nullptr), fDrawBackground(true), fDrawFrame(true), iPicPadding(iPicPadding)
 	{
 		// calc client rect
 		UpdateOwnPos();
@@ -495,9 +492,9 @@ namespace C4GUI
 		if (iPicWdt && iPicHgt)
 		{
 			C4Rect rcImage;
-			rcImage.x = Max<int32_t>(rcContentSize.GetMiddleX() - iPicWdt/2, 0);
+			rcImage.x = std::max<int32_t>(rcContentSize.GetMiddleX() - iPicWdt/2, 0);
 			rcImage.y = 0;
-			rcImage.Wdt = Min<size_t>(iPicWdt, rcContentSize.Wdt);
+			rcImage.Wdt = std::min<size_t>(iPicWdt, rcContentSize.Wdt);
 			rcImage.Hgt = iPicHgt * rcImage.Wdt / iPicWdt;
 			rcContentSize.y += rcImage.Hgt + iPicPadding;
 			if (pOverlayPic)
@@ -506,7 +503,7 @@ namespace C4GUI
 				pTitlePicture = new Picture(rcImage, false);
 			pClientWindow->AddElement(pTitlePicture);
 		}
-		else pTitlePicture = NULL;
+		else pTitlePicture = nullptr;
 
 		// update size
 		UpdateSize();
@@ -519,7 +516,7 @@ namespace C4GUI
 		// resize log buffer pos to horizontal extents
 		C4Rect rcChildBounds = pLogBuffer->GetBounds();
 		rcChildBounds.x = 0;
-		rcChildBounds.y = pTitlePicture ? pTitlePicture->GetBounds().Hgt + iPicPadding : 0;
+		rcChildBounds.y = (pTitlePicture && pTitlePicture->IsVisible()) ? pTitlePicture->GetBounds().Hgt + iPicPadding : 0;
 		rcChildBounds.Wdt = pClientWindow->GetClientRect().Wdt;
 		pLogBuffer->SetBounds(rcChildBounds);
 	}

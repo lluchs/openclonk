@@ -27,6 +27,11 @@
           <col>int player, int x, int y, object base, int team, id extra_data</col>
           <col>Called after when a new player joins the game. At this point, the clonks, materials, structures etc. are already placed at the position given in the <emlink href="scenario/scenario.html#SektionenPlayer1Player2Player3Player4">Scenario.txt</emlink>. <code>x</code> and <code>y</code> specify the starting position of the player, <code>base</code> is the player's base (if any), <code>team</code> denotes the team of the player. For <code>extra_data</code>, see <funclink>CreateScriptPlayer</funclink></col>
         </row>
+        <row id="InitializePlayers">
+          <literal_col>InitializePlayers</literal_col>
+          <col></col>
+          <col>Called after all initial players joined. Can be used e.g. to start intros.</col>
+        </row>
         <row id="RelaunchPlayer">
           <literal_col>RelaunchPlayer</literal_col>
           <col>int player, int killed_by_player</col>
@@ -70,6 +75,12 @@
           <literal_col>OnWealthChanged</literal_col>
           <col>int player</col>
           <col>Called when the wealth of a player has changed.</col>
+        </row>
+
+        <row id="InitializeAmbience">
+          <literal_col>InitializeAmbience</literal_col>
+          <col></col>
+          <col>Called on game initialization in Frame zero (i.e. not in savegames). To be used to create sound and music controller objects. If not defined and Objects.ocd is loaded, falls back to a global function defined in Ambience.ocd which creates the default ambience controller.</col>
         </row>
       </table>
 	</text>

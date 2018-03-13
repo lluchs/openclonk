@@ -3,7 +3,7 @@
  *
  * Copyright (c) 1998-2000, Matthes Bender
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -18,34 +18,24 @@
 /* Lots of file helpers */
 
 #include "C4Include.h"
-#include <StdFile.h>
-#include <StdBuf.h>
+#include "platform/StdFile.h"
 
-#include <stdio.h>
 #ifdef HAVE_IO_H
 #include <io.h>
 #endif
 #ifdef HAVE_DIRECT_H
 #include <direct.h>
 #endif
-#ifdef HAVE_UNISTD_H
-#include <unistd.h>
-#endif
 #ifdef _WIN32
-#include <C4windowswrapper.h>
+#include "platform/C4windowswrapper.h"
 #endif
-#include <errno.h>
-#include <stdlib.h>
-#include <ctype.h>
-#include <fcntl.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <zlib.h>
-#include <string>
 
 /* Path & Filename */
 #ifdef _WIN32
-static const char *DirectorySeparators = "/\\";
+static const char *DirectorySeparators = R"(/\)";
 #else
 static const char *DirectorySeparators = "/";
 #endif
@@ -54,14 +44,14 @@ static const char *DirectorySeparators = "/";
 
 char *GetFilename(char *szPath)
 {
-	if (!szPath) return NULL;
+	if (!szPath) return nullptr;
 	char *pPos,*pFilename=szPath;
 	for (pPos=szPath; *pPos; pPos++) if (*pPos==DirectorySeparator || *pPos=='/') pFilename = pPos+1;
 	return pFilename;
 }
 const char *GetFilename(const char *szPath)
 {
-	if (!szPath) return NULL;
+	if (!szPath) return nullptr;
 	const char *pPos,*pFilename=szPath;
 	for (pPos=szPath; *pPos; pPos++) if (*pPos==DirectorySeparator || *pPos=='/') pFilename = pPos+1;
 	return pFilename;
@@ -81,7 +71,7 @@ const char* GetFilenameOnly(const char *strFilename)
 const char *GetC4Filename(const char *szPath)
 {
 	// returns path to file starting at first .c4*-directory.
-	if (!szPath) return NULL;
+	if (!szPath) return nullptr;
 	const char *pPos,*pFilename=szPath;
 	for (pPos=szPath; *pPos; pPos++)
 	{
@@ -113,14 +103,14 @@ int GetTrailingNumber(const char *strString)
 
 char *GetFilenameWeb(char *szPath)
 {
-	if (!szPath) return NULL;
+	if (!szPath) return nullptr;
 	char *pPos, *pFilename=szPath;
 	for (pPos=szPath; *pPos; pPos++) if (*pPos == '/') pFilename = pPos+1;
 	return pFilename;
 }
 const char *GetFilenameWeb(const char *szPath)
 {
-	if (!szPath) return NULL;
+	if (!szPath) return nullptr;
 	const char *pPos, *pFilename=szPath;
 	for (pPos=szPath; *pPos; pPos++) if (*pPos == '/') pFilename = pPos+1;
 	return pFilename;
@@ -143,7 +133,7 @@ const char *GetExtension(const char *szFilename)
 	for (end=0; szFilename[end]; end++) {}
 	pos = end;
 	while ((pos>0) && (szFilename[pos-1] != '.') && (szFilename[pos-1] != DirectorySeparator)) pos--;
-	if (szFilename[pos-1] == '.') return szFilename+pos;
+	if ((pos > 0) && szFilename[pos-1] == '.') return szFilename+pos;
 	return szFilename+end;
 }
 
@@ -151,14 +141,14 @@ const char *GetExtension(const char *szFilename)
 void RealPath(const char *szFilename, char *pFullFilename)
 {
 #ifdef _WIN32
-	wchar_t *wpath = _wfullpath(0, GetWideChar(szFilename), 0);
+	wchar_t *wpath = _wfullpath(nullptr, GetWideChar(szFilename), 0);
 	StdStrBuf path(wpath);
 	// I'm pretty sure pFullFilename will always have at least a size of _MAX_PATH, but ughh
 	// This should return a StdStrBuf
 	SCopy(path.getData(), pFullFilename, _MAX_PATH);
 	free(wpath);
 #else
-	char *pSuffix = NULL;
+	char *pSuffix = nullptr;
 	char szCopy[_MAX_PATH + 1];
 	for (;;)
 	{
@@ -174,10 +164,10 @@ void RealPath(const char *szFilename, char *pFullFilename)
 		}
 		else
 			*pSuffix = '/';
-		while (pSuffix >= szCopy)
+		while (pSuffix > szCopy)
 			if (*--pSuffix == '/')
 				break;
-		if (pSuffix < szCopy)
+		if (pSuffix <= szCopy)
 		{
 			// Give up: Just copy whatever we got
 			SCopy(szFilename, pFullFilename, _MAX_PATH);
@@ -216,16 +206,6 @@ bool GetParentPath(const char *szFilename, StdStrBuf *outBuf)
 	if (!GetParentPath(szFilename, buf)) return false;
 	outBuf->Copy(buf);
 	return true;
-}
-
-bool GetRelativePath(const char *strPath, const char *strRelativeTo, char *strBuffer, int iBufferSize)
-{
-	// Specified path is relative to base path
-	// Copy relative section
-	const char *szCpy;
-	SCopy(szCpy=GetRelativePathS(strPath, strRelativeTo), strBuffer, iBufferSize);
-	// return whether it was made relative
-	return szCpy!=strPath;
 }
 
 const char *GetRelativePathS(const char *strPath, const char *strRelativeTo)
@@ -397,7 +377,7 @@ bool WildcardMatch(const char *szWildcard, const char *szString)
 	if (!szString || !szWildcard) return false;
 	// match char-wise
 	const char *pWild = szWildcard, *pPos = szString;
-	const char *pLWild = NULL, *pLPos = NULL; // backtracking
+	const char *pLWild = nullptr, *pLPos = nullptr; // backtracking
 	while (*pWild || pLWild)
 		// string wildcard?
 		if (*pWild == '*')
@@ -431,7 +411,7 @@ void MakeFilenameFromTitle(char *szTitle)
 		else if (static_cast<unsigned int>(*szTitle2) > 127)
 			fStrip = true;
 		else
-			fStrip = (SCharPos(*szTitle2, "!\"'%&/=?+*#:;<>\\.") >= 0);
+			fStrip = (SCharPos(*szTitle2, R"(!"'%&/=?+*#:;<>\.)") >= 0);
 		if (!fStrip) *szFilename++ = *szTitle2;
 		++szTitle2;
 	}
@@ -458,7 +438,7 @@ bool FileExists(const char *szFilename)
 size_t FileSize(const char *szFilename)
 {
 #if defined(_WIN32) || defined(_WIN64)
-	WIN32_FILE_ATTRIBUTE_DATA attributes = {0};
+	auto attributes = WIN32_FILE_ATTRIBUTE_DATA();
 	if (GetFileAttributesEx(GetWideChar(szFilename), GetFileExInfoStandard, &attributes) == 0)
 		return 0;
 #ifdef _WIN64
@@ -488,7 +468,7 @@ size_t FileSize(int fdes)
 int FileTime(const char *szFilename)
 {
 #ifdef _WIN32
-	WIN32_FILE_ATTRIBUTE_DATA attributes = {0};
+	auto attributes = WIN32_FILE_ATTRIBUTE_DATA();
 	if (GetFileAttributesEx(GetWideChar(szFilename), GetFileExInfoStandard, &attributes) == 0)
 		return 0;
 	int64_t ft = (static_cast<int64_t>(attributes.ftLastWriteTime.dwHighDateTime) << (sizeof(attributes.ftLastWriteTime.dwLowDateTime) * 8)) | attributes.ftLastWriteTime.dwLowDateTime;
@@ -602,7 +582,7 @@ bool MakeOriginalFilename(char *szFilename)
 			if (GetDriveTypeW(GetWideChar(szFilename)) == DRIVE_NO_ROOT_DIR) return false;
 			return true;
 		}
-	struct _wfinddata_t fdt; long shnd;
+	struct _wfinddata_t fdt; intptr_t shnd;
 	if ((shnd=_wfindfirst(GetWideChar(szFilename),&fdt))<0) return false;
 	_findclose(shnd);
 	StdStrBuf name(fdt.name);
@@ -623,18 +603,17 @@ bool MakeOriginalFilename(char *szFilename)
 const char *GetWorkingDirectory()
 {
 #ifdef _WIN32
-	static char *buffer = 0;
-	if (buffer) StdBuf::DeletePointer(buffer);
-	wchar_t *widebuf = 0;
-	DWORD widebufsz = GetCurrentDirectoryW(0, 0);
+	static StdStrBuf buffer;
+	wchar_t *widebuf = nullptr;
+	DWORD widebufsz = GetCurrentDirectoryW(0, nullptr);
 	widebuf = new wchar_t[widebufsz];
 	if (GetCurrentDirectoryW(widebufsz, widebuf) == 0) {
 		delete[] widebuf;
-		return 0;
+		return nullptr;
 	}
-	StdStrBuf path(widebuf);
+	buffer.Take(StdStrBuf(widebuf));
 	delete[] widebuf;
-	return buffer = path.GrabPointer();
+	return buffer.getData();
 #else
 	static char buf[_MAX_PATH+1];
 	return getcwd(buf,_MAX_PATH);
@@ -654,7 +633,7 @@ bool CreatePath(const std::string &path)
 {
 	assert(!path.empty());
 #ifdef _WIN32
-	if (CreateDirectoryW(GetWideChar(path.c_str()), NULL))
+	if (CreateDirectoryW(GetWideChar(path.c_str()), nullptr))
 	{
 		return true;
 	}
@@ -672,7 +651,7 @@ bool CreatePath(const std::string &path)
 		{
 			wchar_t * str;
 			if (FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER|FORMAT_MESSAGE_FROM_SYSTEM|FORMAT_MESSAGE_IGNORE_INSERTS,
-			                  NULL, err, 0, (LPWSTR)&str, 0, NULL))
+			                  nullptr, err, 0, (LPWSTR)&str, 0, nullptr))
 			{
 				LogF("CreateDirectory failed: %s", StdStrBuf(str).getData());
 				LocalFree(str);
@@ -719,7 +698,7 @@ bool DirectoryExists(const char *szFilename)
 	}
 	// Check file attributes
 #ifdef _WIN32
-	struct _wfinddata_t fdt; int shnd;
+	struct _wfinddata_t fdt; intptr_t shnd;
 	if ((shnd=_wfindfirst(GetWideChar(szFilename),&fdt))<0) return false;
 	_findclose(shnd);
 	if (fdt.attrib & _A_SUBDIR) return true;
@@ -741,7 +720,6 @@ bool CopyDirectory(const char *szSource, const char *szTarget, bool fResetAttrib
 	    || SEqual(GetFilename(szSource),".."))
 		return true;
 	// Overwrite target
-	//if (ItemExists(szTarget))
 	if (!EraseItem(szTarget)) return false;
 	// Create target directory
 	bool status=true;
@@ -751,7 +729,7 @@ bool CopyDirectory(const char *szSource, const char *szTarget, bool fResetAttrib
 	char contents[_MAX_PATH+1];
 	SCopy(szSource,contents); AppendBackslash(contents);
 	SAppend("*",contents);
-	_wfinddata_t fdt; int hfdt;
+	_wfinddata_t fdt; intptr_t hfdt;
 	if ( (hfdt=_wfindfirst(GetWideChar(contents),&fdt)) > -1 )
 	{
 		do
@@ -789,7 +767,7 @@ bool EraseDirectory(const char *szDirName)
 	char path[_MAX_PATH+1];
 #ifdef _WIN32
 	// Get path to directory contents
-	SCopy(szDirName,path); SAppend("\\*.*",path);
+	SCopy(szDirName,path); SAppend(R"(\*.*)",path);
 	// Erase subdirectories and files
 	ForEachFile(path,&EraseItem);
 #else
@@ -814,7 +792,6 @@ bool EraseDirectory(const char *szDirName)
 		}
 	}
 	// Remove directory
-	//chmod(szDirName,200);
 #ifdef _WIN32
 	return !!RemoveDirectoryW(GetWideChar(szDirName));
 #else
@@ -823,12 +800,6 @@ bool EraseDirectory(const char *szDirName)
 }
 
 /* Items */
-
-/*int ItemAttributes(const char *szItemName)
-  {
-  return FileAttributes(szItemName);
-  }*/
-
 bool RenameItem(const char *szItemName, const char *szNewItemName)
 {
 	// FIXME: What if the directory would have to be copied?
@@ -897,10 +868,10 @@ bool ItemIdentical(const char *szFilename1, const char *szFilename2)
 
 struct DirectoryIteratorP
 {
-	DirectoryIteratorP() : ref(1) {}
+	DirectoryIteratorP() = default;
 	DirectoryIterator::FileList files;
 	std::string directory;
-	int ref;
+	int ref{1};
 };
 
 DirectoryIterator::DirectoryIterator()
@@ -974,9 +945,10 @@ void DirectoryIterator::Read(const char *dirname)
 	assert(dirname && *dirname);
 	assert(p->files.empty());
 	std::string search_path(dirname);
-	search_path.push_back(DirectorySeparator);
+	if (!search_path.empty() && search_path.back() != DirectorySeparator)
+		search_path.push_back(DirectorySeparator);
 #ifdef WIN32
-	WIN32_FIND_DATAW file = {0};
+	auto file = WIN32_FIND_DATAW();
 	HANDLE fh = FindFirstFileW(GetWideChar((search_path + '*').c_str()), &file);
 	if (fh == INVALID_HANDLE_VALUE)
 	{
@@ -998,13 +970,16 @@ void DirectoryIterator::Read(const char *dirname)
 		// ...unless they're . or ..
 		if (file.cFileName[0] == '.' && (file.cFileName[1] == '\0' || (file.cFileName[1] == '.' && file.cFileName[2] == '\0')))
 			continue;
-		p->files.push_back(StdStrBuf(file.cFileName).getData());
+
+		size_t size = (file.nFileSizeHigh * (size_t(MAXDWORD) + 1)) + file.nFileSizeLow;
+
+		p->files.emplace_back(StdStrBuf(file.cFileName).getData(), size);
 	}
 	while (FindNextFileW(fh, &file));
 	FindClose(fh);
 #else
 	DIR *fh = opendir(dirname);
-	if (fh == NULL)
+	if (fh == nullptr)
 	{
 		switch (errno)
 		{
@@ -1020,19 +995,19 @@ void DirectoryIterator::Read(const char *dirname)
 	}
 	dirent *file;
 	// Insert files into list
-	while ((file = readdir(fh)) != NULL)
+	while ((file = readdir(fh)) != nullptr)
 	{
 		// ...unless they're . or ..
 		if (file->d_name[0] == '.' && (file->d_name[1] == '\0' || (file->d_name[1] == '.' && file->d_name[2] == '\0')))
 			continue;
-		p->files.push_back(file->d_name);
+		p->files.emplace_back(file->d_name, 0);
 	}
 	closedir(fh);
 #endif
 	// Sort list
 	std::sort(p->files.begin(), p->files.end());
-	for (FileList::iterator it = p->files.begin(); it != p->files.end(); ++it)
-		it->insert(0, search_path); // prepend path to all file entries
+	for (auto & file : p->files)
+		file.first.insert(0, search_path); // prepend path to all file entries
 	iter = p->files.begin();
 	p->directory = dirname;
 }
@@ -1047,14 +1022,23 @@ DirectoryIterator& DirectoryIterator::operator++()
 const char * DirectoryIterator::operator*() const
 {
 	if (iter == p->files.end())
-		return NULL;
-	return iter->c_str();
+		return nullptr;
+	return iter->first.c_str();
 }
 DirectoryIterator DirectoryIterator::operator++(int)
 {
 	DirectoryIterator tmp(*this);
 	++*this;
 	return tmp;
+}
+
+size_t DirectoryIterator::GetFileSize() const
+{
+#ifdef _WIN32
+	return iter->second;
+#else
+	return FileSize(iter->first.c_str());
+#endif
 }
 
 int ForEachFile(const char *szDirName, bool (*fnCallback)(const char *))
@@ -1068,7 +1052,7 @@ int ForEachFile(const char *szDirName, bool (*fnCallback)(const char *))
 		AppendBackslash(szFilename);
 	int iFileCount = 0;
 #ifdef _WIN32
-	struct _wfinddata_t fdt; int fdthnd;
+	struct _wfinddata_t fdt; intptr_t fdthnd;
 	if (!fHasWildcard) // parameter without wildcard: Append "/*.*" or "\*.*"
 		SAppend("*",szFilename,_MAX_PATH);
 	if ((fdthnd = _wfindfirst (GetWideChar(szFilename), &fdt)) < 0)

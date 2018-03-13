@@ -44,6 +44,8 @@ func Initialize()
 	Scoreboard->SetTitle("King of the Hill");
 	//CalculatePosition();
 	ScheduleCall(this, "PostInitialize", 3);
+	// Assure relaunching is enabled and infinite.
+	GetRelaunchRule()->SetDefaultRelaunchCount(nil);
 	return _inherited(...);
 }
 
@@ -54,7 +56,7 @@ func PostInitialize()
 
 func Init()
 {
-	location=CreateObject(KingOfTheHill_Location, 0, 5, NO_OWNER);
+	location=CreateObjectAbove(KingOfTheHill_Location, 0, 5, NO_OWNER);
 	location->SetKotH(this);
 }
 
@@ -136,6 +138,7 @@ public func IsFulfilled()
 
 func OnClonkDeath(object clonk, int killer)
 {	
+	_inherited(clonk, killer, ...);
 	if (clonk->GetAlive()) return;
 		
 	if (GetPlayerName(clonk->GetOwner()))
@@ -179,13 +182,13 @@ func OnClonkDeath(object clonk, int killer)
 	return;
 }
 
-func GetAdditionalPlayerRelaunchString(object clonk, int plr, int killed_by)
+public func GetAdditionalPlayerRelaunchString(object clonk, int plr, int killed_by)
 {
-	if(!Hostile(killed_by, plr)) return;
-	if(!location->GetKing()) return;
-	if(location->GetKing()->GetOwner() != killed_by) return;
-	if(!GetEffect("NewKing", GetCursor(killed_by))) return;
-	var msg=Format("$IsNowKing$", GetTaggedPlayerName(killed_by));
+	if (!Hostile(killed_by, plr)) return;
+	if (!location->GetKing()) return;
+	if (location->GetKing()->GetOwner() != killed_by) return;
+	if (!GetEffect("NewKing", GetCursor(killed_by))) return;
+	var msg = Format("$IsNowKing$", GetTaggedPlayerName(killed_by));
 	return msg;
 }
 

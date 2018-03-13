@@ -3,6 +3,8 @@
 	Authors: Mimmo, Clonkonaut
 --*/
 
+#include Library_Flammable
+
 static const MOSS_MAXWETNESS = 30; // Moisture the moss can achieve. Dries out within 36*MOSS_MAXWETNESS frames
 static const MOSS_MAXDIST = 50; // Used for various distance checks
 local wetness;
@@ -34,7 +36,7 @@ public func ControlUse(object clonk, int x, int y, bool box)
 	{
 		// Plant!
 		clonk->DoKneel();
-		CreateObject(Lichen, x, y, clonk->GetOwner());
+		CreateObjectAbove(Lichen, x, y, clonk->GetOwner());
 		RemoveObject();
 	}
 	else
@@ -49,30 +51,15 @@ private func FxMossMoistureTimer(target, effect, time)
 {
 	if (GetMaterial() == Material("Water"))
 	{
-		
-		if (wetness < MOSS_MAXWETNESS)
-		{	
-			wetness = MOSS_MAXWETNESS;
-			if(graphic)
-				SetGraphics(Format("%d",graphic));
-			else
-				SetGraphics();
-		}
+		DoWetness(MOSS_MAXWETNESS);
 	}
 	else if (!Contained() && !GBackSolid() && !GBackLiquid())
 		if (wetness)
 		{
-			wetness--;
+			DoWetness(-1);
 			// Fire nearby -> dry faster
-			if (FindObject(Find_Distance(100), Find_OCF(OCF_OnFire))) wetness--;
-			if (wetness <= 0)
-			{
-				wetness = 0;
-				if (graphic)
-					SetGraphics(Format("%dDry",graphic));
-				else
-					SetGraphics("Dry");
-			}
+			if (FindObject(Find_Distance(100), Find_OCF(OCF_OnFire))) DoWetness(-1);
+
 			if ([GetX(),GetY()]==lastpos)
 			{
 				if (FindNearWater())
@@ -81,6 +68,38 @@ private func FxMossMoistureTimer(target, effect, time)
 			else
 				lastpos = [GetX(), GetY()];
 		}		 
+}
+
+private func DoWetness(int change)
+{
+	var was_wet = wetness > 0;
+	wetness = BoundBy(wetness + change, 0, MOSS_MAXWETNESS);
+	var is_wet = wetness > 0;
+	
+	if (was_wet && !is_wet)
+	{
+		this.Name = Format("$Dry$ %s", this.Name);
+		
+		if (graphic)
+			SetGraphics(Format("%dDry",graphic));
+		else
+			SetGraphics("Dry");
+	}
+	else if (!was_wet && is_wet)
+	{
+		this.Name = this.Prototype.Name;
+		
+		if (graphic)
+			SetGraphics(Format("%d",graphic));
+		else
+			SetGraphics();
+	}
+}
+
+public func CanBeStackedWith(object other)
+{
+	if ((this.wetness > 0) != (other.wetness > 0)) return false;
+	return _inherited(other, ...);
 }
 
 protected func TryToLichen()
@@ -92,7 +111,7 @@ protected func TryToLichen()
 	if (!GetMaterialVal("Soil", "Material", GetMaterial(0,y))) return false;
 	if (FindObject(Find_ID(Lichen), Find_Distance(MOSS_MAXDIST))) return false;
 
-	CreateObject(Lichen, 0, y, NO_OWNER);
+	CreateObjectAbove(Lichen, 0, y, NO_OWNER);
 	RemoveObject();
 	return true;
 }
@@ -113,12 +132,11 @@ private func FindNearWater()
 /*-- Status --*/
 
 public func IsFuel() { return !wetness; }
-public func GetFuelAmount() { return 100; }
+public func GetFuelAmount(int requested_amount) { return 100; }    // disregard the parameter, because only a complete chunk should be removed 
 
 local Collectible = 1;
 local Name = "$Name$";
 local Description = "$Description$";
-local UsageHelp = "$UsageHelp$";
 local Placement = 3;
 local BlastIncinerate = 1;
 local ContactIncinerate = 1;

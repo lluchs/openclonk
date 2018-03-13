@@ -1,11 +1,10 @@
 /*--
 	TeleGlove
-	Author: Ringwaul
-
-	Move objects remotely.
+	Moves objects remotely like magic!
+	
+	@author: Ringwaul
 --*/
 
-local reach;
 local radius; //actual effect radius to grab objects
 local radiusparticle; //radius of particles around object
 
@@ -18,96 +17,59 @@ local carry_bone;
 
 local target_object;
 
-protected func Initialize()
+/*-- Engine Callbacks --*/
+
+func Initialize()
 {
-	reach = 150;
 	radius = 60;
 	radiusparticle = radius / 4;
 }
 
-public func GetCarryMode() { return CARRY_HandBack; }
-public func GetCarrySpecial(clonk) { return carry_bone; }
-public func GetCarryBone()	{	return "main";	}
-public func GetCarryTransform()
+func Hit()
 {
-	//Left hand's bone is different? I don't know, but this is a work-around.
-	if(carry_bone == "pos_hand1") return Trans_Rotate(180,0,0,1);
-	return Trans_Rotate(-90,0,0,1);
+	Sound("Hits::GeneralHit?");
 }
 
-protected func HoldingEnabled() { return true; }
+/*-- Global functions --*/
 
-protected func ControlUseStart(object clonk, ix, iy)
+global func FxTeleGloveReleasedStart(object target, effect)
 {
-	// if the clonk doesn't have an action where he can use it's hands do nothing
-	if(!clonk->HasHandAction() || (!clonk->IsWalking() && !clonk->IsJumping()))
+	effect.t0 = FrameCounter();
+	return;
+}
+
+global func FxTeleGloveWeightStart(object target, proplist effect)
+{
+	target->SetMass(target->GetMass()/2);
+}
+
+global func FxTeleGloveWeightStop(object target, proplist effect, int reason, bool temp)
+{
+	target->SetMass(target->GetDefCoreVal("Mass", "DefCore"));
+}
+
+// Damaging Clonks with moving objects makes this tool stupidly strong. So it's blocked
+// while moving the object and a few frames after release
+global func FxTeleGloveWeightQueryHitClonk(object target, fx, object clonk) { return true; }
+global func FxTeleGloveReleasedQueryHitClonk(object target, fx, object clonk) { return FrameCounter()-fx.t0 <= 5; }
+
+/*-- Usage --*/
+
+// The reach of the tele glove, can be modified by overloading.
+public func GetTeleGloveReach() { return 150; }
+
+public func HoldingEnabled() { return true; }
+
+public func RejectUse(object clonk)
+{
+	return !clonk->HasHandAction() || !(clonk->IsWalking() || clonk->IsJumping());
+}
+
+public func ControlUseStart(object clonk, ix, iy)
+{
+	StartUsage(clonk);
+	UpdateGloveAngle(clonk, ix, iy);
 	return true;
-	else
-	{
-		StartUsage(clonk);
-		UpdateGloveAngle(clonk, ix, iy);
-	}
-
-	return 1;
-}
-
-private func StartUsage(object clonk)
-{
-	var hand;
-	// which animation to use? (which hand)
-	if(clonk->GetHandPosByItemPos(clonk->GetItemPos(this)) == 0)
-	{
-		carry_bone = "pos_hand2";
-		hand = "AimArmsGeneric.R";
-	}
-	else
-	{
-		carry_bone = "pos_hand1";
-		hand = "AimArmsGeneric.L";
-	}
-
-	aiming = 1;
-
-	aim_anim = clonk->PlayAnimation(hand, 10, Anim_Const(clonk->GetAnimationLength(hand)/2), Anim_Const(1000));
-	clonk->UpdateAttach();
-
-
-	//Animations and effects for TeleGlove
-	Sound("Electrical",nil,nil,nil,+1);
-	PlayAnimation("Opening", -5, Anim_Linear(0,0,GetAnimationLength("Opening"), 10, ANIM_Hold), Anim_Const(1000));
-	anim_spin = PlayAnimation("Spin",5, Anim_Linear(0,0,GetAnimationLength("Spin"), 40, ANIM_Loop), Anim_Const(1000));
-}
-
-private func EndUsage(object clonk)
-{
-	carry_bone = nil;
-	aim_anim = nil;
-	iAngle = 0;
-	clonk->StopAnimation(clonk->GetRootAnimation(10));
-	clonk->UpdateAttach();
-}
-
-// Update the glove aim angle
-private func UpdateGloveAngle(object clonk, int x, int y)
-{
-	var angle=Normalize(Angle(0,0, x,y),-180);
-	angle=BoundBy(angle,-150,150);
-	
-	if(clonk->GetDir() == DIR_Left)
-	{
-		if(angle > 0) return;
-	}
-	else
-	{
-		if(angle < 0) return;
-	}
-
-	iAngle=angle;
-
-//	var weight = 0;
-//	if( Abs(iAngle) > 90) weight = 1000*( Abs(iAngle)-60 )/90;
-
-	clonk->SetAnimationPosition(aim_anim,  Anim_Const(Abs(iAngle) * 11111/1000));
 }
 
 public func ControlUseHolding(object clonk, ix, iy)
@@ -130,7 +92,7 @@ public func ControlUseHolding(object clonk, ix, iy)
 	if (Random(2)) particles = Particles_ElectroSpark1();
 	else particles = Particles_ElectroSpark2();
 	
-	if(distp < reach)
+	if (distp < GetTeleGloveReach())
 	{
 		//Particles moving towards object
 		CreateParticle("ElectroSpark", ix + xs, iy + ys, PV_Random(-xs/2, -xs/4), PV_Random(-ys/2, -ys/4), PV_Random(5, 10), particles, 5);
@@ -150,7 +112,8 @@ public func ControlUseHolding(object clonk, ix, iy)
 	if(target_object)
 	{
 		if(Distance(target_object->GetX(), target_object->GetY(), clonk->GetX() + ix, clonk->GetY() + iy) > radius ||
-		Distance(target_object->GetX(), target_object->GetY(), clonk->GetX(), clonk->GetY()) > reach)
+		Distance(target_object->GetX(), target_object->GetY(), clonk->GetX(), clonk->GetY()) > GetTeleGloveReach() ||
+		target_object->~RejectTeleGloveControl(this))
 		{
 			LostTargetObject(target);
 			target_object = nil;
@@ -163,7 +126,8 @@ public func ControlUseHolding(object clonk, ix, iy)
 					Find_NoContainer(),
 					Find_Category(C4D_Object),
 					Find_And(Find_Distance(radius, ix, iy),
-					Find_Distance(reach - 15)),
+					Find_Distance(GetTeleGloveReach() - 15)),
+					Find_Not(Find_Func("RejectTeleGloveControl", this)),
 					Sort_Distance(ix,iy));
 
 		if(target)
@@ -195,12 +159,88 @@ public func ControlUseHolding(object clonk, ix, iy)
 	return 1;
 }
 
+public func ControlUseCancel(object clonk, int ix, int iy)
+{
+	return CancelUse(clonk);
+}
+
+public func ControlUseStop(object clonk, ix, iy)
+{
+	return CancelUse(clonk);
+}
+
+func StartUsage(object clonk)
+{
+	var hand;
+	// which animation to use? (which hand)
+	if(clonk->GetHandPosByItemPos(clonk->GetItemPos(this)) == 0)
+	{
+		carry_bone = "pos_hand2";
+		hand = "AimArmsGeneric.R";
+	}
+	else
+	{
+		carry_bone = "pos_hand1";
+		hand = "AimArmsGeneric.L";
+	}
+
+	aiming = 1;
+
+	aim_anim = clonk->PlayAnimation(hand, CLONK_ANIM_SLOT_Arms, Anim_Const(clonk->GetAnimationLength(hand)/2), Anim_Const(1000));
+	clonk->UpdateAttach();
+
+
+	//Animations and effects for TeleGlove
+	Sound("Objects::Electrical",nil,nil,nil,+1);
+	PlayAnimation("Opening", -5, Anim_Linear(0,0,GetAnimationLength("Opening"), 10, ANIM_Hold));
+	anim_spin = PlayAnimation("Spin",5, Anim_Linear(0,0,GetAnimationLength("Spin"), 40, ANIM_Loop));
+	
+	// Light effects
+	SetLightRange(50, 10);
+	SetLightColor(0xa0a0ff);
+}
+
+func EndUsage(object clonk)
+{
+	carry_bone = nil;
+	aim_anim = nil;
+	iAngle = 0;
+	clonk->StopAnimation(clonk->GetRootAnimation(10));
+	clonk->UpdateAttach();
+	SetLightRange();
+}
+
+// Update the glove aim angle
+func UpdateGloveAngle(object clonk, int x, int y)
+{
+	var angle=Normalize(Angle(0,0, x,y),-180);
+	angle=BoundBy(angle,-150,150);
+	
+	if(clonk->GetDir() == DIR_Left)
+	{
+		if(angle > 0) return;
+	}
+	else
+	{
+		if(angle < 0) return;
+	}
+
+	iAngle=angle;
+
+	clonk->SetAnimationPosition(aim_anim,  Anim_Const(Abs(iAngle) * 11111/1000));
+	
+	// Light position at remote location
+	this.LightOffset = [x, y];
+	return true;
+}
+
 public func GainedTargetObject(object target)
 {
-	if(!GetEffect("TeleGloveWeight", target))
+	if (!GetEffect("TeleGloveWeight", target))
 	{
 		//Who holds the object? For killtracing
 		target->SetController(Contained()->GetController());
+		target->~OnTeleGloveControl(this);
 		AddEffect("TeleGloveWeight", target, 1, 0, target);
 		return 1;
 	}
@@ -215,63 +255,52 @@ public func LostTargetObject(object target)
 	effect.controller = Contained()->GetController();
 }
 
-global func FxTeleGloveReleasedStart(object target, effect)
-{
-	effect.t0 = FrameCounter();
-	return;
-}
-
-global func FxTeleGloveWeightStart(object target, int num)
-{
-	target->SetMass(target->GetMass()/2);
-}
-
-global func FxTeleGloveWeightStop(object target, int num, int reason, bool temp)
-{
-	target->SetMass(target->GetDefCoreVal("Mass", "DefCore"));
-}
-
-// Damaging Clonks with moving objects makes this tool stupidly strong. So it's blocked
-// while moving the object and a few frames after release
-global func FxTeleGloveWeightQueryHitClonk(object target, fx, object clonk) { return true; }
-global func FxTeleGloveReleasedQueryHitClonk(object target, fx, object clonk) { return FrameCounter()-fx.t0 <= 5; }
-
-protected func ControlUseStop(object clonk, ix, iy)
-{
-	CancelUse(clonk);
-	return 1;
-}
-
-protected func ControlUseCancel(object clonk, int ix, int iy)
-{
-	CancelUse(clonk);
-}
 
 protected func CancelUse(object clonk)
 {
 	EndUsage(clonk);
-	Sound("Electrical",nil,nil,nil,-1);
-	if(aiming = 1) PlayAnimation("Closing", -5, Anim_Linear(0,0,GetAnimationLength("Closing"), 10, ANIM_Hold), Anim_Const(1000));
+	Sound("Objects::Electrical",nil,nil,nil,-1);
+	if(aiming = 1) PlayAnimation("Closing", -5, Anim_Linear(0,0,GetAnimationLength("Closing"), 10, ANIM_Hold));
 	StopAnimation(anim_spin);
 	aiming = 0;
 	if(target_object) LostTargetObject(target_object);
 	target_object = nil;
-	return 1;
+	return true;
 }
 
-func Hit()
-{
-	Sound("GeneralHit?");
-}
+/*-- Production --*/
 
 func IsInventorProduct() { return true; }
+public func GetSubstituteComponent(id component) // Can be made from diamond, ruby or amethyst
+{
+	if (component == Diamond)
+		return [Ruby, Amethyst];
+}
 
-func Definition(def) {
+/*-- Display --*/
+
+public func GetCarryMode() { return CARRY_HandBack; }
+
+public func GetCarrySpecial(clonk) { return carry_bone; }
+
+public func GetCarryTransform(object clonk, bool idle, bool nohand)
+{
+	if (nohand)
+		return Trans_Mul(Trans_Rotate(45, 0, 1), Trans_Rotate(25, 0, 0, 1), Trans_Translate(4000, 0, 1000));
+
+	//Left hand's bone is different? I don't know, but this is a work-around.
+	if(carry_bone == "pos_hand1") return Trans_Rotate(180,0,1,0);
+	return Trans_Rotate(-90,0,1,0);
+}
+
+func Definition(def)
+{
 	SetProperty("PictureTransformation",Trans_Rotate(-60,1,0,1),def);
 }
 
+/*-- Properties --*/
+
 local Name = "$Name$";
-local UsageHelp = "$UsageHelp$";
 local Description = "$Description$";
-local Collectible = 1;
-local Rebuy = true;
+local Collectible = true;
+local Components = {Metal = 2, Diamond = 1};

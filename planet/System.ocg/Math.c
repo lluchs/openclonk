@@ -1,23 +1,26 @@
-/*--
-		Math.c
-		Authors: Maikel, flgr, Newton, Tyron, Zapper
-
-		Any kind of help with calculation.
---*/
+/**
+	Math.c
+	Any kind of help with calculations.
+	
+	@author Maikel, flgr, Newton, Tyron, Zapper
+*/
 
 // Returns the offset to x.
+// documented in /docs/sdk/script/fn
 global func AbsX(int x)
 {
 	return x - GetX();
 }
 
 // Returns the offset to y.
+// documented in /docs/sdk/script/fn
 global func AbsY(int y)
 {
 	return y - GetY();
 }
 
 // Supports negative values, and can deliver random values between two bounds.
+// documented in /docs/sdk/script/fn
 global func RandomX(int start, int end)
 {
 	var swap;
@@ -39,6 +42,7 @@ global func Sign(int x)
 }
 
 // Tangens.
+// documented in /docs/sdk/script/fn
 global func Tan(int angle, int radius, int prec)
 {
 	return radius * Sin(angle, radius * 100, prec) / Cos(angle, radius * 100, prec);
@@ -98,6 +102,7 @@ global func GetTurnDirection(
 	 return dir;
 }
 
+// documented in /docs/sdk/script/fn
 global func SetBit(int old_val, int bit_nr, bool bit)
 {
 	if (GetBit(old_val, bit_nr) != (bit != 0))
@@ -105,11 +110,13 @@ global func SetBit(int old_val, int bit_nr, bool bit)
 	return old_val;
 }
 
+// documented in /docs/sdk/script/fn
 global func GetBit(int value, int bit_nr)
 {
 	return (value & (1 << bit_nr)) != 0;
 }
 
+// documented in /docs/sdk/script/fn
 global func ToggleBit(int old_val, int bit_nr)
 {
 	return old_val ^ (1 << bit_nr);
@@ -122,30 +129,7 @@ global func GetCalcDir()
 	return GetDir() * 2 - 1;
 }
 
-// Ensure that the first rectangle is fully with the second one and returns an adjusted rectangle. Both rectangles can be created with Rectangle()
-global func RectangleEnsureWithin(proplist first, proplist second)
-{
-	if (GetType(first) != C4V_PropList) return {};
-	if (GetType(second) != C4V_PropList) return {};
-
-	var adjusted = { x = first.x, y = first.y, w = first.w, h = first.h };
-	if (first.x < second.x) adjusted.x = second.x;
-	if (first.w > second.w) adjusted.w = second.w - (adjusted.x - second.x);
-	if (adjusted.x + adjusted.w > second.x + second.w) adjusted.w = second.w - (adjusted.x - second.x);
-	if (first.y < second.y) adjusted.y = second.y;
-	if (first.h > second.h) adjusted.h = second.h - (adjusted.y - second.y);
-	if (adjusted.y + adjusted.h > second.y + second.h) adjusted.h = second.h - (adjusted.y - second.y);
-
-	return adjusted;
-}
-
-// checks whether a point {x, y} is in a normalized rectangle {x, y, w, h}
-global func IsPointInRectangle(proplist point, proplist rectangle)
-{
-	return (point.x >= rectangle.x && point.x <= rectangle.x + rectangle.w) && (point.y >= rectangle.y && point.y <= rectangle.w + rectangle.h);
-}
-
-//Moves param 'a' towards param 'b' by 'max' amount per frame
+// Moves param 'a' towards param 'b' by 'max' amount per frame.
 global func MoveTowards(int a, int b, int max)
 {
 	if(b == nil) return false;
@@ -170,17 +154,47 @@ global func FindHeight(int x)
 */
 global func GetSurfaceVector(int x, int y)
 {
-	var normal = {x = 0, y = 0};
+	var normal = [0, 0];
 	
 	var fac = 1;
 	for(var fac = 1; fac <= 4; fac *= 2)
 	{
-		if(GBackSolid(x + fac, y)) {--normal.x;}
-		if(GBackSolid(x - fac, y)) {++normal.x;}
-	
-		if(GBackSolid(x, y + fac)) {--normal.y;}
-		if(GBackSolid(x, y - fac)) {++normal.y;}
+		if(GBackSolid(x + fac, y)) --normal[0];
+		if(GBackSolid(x - fac, y)) ++normal[0];
+			
+		if(GBackSolid(x, y + fac)) --normal[1];
+		if(GBackSolid(x, y - fac)) ++normal[1];
 	}
 	
 	return normal;
+}
+
+// Mathematical modulo operation for calculations in ℤ/nℤ.
+//
+// Examples:
+// (12 % 10) == Mod(12, 10) == 2
+// (-1 % 10) == -1
+// Mod(-1, 10) == 9
+global func Mod(int dividend, int divisor)
+{
+	var a = dividend, b = divisor;
+	return (a % b + b) % b;
+}
+
+// Returns whether the line from (x1, y1) to (x2, y2) overlaps with the line from (x3, y3) to (x4, y4).
+// Whenever the two lines share a starting or ending point they are not considered to be overlapping.
+global func IsLineOverlap(int x1, int y1, int x2, int y2, int x3, int y3, int x4, int y4)
+{
+	// Same starting or ending point is not overlapping.
+	if ((x1 == x3 && y1 == y3) || (x1 == x4 && y1 == y4) || (x2 == x3 && y2 == y3) || (x2 == x4 && y2 == y4))
+		return false;	
+	
+	// Check if line from (x1, y1) to (x2, y2) crosses the line from (x3, y3) to (x4, y4).
+	var d1x = x2 - x1, d1y = y2 - y1, d2x = x4 - x3, d2y = y4 - y3, d3x = x3 - x1, d3y = y3 - y1;
+	var a = d1y * d3x - d1x * d3y;
+	var b = d2y * d3x - d2x * d3y;
+	var c = d2y * d1x - d2x * d1y;
+	if (!c) 
+		return !a && Inside(x3, x1, x2) && Inside(y3, y1, y2); // lines are parallel
+	return a * c >= 0 && !(a * a / (c * c + 1)) && b * c >= 0 && !(b * b/(c * c + 1));
 }

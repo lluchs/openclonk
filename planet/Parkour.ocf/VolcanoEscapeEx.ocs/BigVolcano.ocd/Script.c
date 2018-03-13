@@ -8,7 +8,8 @@
 static const BigVolcanoBehaviour_Fill = 0,
              BigVolcanoBehaviour_Advance = 1,
              BigVolcanoBehaviour_AdvanceLava = 2,
-             BigVolcanoBehaviour_Stop = 3;
+             BigVolcanoBehaviour_Stop = 3,
+             BigVolcanoBehaviour_Underground = DMQ_Sub;
              
 static const BigVolcano_XRes = 25; // step size of segments of lava_y array
 
@@ -87,6 +88,7 @@ func Execute()
 	// Rise lava
 	if (true)
 	{
+		var lavamat = Material("DuroLava");
 		var any_nonlava, last_move, this_move;
 		for (var i=0; i<n_lava_y; ++i)
 		{
@@ -111,7 +113,7 @@ func Execute()
 						// gfx
 						var particle_speed = blast_size * 3;
 						CreateParticle("FireDense", PV_Random(x - 1, x + 1), PV_Random(y - 4, y - 2), PV_Random(-particle_speed, particle_speed), PV_Random(-particle_speed, particle_speed), PV_Random(30, 40), Particles_Fire(), 5);
-						if (!Random(5)) SoundAt("RockHit*", x,y-3, 100);
+						if (!Random(5)) SoundAt("Hits::Materials::Rock::RockHit*", x,y-3, 100);
 					}
 					else if (speed <=50)
 					{
@@ -121,7 +123,13 @@ func Execute()
 				}
 				if (last_move || (this_move && i))
 				{
-					DrawMaterialQuad("DuroLava-lava_red", (i-1)*BigVolcano_XRes,lava_y[i-1], i*BigVolcano_XRes,lava_y[i], i*BigVolcano_XRes,lava_y[i]+speed_multiplier+1, (i-1)*BigVolcano_XRes,lava_y[i-1]+speed_multiplier+1, true);
+					var x1=(i-1)*BigVolcano_XRes, x2 = i*BigVolcano_XRes;
+					var y1=lava_y[i-1]+speed_multiplier+1, y2 = lava_y[i]+speed_multiplier+1;
+					var limit=50;
+					while (GetMaterial(x1,y1+1) != lavamat && --limit) ++y1;
+					limit=50;
+					while (GetMaterial(x1,y2+1) != lavamat && --limit) ++y2;
+					DrawMaterialQuad("DuroLava-lava_red", x1,lava_y[i-1], x2,lava_y[i], x2,y2, x1,y1, BigVolcanoBehaviour_Underground);
 				}
 				last_move = this_move;
 			}
@@ -184,7 +192,7 @@ func FxVolcanoBranchTimer(object q, fx, int time)
 	if (behaviour == BigVolcanoBehaviour_Fill)
 	{
 		CastPXS("DuroLava", 4+Cos(fx.fill_time*40,2), 30+Cos(fx.fill_time*40,25), nx,ny-1, 0,50);
-		if (!(fx.fill_time%20) && !GBackSemiSolid(nx,ny-6)) SoundAt("BigVolcanoBubble*", nx,ny, 10);
+		if (!(fx.fill_time%20) && !GBackSemiSolid(nx,ny-6)) SoundAt("BigVolcano::BigVolcanoBubble*", nx,ny, 10);
 		if (fx.fill_time++ > 31) return FX_Execute_Kill; // Done?
 	}
 	else if (behaviour != BigVolcanoBehaviour_Stop)
@@ -293,9 +301,9 @@ func DrawVerticalBranch(int x1, int y1, int x2, int y2, int half_wdt)
 	// Draw branch from x1/y1 to x2/y2 with width half_wdt*2
 	//Log("BRANCH %d,%d,%d,%d, %d",x1,y1,x2,y2,half_wdt);
 	if (Abs(x2-x1)>Abs(y2-y1))
-		return DrawMaterialQuad("DuroLava-lava_red",x1,y1-half_wdt, x1,y1+half_wdt, x2,y2+half_wdt, x2,y2-half_wdt, true);
+		return DrawMaterialQuad("DuroLava-lava_red",x1,y1-half_wdt, x1,y1+half_wdt, x2,y2+half_wdt, x2,y2-half_wdt, BigVolcanoBehaviour_Underground);
 	else
-		return DrawMaterialQuad("DuroLava-lava_red",x1-half_wdt,y1, x1+half_wdt,y1, x2+half_wdt,y2, x2-half_wdt,y2, true);
+		return DrawMaterialQuad("DuroLava-lava_red",x1-half_wdt,y1, x1+half_wdt,y1, x2+half_wdt,y2, x2-half_wdt,y2, BigVolcanoBehaviour_Underground);
 }
 
 func ExtendVerticalBranch(int x1, int y1, int x2, int y2, int from_half_wdt, int to_half_wdt)
@@ -306,26 +314,15 @@ func ExtendVerticalBranch(int x1, int y1, int x2, int y2, int from_half_wdt, int
 	if (from_half_wdt <= 2) return DrawVerticalBranch(x1,y1,x2,y2,to_half_wdt);
 	if (Abs(x2-x1)>Abs(y2-y1))
 	{
-		DrawMaterialQuad("DuroLava-lava_red",x1,y1-to_half_wdt, x1,y1-from_half_wdt, x2,y2-from_half_wdt, x2,y2-to_half_wdt, true);
-		DrawMaterialQuad("DuroLava-lava_red",x1,y1+to_half_wdt, x1,y1+from_half_wdt, x2,y2+from_half_wdt, x2,y2+to_half_wdt, true);
+		DrawMaterialQuad("DuroLava-lava_red",x1,y1-to_half_wdt, x1,y1-from_half_wdt, x2,y2-from_half_wdt, x2,y2-to_half_wdt, BigVolcanoBehaviour_Underground);
+		DrawMaterialQuad("DuroLava-lava_red",x1,y1+to_half_wdt, x1,y1+from_half_wdt, x2,y2+from_half_wdt, x2,y2+to_half_wdt, BigVolcanoBehaviour_Underground);
 	}
 	else
 	{
-		DrawMaterialQuad("DuroLava-lava_red",x1-to_half_wdt,y1, x1-from_half_wdt,y1, x2-from_half_wdt,y2, x2-to_half_wdt,y2, true);
-		DrawMaterialQuad("DuroLava-lava_red",x1+to_half_wdt,y1, x1+from_half_wdt,y1, x2+from_half_wdt,y2, x2+to_half_wdt,y2, true);
+		DrawMaterialQuad("DuroLava-lava_red",x1-to_half_wdt,y1, x1-from_half_wdt,y1, x2-from_half_wdt,y2, x2-to_half_wdt,y2, BigVolcanoBehaviour_Underground);
+		DrawMaterialQuad("DuroLava-lava_red",x1+to_half_wdt,y1, x1+from_half_wdt,y1, x2+from_half_wdt,y2, x2+to_half_wdt,y2, BigVolcanoBehaviour_Underground);
 	}
 	return true;
-}
-
-func SoundAt(string sound_name, int x, int y, int vol)
-{
-	var sound_host = CreateObject(BigVolcano,x,y), r;
-	if (sound_host)
-	{
-		r = sound_host->Sound(sound_name, false, vol);
-		ScheduleCall(sound_host, Global.RemoveObject, 100);
-	}
-	return r;
 }
 
 // Get highest point of lava surface

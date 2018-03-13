@@ -2,7 +2,7 @@
  * OpenClonk, http://www.openclonk.org
  *
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -22,31 +22,28 @@
 
 */
 
-#include <C4Include.h>
-#include <C4Language.h>
+#include "C4Include.h"
+#include "c4group/C4Language.h"
 
-#include <C4Application.h>
-#include <C4Components.h>
-#include <C4Log.h>
-#include <C4Config.h>
-#include <C4Game.h>
+#include "game/C4Application.h"
+#include "c4group/C4Components.h"
 
-#ifdef HAVE_ICONV
-#ifdef HAVE_LANGINFO_H
-#include <langinfo.h>
-#endif
-#include <errno.h>
-iconv_t C4Language::host_to_local = iconv_t(-1);
-iconv_t C4Language::local_to_host = iconv_t(-1);
-#endif
+template<size_t iBufferSize>
+static bool GetRelativePath(const char *strPath, const char *strRelativeTo, char(&strBuffer)[iBufferSize])
+{
+	// Specified path is relative to base path
+	// Copy relative section
+	const char *szCpy;
+	SCopy(szCpy = GetRelativePathS(strPath, strRelativeTo), strBuffer, iBufferSize);
+	// return whether it was made relative
+	return szCpy != strPath;
+}
 
 C4Language Languages;
 
-//char strLog[2048 + 1];
-
 C4Language::C4Language()
 {
-	Infos = NULL;
+	Infos = nullptr;
 	PackGroupLocation[0] = 0;
 }
 
@@ -59,26 +56,6 @@ bool C4Language::Init()
 {
 	// Clear (to allow clean re-init)
 	Clear();
-
-	// Look for available language packs in Language.ocg          Opening Language.ocg as a group and
-	/*C4Group *pPack;                                             the packs as children is no good -
-	char strPackFilename[_MAX_FNAME + 1];                         C4Group simply cannot handle it. So
-	Log("Registering languages...");                              we need to open the pack group files
-	if (PackDirectory.Open(C4CFN_Languages))                      directly...
-	  while (PackDirectory.FindNextEntry("*.ocg", strPackFilename))
-	  {
-	    pPack = new C4Group();
-	    if (pPack->OpenAsChild(&PackDirectory, strPackFilename))
-	    {
-	      sprintf(strLog, "  %s...", strPackFilename); Log(strLog);
-	      Packs.RegisterGroup(*pPack, true, C4GSCnt_Language, false);
-	    }
-	    else
-	    {
-	      sprintf(strLog, "Could not open language pack %s...", strPackFilename); Log(strLog);
-	      delete pPack;
-	    }
-	  }*/
 
 	// Make sure Language.ocg is unpacked (TODO: This won't work properly if Language.ocg is in system data path)
 	// Assume for now that Language.ocg is either at a writable location or unpacked already.
@@ -104,7 +81,6 @@ bool C4Language::Init()
 		// Look for available language packs in Language.ocg
 		C4Group *pPack;
 		char strPackFilename[_MAX_FNAME + 1], strEntry[_MAX_FNAME + 1];
-		//Log("Registering languages...");
 		if (PackDirectory.Open(langPath.getData()))
 		{
 			while (PackDirectory.FindNextEntry("*.ocg", strEntry))
@@ -113,19 +89,14 @@ bool C4Language::Init()
 				pPack = new C4Group();
 				if (pPack->Open(strPackFilename))
 				{
-					//sprintf(strLog, "  %s...", strPackFilename); Log(strLog);
 					Packs.RegisterGroup(*pPack, true, C4GSCnt_Language, false);
 				}
 				else
 				{
-					//sprintf(strLog, "Could not open language pack %s...", strPackFilename); Log(strLog);
 					delete pPack;
 				}
 			}
 		}
-
-		// Log
-		//sprintf(strLog, "%d external language packs registered.", GetPackCount()); Log(strLog);
 
 		// Now create a pack group for each language pack (these pack groups are child groups
 		// that browse along each pack to access requested data)
@@ -156,88 +127,8 @@ void C4Language::Clear()
 		delete Infos;
 		Infos = pNext;
 	}
-	Infos = NULL;
-#ifdef HAVE_ICONV
-	if (local_to_host != iconv_t(-1))
-	{
-		iconv_close(local_to_host);
-		local_to_host = iconv_t(-1);
-	}
-	if (host_to_local != iconv_t(-1))
-	{
-		iconv_close(host_to_local);
-		host_to_local = iconv_t(-1);
-	}
-#endif
+	Infos = nullptr;
 }
-
-#ifdef HAVE_ICONV
-StdStrBuf C4Language::Iconv(const char * string, iconv_t cd)
-{
-	if (cd == iconv_t(-1))
-	{
-		return StdStrBuf(string, true);
-	}
-	StdStrBuf r;
-	if (!string) return r;
-	size_t inlen = strlen(string);
-	size_t outlen = strlen(string);
-	r.SetLength(inlen);
-	const char * inbuf = string;
-	char * outbuf = r.getMData();
-	while (inlen > 0)
-	{
-		// Hope that iconv does not change the inbuf...
-		if ((size_t)(-1) == iconv(cd, const_cast<ICONV_CONST char * *>(&inbuf), &inlen, &outbuf, &outlen))
-		{
-			switch (errno)
-			{
-				// There is not sufficient room at *outbuf.
-			case E2BIG:
-			{
-				size_t done = outbuf - r.getMData();
-				r.Grow(inlen * 2);
-				outbuf = r.getMData() + done;
-				outlen += inlen * 2;
-				break;
-			}
-			// An invalid multibyte sequence has been encountered in the input.
-			case EILSEQ:
-				++inbuf;
-				--inlen;
-				break;
-				// An incomplete multibyte sequence has been encountered in the input.
-			case EINVAL:
-			default:
-				if (outlen) r.Shrink(outlen);
-				return r;
-			}
-		}
-	}
-	if (outlen) r.Shrink(outlen);
-	// StdStrBuf has taken care of the terminating zero
-	return r;
-}
-StdStrBuf C4Language::IconvSystem(const char * string)
-{
-	return Iconv(string, local_to_host);
-}
-StdStrBuf C4Language::IconvClonk(const char * string)
-{
-	return Iconv(string, host_to_local);
-}
-#else
-StdStrBuf C4Language::IconvSystem(const char * string)
-{
-	// Just copy through
-	return StdStrBuf(string, true);
-}
-StdStrBuf C4Language::IconvClonk(const char * string)
-{
-	// Just copy through
-	return StdStrBuf(string, true);
-}
-#endif
 
 int C4Language::GetPackCount()
 {
@@ -288,9 +179,6 @@ C4GroupSet C4Language::GetPackGroups(C4Group & hGroup)
 		}
 	}
 
-	//if (SEqualNoCase(strTargetLocation, PackGroupLocation))
-		//LogF("Reloading for %s", strTargetLocation);
-
 	// Process all language packs (and their respective pack groups)
 	C4Group *pPack, *pPackGroup;
 	for (int iPack = 0; (pPack = Packs.GetGroup(iPack)) && (pPackGroup = PackGroups.GetGroup(iPack)); iPack++)
@@ -310,21 +198,13 @@ C4GroupSet C4Language::GetPackGroups(C4Group & hGroup)
 		{
 			// Update pack group location
 			GetRelativePath(pPackGroup->GetFullName().getData(), strPackPath, strPackGroupLocation);
-			// Log
-			//sprintf(strLog, "%s < %s", pPack->GetName(), strPackGroupLocation); Log(strLog);
-			//sprintf(strLog, "Backtracking to child group %s in %s", strPackGroupLocation, pPack->GetName()); Log(strLog);
 		}
 
 		// We can reach the target location as a relative child
 		if (strPackGroupLocation[0] && GetRelativePath(strTargetLocation, strPackGroupLocation, strAdvance))
 		{
 			// Advance pack group to relative child
-			if (pPackGroup->OpenChild(strAdvance))
-			{
-				// Log
-				//sprintf(strLog, "%s > %s", pPack->GetName(), strTargetLocation); Log(strLog);
-				//sprintf(strLog, "Advancing to child group %s in %s", strTargetLocation, pPack->GetName()); Log(strLog);
-			}
+			pPackGroup->OpenChild(strAdvance);
 		}
 
 		// Cannot reach by advancing: need to close and reopen (rewinding group file)
@@ -334,14 +214,6 @@ C4GroupSet C4Language::GetPackGroups(C4Group & hGroup)
 			pPackGroup->Close();
 			// Reopen pack group to relative position in language pack if possible
 			pPackGroup->OpenAsChild(pPack, strTargetLocation);
-			/*if (pPackGroup->OpenAsChild(pPack, strTargetLocation)) // Slow one...
-			{
-			  sprintf(strLog, "%s - %s", pPack->GetName(), strTargetLocation); Log(strLog);
-			}
-			else
-			{
-			  sprintf(strLog, "%s ! %s", pPack->GetName(), strTargetLocation); Log(strLog);
-			}*/
 		}
 
 	}
@@ -389,7 +261,12 @@ namespace
 {
 	std::string GetResStr(const char *id, const char *stringtbl)
 	{
-		static re::regex line_pattern("^([^=]+)=(.*?)\r?$", static_cast<re::regex::flag_type>(re::regex_constants::optimize | re::regex_constants::ECMAScript));
+		// The C++11 standard does not specify whether $ and ^ match
+		// the beginning or end of a line, respectively, and it seems
+		// like in some implementations they only match the beginning
+		// or end of the whole string. See also #1127.
+		static std::regex line_pattern("(?:\n|^)([^=]+)=(.*?)\r?(?=\n|$)", static_cast<std::regex::flag_type>(std::regex_constants::optimize | std::regex_constants::ECMAScript));
+
 		assert(stringtbl);
 		if (!stringtbl)
 		{
@@ -400,7 +277,7 @@ namespace
 		const char *begin = stringtbl;
 		const char *end = begin + std::char_traits<char>::length(begin);
 
-		for (auto it = re::cregex_iterator(begin, end, line_pattern); it != re::cregex_iterator(); ++it)
+		for (auto it = std::cregex_iterator(begin, end, line_pattern); it != std::cregex_iterator(); ++it)
 		{
 			assert(it->size() == 3);
 			if (it->size() != 3)
@@ -440,7 +317,7 @@ void C4Language::LoadInfos(C4Group &hGroup)
 		// of the same code - the system always loads the first string table found for a given code
 		if (!FindInfo(GetFilenameOnly(strEntry) + SLen(GetFilenameOnly(strEntry)) - 2))
 			// Load language string table
-			if (hGroup.LoadEntry(strEntry, &strTable, 0, 1))
+			if (hGroup.LoadEntry(strEntry, &strTable, nullptr, 1))
 			{
 				// New language info
 				C4LanguageInfo *pInfo = new C4LanguageInfo;
@@ -460,8 +337,6 @@ void C4Language::LoadInfos(C4Group &hGroup)
 				// Add info to list
 				pInfo->Next = Infos;
 				Infos = pInfo;
-				// Log
-				//sprintf(strLog, "Language info loaded from %s", strEntry); Log(strLog);
 			}
 }
 
@@ -472,7 +347,7 @@ C4LanguageInfo* C4Language::GetInfo(int iIndex)
 			return pInfo;
 		else
 			iIndex--;
-	return NULL;
+	return nullptr;
 }
 
 C4LanguageInfo* C4Language::FindInfo(const char *strCode)
@@ -480,7 +355,7 @@ C4LanguageInfo* C4Language::FindInfo(const char *strCode)
 	for (C4LanguageInfo *pInfo = Infos; pInfo; pInfo = pInfo->Next)
 		if (SEqualNoCase(pInfo->Code, strCode, 2))
 			return pInfo;
-	return NULL;
+	return nullptr;
 }
 
 bool C4Language::LoadLanguage(const char *strLanguages)
@@ -528,19 +403,6 @@ bool C4Language::LoadStringTable(C4Group &hGroup, const char *strCode)
 	// Load string table
 	if (!C4LangStringTable::GetSystemStringTable().Load(hGroup, strEntry))
 		return false;
-	
-#ifdef HAVE_ICONV
-#ifdef HAVE_LANGINFO_H
-	const char * const to_set = nl_langinfo(CODESET);
-	if (local_to_host == iconv_t(-1))
-		local_to_host = iconv_open (to_set ? to_set : "ASCII", "UTF-8");
-	if (host_to_local == iconv_t(-1))
-		host_to_local = iconv_open ("UTF-8",
-		                            to_set ? to_set : "ASCII");
-#else
-	const char * const to_set = "";
-#endif
-#endif
 	// Success
 	return true;
 }

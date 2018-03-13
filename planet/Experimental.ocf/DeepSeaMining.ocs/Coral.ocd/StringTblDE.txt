@@ -1,2 +1,0 @@
-Name=Koralle
-Description=Wächst unter Wasser und kann, einmal ausgegraben, sogar gegessen werden.

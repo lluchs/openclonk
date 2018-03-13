@@ -1,0 +1,5 @@
+[DefCore]
+id=Library_Flag_ConstructionPreviewer
+Version=8,0
+Category=C4D_StaticBack | C4D_IgnoreFoW
+HideInCreator=true

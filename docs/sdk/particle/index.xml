@@ -57,6 +57,8 @@
       <funclink>PV_KeyFrames</funclink>
       <funclink>PV_Wind</funclink>
       <funclink>PV_Gravity</funclink>
+	  <funclink>PV_Sin</funclink>
+	  <funclink>PV_Cos</funclink>
 	  </text>
     <text>
       <table>
@@ -137,6 +139,11 @@
           <col>The offset of the particle's hit point relative to its width. When set, the particle will collide with the landscape. 0 means the particle will collide with its center.</col>
         </row>
 		<row>
+          <col>CollisionDensity</col>
+          <col>Integer</col>
+          <col>The material density above which the particle will collide. This can be used to let the particle collide with liquids. By default, particles collide with solid material if the collision is enabled. Also see <emlink href="material/ocm.html">material definitions</emlink>.</col>
+        </row>
+		<row>
           <col>OnCollision</col>
           <col><funclink>PC_Die</funclink>, <funclink>PC_Bounce</funclink>, <funclink>PC_Stop</funclink></col>
           <col>Defines what happens when the particle collides with the landscape.</col>
@@ -144,7 +151,7 @@
 		<row>
           <col>Attach</col>
           <col>bit mask</col>
-          <col>Defines the attachment of the particles to the calling object. Can be a combination of ATTACH_Front, ATTACH_Back, and ATTACH_MoveRelative. For example <code>ATTACH_Front | ATTACH_MoveRelative</code></col>
+          <col>Defines the attachment of the particles to the calling object. Can be a combination of ATTACH_Front, ATTACH_Back, and ATTACH_MoveRelative. For example <code>ATTACH_Front | ATTACH_MoveRelative. Non-attached particles are drawn on plane 900 (i.e. before most objects).</code></col>
         </row>
       </table>
     </text>

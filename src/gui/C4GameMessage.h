@@ -3,7 +3,7 @@
  *
  * Copyright (c) 1998-2000, Matthes Bender
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -20,8 +20,8 @@
 #ifndef INC_C4GameMessage
 #define INC_C4GameMessage
 
-#include <C4Surface.h>
-#include <C4Gui.h>
+#include "lib/StdColors.h"
+#include "script/C4Value.h"
 
 const int32_t C4GM_MaxText = 256,
               C4GM_MinDelay = 20;
@@ -42,7 +42,8 @@ const int32_t C4GM_NoBreak = 1<<0,
               C4GM_DropSpeech = 1<<8, // cut any text after '$'
               C4GM_WidthRel = 1<<9,
               C4GM_XRel     = 1<<10,
-              C4GM_YRel     = 1<<11;
+              C4GM_YRel     = 1<<11,
+              C4GM_Zoom     = 1<<12;
 
 const int32_t C4GM_PositioningFlags = C4GM_Bottom | C4GM_Top | C4GM_Left | C4GM_Right | C4GM_HCenter | C4GM_VCenter;
 
@@ -54,7 +55,7 @@ public:
 	C4GameMessage();
 	~C4GameMessage();
 protected:
-	int32_t X,Y,Wdt;
+	int32_t X, Y, Wdt, Hgt;
 	int32_t Delay;
 	DWORD ColorDw;
 	int32_t Player;
@@ -63,8 +64,9 @@ protected:
 	StdCopyStrBuf Text;
 	C4GameMessage *Next;
 	C4ID DecoID;
-	C4PropList *PictureDef; // can be either a definition or object
-	C4GUI::FrameDecoration *pFrameDeco;
+	C4PropList *PictureDef; // can be definition, object or prop list with Source and Name properties
+	C4Value PictureDefVal; // C4Value holding PictureDef to prevent deletion
+	C4GUI::FrameDecoration *pFrameDeco{nullptr};
 	uint32_t dwFlags;
 protected:
 	void Init(int32_t iType, const StdStrBuf & Text, C4Object *pTarget, int32_t iPlayer, int32_t iX, int32_t iY, uint32_t dwCol, C4ID idDecoID, C4PropList *pSrc, uint32_t dwFlags, int width);
@@ -92,8 +94,8 @@ public:
 	void ClearPlayers(int32_t iPlayer, int32_t dwPositioningFlags);
 	void ClearPointers(C4Object *pObj);
 	void UpdateDef(C4ID idUpdDef); // called after reloaddef
-	bool New(int32_t iType, const StdStrBuf & Text, C4Object *pTarget, int32_t iPlayer, int32_t iX = -1, int32_t iY = -1, uint32_t dwClr = 0xffFFFFFF, C4ID idDecoID=C4ID::None, C4PropList *pSrc=NULL, uint32_t dwFlags=0u, int32_t width=0);
-	bool New(int32_t iType, const char *szText, C4Object *pTarget, int32_t iPlayer, int32_t iX, int32_t iY, uint32_t dwClr, C4ID idDecoID=C4ID::None, C4PropList *pSrc=NULL, uint32_t dwFlags=0u, int32_t width=0);
+	bool New(int32_t iType, const StdStrBuf & Text, C4Object *pTarget, int32_t iPlayer, int32_t iX = -1, int32_t iY = -1, uint32_t dwClr = 0xffFFFFFF, C4ID idDecoID=C4ID::None, C4PropList *pSrc=nullptr, uint32_t dwFlags=0u, int32_t width=0);
+	bool New(int32_t iType, const char *szText, C4Object *pTarget, int32_t iPlayer, int32_t iX, int32_t iY, uint32_t dwClr, C4ID idDecoID=C4ID::None, C4PropList *pSrc=nullptr, uint32_t dwFlags=0u, int32_t width=0);
 	bool Append(int32_t iType, const char *szText, C4Object *pTarget, int32_t iPlayer, int32_t iX, int32_t iY, uint32_t bCol, bool fNoDuplicates = false);
 };
 

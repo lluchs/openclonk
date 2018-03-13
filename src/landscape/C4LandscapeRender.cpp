@@ -1,15 +1,29 @@
+/*
+ * OpenClonk, http://www.openclonk.org
+ *
+ * Copyright (c) 2011-2016, The OpenClonk Team and contributors
+ *
+ * Distributed under the terms of the ISC license; see accompanying file
+ * "COPYING" for details.
+ *
+ * "Clonk" is a registered trademark of Matthes Bender, used with permission.
+ * See accompanying file "TRADEMARK" for details.
+ *
+ * To redistribute this file separately, substitute the full license texts
+ * for the above references.
+ */
 
 #include "C4Include.h"
-#include "C4LandscapeRender.h"
+#include "C4ForbidLibraryCompilation.h"
+#include "landscape/C4LandscapeRender.h"
 
-#include "C4Landscape.h"
-#include "C4Texture.h"
-
-#include "C4GroupSet.h"
-#include "C4Components.h"
-
-#include "C4DrawGL.h"
-#include "StdColors.h"
+#include "c4group/C4Components.h"
+#include "c4group/C4GroupSet.h"
+#include "graphics/C4DrawGL.h"
+#include "landscape/C4Landscape.h"
+#include "landscape/C4Texture.h"
+#include "landscape/fow/C4FoWRegion.h"
+#include "lib/StdColors.h"
 
 #ifndef USE_CONSOLE
 
@@ -28,45 +42,19 @@
 #endif
 
 // How much to look into each direction for bias
-const int C4LR_BiasDistanceX = 8;
-const int C4LR_BiasDistanceY = 8;
-
-// Workarounds to try if shader fails to compile
-const char *C4LR_ShaderWorkarounds[] = {
-	"#define NO_TEXTURE_LOD_IN_FRAGMENT\n",
-	"#define NO_BROKEN_ARRAYS_WORKAROUND\n",
-	"#define SCALER_IN_GPU\n",
-};
-const int C4LR_ShaderWorkaroundCount = sizeof(C4LR_ShaderWorkarounds) / sizeof(*C4LR_ShaderWorkarounds);
+const int C4LR_BiasDistanceX = 7;
+const int C4LR_BiasDistanceY = 7;
 
 // Name used for the seperator texture
 const char *const SEPERATOR_TEXTURE = "--SEP--";
 
-// Map of uniforms to names in shader
-static const char *GetUniformName(int iUniform)
-{
-	switch(iUniform)
-	{
-	case C4LRU_LandscapeTex: return "landscapeTex";
-	case C4LRU_ScalerTex:    return "scalerTex";
-	case C4LRU_MaterialTex:  return "materialTex";
-	case C4LRU_Resolution:   return "resolution";
-	case C4LRU_MatMap:       return "matMap";
-	case C4LRU_MatMapTex:    return "matMapTex";
-	case C4LRU_MaterialDepth:return "materialDepth";
-	case C4LRU_MaterialSize: return "materialSize";
-	}
-	assert(false);
-	return "mysterious";
-}
-
 C4LandscapeRenderGL::C4LandscapeRenderGL()
-	: iLandscapeShaderTime(0),
-	hVert(0), hFrag(0), hProg(0)
 {
 	ZeroMem(Surfaces, sizeof(Surfaces));
-	ZeroMem(hMaterialTexture, sizeof(hMaterialTexture));
-	ZeroMem(hUniforms, sizeof(hUniforms));
+	hMaterialTexture = matMapTexture = 0;
+	hVBO = 0;
+	hVAOIDNoLight = 0;
+	hVAOIDLight = 0;
 }
 
 C4LandscapeRenderGL::~C4LandscapeRenderGL()
@@ -82,6 +70,9 @@ bool C4LandscapeRenderGL::Init(int32_t iWidth, int32_t iHeight, C4TextureMap *pT
 	this->iWidth = iWidth;
 	this->iHeight = iHeight;
 	this->pTexs = pTexs;
+
+	// Start timer
+	this->TimerStart = std::chrono::steady_clock::now();
 
 	// Allocate landscape textures
 	if (!InitLandscapeTexture())
@@ -111,6 +102,12 @@ bool C4LandscapeRenderGL::Init(int32_t iWidth, int32_t iHeight, C4TextureMap *pT
 		return false;
 	}
 
+	if (!InitVBO())
+	{
+		LogFatal("[!] Could not initialize landscape VBO!");
+		return false;
+	}
+
 	return true;
 }
 
@@ -121,10 +118,10 @@ bool C4LandscapeRenderGL::ReInit(int32_t iWidth, int32_t iHeight)
 	this->iHeight = iHeight;
 
 	// Clear old landscape textures
-	for (int i = 0; i < C4LR_SurfaceCount; i++)
+	for (auto & Surface : Surfaces)
 	{
-		delete Surfaces[i];
-		Surfaces[i] = NULL;
+		delete Surface;
+		Surface = nullptr;
 	}
 
 	// Allocate new landscape textures
@@ -145,36 +142,49 @@ void C4LandscapeRenderGL::Clear()
 	for (i = 0; i < C4LR_SurfaceCount; i++)
 	{
 		delete Surfaces[i];
-		Surfaces[i] = NULL;
+		Surfaces[i] = nullptr;
 	}
-	for (i = 0; i < C4LR_MipMapCount; i++)
+	if (hMaterialTexture) glDeleteTextures(1, &hMaterialTexture);
+	hMaterialTexture = 0;
+	if (matMapTexture) glDeleteTextures(1, &matMapTexture);
+	matMapTexture = 0;
+
+	if (hVBO != 0)
 	{
-		glDeleteObjectARB(hMaterialTexture[i]);
-		hMaterialTexture[i] = 0;
+		glDeleteBuffers(1, &hVBO);
+		hVBO = 0;
 	}
 
-	LandscapeShader.Clear();
-	LandscapeShaderPath.Clear();
-	iLandscapeShaderTime = 0;
+	if (hVAOIDLight != 0)
+	{
+		pGL->FreeVAOID(hVAOIDLight);
+		hVAOIDLight = 0;
+	}
+
+	if (hVAOIDNoLight != 0)
+	{
+		pGL->FreeVAOID(hVAOIDNoLight);
+		hVAOIDNoLight = 0;
+	}
 }
 
 bool C4LandscapeRenderGL::InitLandscapeTexture()
 {
-
-	// Round up to nearest power of two
-	int iSfcWdt = 1, iSfcHgt = 1;
-	while(iSfcWdt < iWidth) iSfcWdt *= 2;
-	while(iSfcHgt < iHeight) iSfcHgt *= 2;
-
-	// One bit more of information to safe more space
-	if(iSfcWdt * 3 / 4 >= iWidth) iSfcWdt = iSfcWdt * 3 / 4;
-	if(iSfcHgt * 3 / 4 >= iHeight) iSfcHgt = iSfcHgt * 3 / 4;
+	// Don't round up to the nearest power-of-two here. Modern
+	// hardware should handle NPOT-textures just fine, and they
+	// are already used in other places in Clonk. This avoids
+	// accessing one row or column of pixels below the actually
+	// used surface in the shader, which can lead to strange
+	// one-pixel edges at the bottom or right of the landscape
+	// (see e.g. http://bugs.openclonk.org/view.php?id=771).
+	int iSfcWdt = iWidth;
+	int iSfcHgt = iHeight;
 
 	// Create our surfaces
-	for(int i = 0; i < C4LR_SurfaceCount; i++)
+	for(auto & Surface : Surfaces)
 	{
-		Surfaces[i] = new C4Surface();
-		if(!Surfaces[i]->Create(iSfcWdt, iSfcHgt))
+		Surface = new C4Surface();
+		if(!Surface->Create(iSfcWdt, iSfcHgt))
 			return false;
 	}
 
@@ -185,33 +195,34 @@ bool C4LandscapeRenderGL::InitMaterialTexture(C4TextureMap *pTexs)
 {
 
 	// Populate our map with all needed textures
-	MaterialTextureMap.push_back(StdCopyStrBuf(""));
+	MaterialTextureMap.emplace_back("");
 	AddTexturesFromMap(pTexs);
 
 	// Determine depth to use
-	iMaterialTextureDepth = 1;
-	while(iMaterialTextureDepth < int32_t(MaterialTextureMap.size()))
-		iMaterialTextureDepth <<= 1;
+	iMaterialTextureDepth = 2*MaterialTextureMap.size();
+	int32_t iNormalDepth = iMaterialTextureDepth / 2;
 
-	// Find first (actual) texture
-	int iRefTexIx = 0; C4Texture *pRefTex; C4Surface *pRefSfc = NULL;
-	for(; (pRefTex = pTexs->GetTexture(pTexs->GetTexture(iRefTexIx))); iRefTexIx++)
-		if((pRefSfc = pRefTex->Surface32))
-			break;
+	// Find the largest texture
+	C4Texture *pTex; C4Surface *pRefSfc = nullptr;
+	for(int iTexIx = 0; (pTex = pTexs->GetTexture(pTexs->GetTexture(iTexIx))); iTexIx++)
+		if(C4Surface *pSfc = pTex->Surface32)
+			if (!pRefSfc || pRefSfc->Wdt < pSfc->Wdt || pRefSfc->Hgt < pSfc->Hgt)
+				pRefSfc = pSfc;
 	if(!pRefSfc)
 		return false;
 
 	// Get size for our textures. We might be limited by hardware
 	int iTexWdt = pRefSfc->Wdt, iTexHgt = pRefSfc->Hgt;
-	GLint iMaxTexSize;
-	glGetIntegerv(GL_MAX_3D_TEXTURE_SIZE, &iMaxTexSize);
+	GLint iMaxTexSize, iMaxTexLayers;
+	glGetIntegerv(GL_MAX_TEXTURE_SIZE, &iMaxTexSize);
+	glGetIntegerv(GL_MAX_ARRAY_TEXTURE_LAYERS, &iMaxTexLayers);
 	if (iTexWdt > iMaxTexSize || iTexHgt > iMaxTexSize)
 	{
-		iTexWdt = Min(iTexWdt, iMaxTexSize);
-		iTexHgt = Min(iTexHgt, iMaxTexSize);
+		iTexWdt = std::min(iTexWdt, iMaxTexSize);
+		iTexHgt = std::min(iTexHgt, iMaxTexSize);
 		LogF("   gl: Material textures too large, GPU only supports %dx%d! Cropping might occur!", iMaxTexSize, iMaxTexSize);
 	}
-	if(iMaterialTextureDepth >= iMaxTexSize)
+	if(iMaterialTextureDepth >= iMaxTexLayers)
 	{
 		LogF("   gl: Too many material textures! GPU only supports 3D texture depth of %d!", iMaxTexSize);
 		return false;
@@ -220,22 +231,22 @@ bool C4LandscapeRenderGL::InitMaterialTexture(C4TextureMap *pTexs)
 	iMaterialHeight = iTexHgt;
 
 	// Compose together data of all textures
-	const int iBytesPP = pRefSfc->byBytesPP;
-	const int iTexSize = iTexWdt * iTexHgt * iBytesPP;
+	const int iTexSize = iTexWdt * iTexHgt * C4Draw::COLOR_DEPTH_BYTES;
 	const int iSize = iTexSize * iMaterialTextureDepth;
 	BYTE *pData = new BYTE [iSize];
 	for(int i = 0; i < iMaterialTextureDepth; i++)
 	{
 		BYTE *p = pData + i * iTexSize;
 		// Get texture at position
-		const char *szTexture;
+		StdStrBuf Texture;
+		bool fNormal = i >= iNormalDepth;
 		if(i < int32_t(MaterialTextureMap.size()))
-			szTexture = MaterialTextureMap[i].getData();
-		else
-			szTexture = "";
+			Texture.Ref(MaterialTextureMap[i]);
+		else if(fNormal && i < iNormalDepth + int32_t(MaterialTextureMap.size()))
+			Texture.Format("%s_NRM", MaterialTextureMap[i-iNormalDepth].getData());
 		// Try to find the texture
 		C4Texture *pTex; C4Surface *pSurface;
-		if((pTex = pTexs->GetTexture(szTexture)) && (pSurface = pTex->Surface32))
+		if((pTex = pTexs->GetTexture(Texture.getData())) && (pSurface = pTex->Surface32))
 		{
 #ifdef DEBUG_SOLID_COLOR_TEXTURES
 			// Just write a solid color that depends on the texture index
@@ -245,26 +256,25 @@ bool C4LandscapeRenderGL::InitMaterialTexture(C4TextureMap *pTexs)
 					*texdata++ = RGBA((iTex & 48), (iTex & 3) * 16, (i & 12) * 4, 255);
 			continue;
 #else
-			if(pSurface->iTexX != 1 || pSurface->iTexY != 1)
-				Log("   gl: Halp! Material texture is fragmented!");
-			else
-			{
-				// Size recheck
-				if(pSurface->Wdt != iTexWdt || pSurface->Hgt != iTexHgt)
-					LogF("   gl: texture %s size mismatch (%dx%d vs %dx%d)!", szTexture, pSurface->Wdt, pSurface->Hgt, iTexWdt, iTexHgt);
-				// Copy bytes
-				DWORD *texdata = reinterpret_cast<DWORD *>(p);
-				pSurface->Lock();
-				for (int y = 0; y < iTexHgt; ++y)
-					for (int x = 0; x < iTexWdt; ++x)
-						*texdata++ = pSurface->GetPixDw(x % pSurface->Wdt, y % pSurface->Hgt, false);
-				pSurface->Unlock();
-				continue;
-			}
+			// Size recheck. It's fine if this texture's size is a divisor
+			// of the maximum texture size, because then we can just tile
+			// the smaller texture.
+			if(pSurface->Wdt != iTexWdt || pSurface->Hgt != iTexHgt)
+				if (iTexWdt % pSurface->Wdt != 0 || iTexHgt % pSurface->Hgt != 0)
+					LogF("   gl: texture %s size mismatch (%dx%d vs %dx%d)!", Texture.getData(), pSurface->Wdt, pSurface->Hgt, iTexWdt, iTexHgt);
+
+			// Copy bytes
+			DWORD *texdata = reinterpret_cast<DWORD *>(p);
+			pSurface->Lock();
+			for (int y = 0; y < iTexHgt; ++y)
+				for (int x = 0; x < iTexWdt; ++x)
+					*texdata++ = pSurface->GetPixDw(x % pSurface->Wdt, y % pSurface->Hgt, false);
+			pSurface->Unlock();
+			continue;
 #endif
 		}
 		// Seperator texture?
-		if(SEqual(szTexture, SEPERATOR_TEXTURE))
+		if(SEqual(Texture.getData(), SEPERATOR_TEXTURE))
 		{
 			// Make some ugly stripes
 			DWORD *texdata = reinterpret_cast<DWORD *>(p);
@@ -273,77 +283,53 @@ bool C4LandscapeRenderGL::InitMaterialTexture(C4TextureMap *pTexs)
 					*texdata++ = ((x + y) % 32 < 16 ? RGBA(255, 0, 0, 255) : RGBA(0, 255, 255, 255));
 			continue;
 		}
-		// If we didn't "continue" yet, we haven't written the texture yet. Make it transparent.
-		memset(p, 0, iTexSize);
+		// If we didn't "continue" yet, we haven't written the texture yet.
+		// Make color texture transparent, and normal texture flat.
+		if (fNormal)
+		{
+			DWORD *texdata = reinterpret_cast<DWORD *>(p);
+			for (int y = 0; y < iTexHgt; ++y)
+				for (int x = 0; x < iTexWdt; ++x)
+					*texdata++ = RGBA(127, 127, 255, 255);
+		}
+		else
+			memset(p, 0, iTexSize);
 	}
 
 	// Clear error error(s?)
 	while(glGetError()) {}
 	
-	// Alloc 3D textures
-	glEnable(GL_TEXTURE_3D);
-	glGenTextures(C4LR_MipMapCount, hMaterialTexture);
-	
-	// Generate textures (mipmaps too!)
+	// Alloc 1D matmap texture
+	glGenTextures(1, &matMapTexture);
+
+	// Alloc 2D texture array
+	glGenTextures(1, &hMaterialTexture);
+
+	// Generate textures
 	int iSizeSum = 0;
-	BYTE *pLastData = new BYTE [iSize / 4];
-	for(int iMMLevel = 0; iMMLevel < C4LR_MipMapCount; iMMLevel++)
-	{
-		
-		// Scale the texture down for mip-mapping
-		if(iMMLevel) {
-			BYTE *pOut = pData;
-			BYTE *pIn[4] = { 
-				pLastData, pLastData + iBytesPP, 
-				pLastData + iBytesPP * iTexWdt, pLastData + iBytesPP * iTexWdt + iBytesPP
-			};
-			for (int i = 0; i < iMaterialTextureDepth; ++i)
-				for (int y = 0; y < iTexHgt / 2; ++y)
-				{
-					for (int x = 0; x < iTexWdt / 2; ++x)
-					{
-						for (int j = 0; j < iBytesPP; j++)
-						{
-							unsigned int s = 0;
-							s += *pIn[0]++; s += 3 * *pIn[1]++; s += 3 * *pIn[2]++; s += *pIn[3]++; 
-							*pOut++ = BYTE(s / 8);
-						}
-						pIn[0] += iBytesPP; pIn[1] += iBytesPP; pIn[2] += iBytesPP; pIn[3] += iBytesPP;
-					}
-					pIn[0] += iBytesPP * iTexWdt; pIn[1] += iBytesPP * iTexWdt;
-					pIn[2] += iBytesPP * iTexWdt; pIn[3] += iBytesPP * iTexWdt;
-				}
-			iTexWdt /= 2; iTexHgt /= 2;
-		}
 
-		// Select texture
-		glBindTexture(GL_TEXTURE_3D, hMaterialTexture[iMMLevel]);
-		glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+	// Select texture
+	glBindTexture(GL_TEXTURE_2D_ARRAY, hMaterialTexture);
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
-		// We fully expect to tile these
-		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	// We fully expect to tile these
+	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_NEAREST);
 
-		// Make it happen!
-		glTexImage3D(GL_TEXTURE_3D, 0, 4, iTexWdt, iTexHgt, iMaterialTextureDepth, 0, GL_BGRA,
-					iBytesPP == 2 ? GL_UNSIGNED_SHORT_4_4_4_4_REV : GL_UNSIGNED_INT_8_8_8_8_REV,
-					pData);
+	// Make it happen!
+	glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RGBA, iTexWdt, iTexHgt, iMaterialTextureDepth, 0, GL_BGRA,
+				GL_UNSIGNED_INT_8_8_8_8_REV,
+				pData);
+
+	glGenerateMipmap(GL_TEXTURE_2D_ARRAY);
 	   
-		// Exchange buffers
-		BYTE *tmp = pLastData;
-		pLastData = pData;
-		pData = tmp;
-
-		// Statistics
-		iSizeSum += iTexWdt * iTexHgt * iMaterialTextureDepth * iBytesPP;
-	}
+	// Statistics
+	iSizeSum += iTexWdt * iTexHgt * iMaterialTextureDepth * C4Draw::COLOR_DEPTH_BYTES;
 	
 	// Dispose of data
 	delete [] pData;
-	delete [] pLastData;
-	glDisable(GL_TEXTURE_3D);
 	
 	// Check whether we were successful
 	if(int err = glGetError())
@@ -353,10 +339,9 @@ bool C4LandscapeRenderGL::InitMaterialTexture(C4TextureMap *pTexs)
 	}
 
 	// Announce the good news
-	LogF("  gl: Texturing uses %d slots at %dx%d, %d levels (%d MB total)",
+	LogF("  gl: Texturing uses %d slots at %dx%d (%d MB total)",
 		static_cast<int>(MaterialTextureMap.size()),
 		iMaterialWidth, iMaterialHeight,
-		C4LR_MipMapCount,
 		iSizeSum / 1000000);
 
 	return true;
@@ -380,325 +365,315 @@ void C4LandscapeRenderGL::Update(C4Rect To, C4Landscape *pSource)
 	// main memory buffer for the box, so that only that box needs to be
 	// sent to the gpu, and not the whole texture, or every pixel
 	// separately. It's an important optimization.
-	for (int i = 0; i < C4LR_SurfaceCount; i++) {
-		if (!Surfaces[i]->Lock()) return;
-		Surfaces[i]->ClearBoxDw(To.x, To.y, To.Wdt, To.Hgt);
+	for (auto & Surface : Surfaces)
+	{
+		if (!Surface->Lock()) return;
+		Surface->ClearBoxDw(To.x, To.y, To.Wdt, To.Hgt);
 	}
 
-	// Initialize up & down arrays
+	// Initialize up & down placement arrays. These arrays are always updated
+	// so that they contain the placement sums of C4LR_BiasDistanceY pixels
+	// above and below the current row.
 	int x, y;
-	int *pUp = new int [To.Wdt * 2];
-	int *pDown = pUp + To.Wdt;
-	for(x = 0; x < To.Wdt; x++) {
-		int iSum = 0;
-		for(y = 1; y < Min(C4LR_BiasDistanceY, To.y+1); y++)
-			iSum += pSource->_GetPlacement(To.x+x, To.y-y);
-		pUp[x] = iSum;
-		iSum = 0;
-		for(y = 1; y < Min(C4LR_BiasDistanceY, iHeight - To.y); y++)
-			iSum += pSource->_GetPlacement(To.x+x, To.y+y);
-		pDown[x] = iSum;
+	int placementSumsWidth = C4LR_BiasDistanceX * 2 + To.Wdt;
+	int *placementSumsUp = new int [placementSumsWidth * 2];
+	int *placementSumsDown = placementSumsUp + placementSumsWidth;
+	for(x = 0; x < placementSumsWidth; x++)
+	{
+		placementSumsUp[x] = 0;
+		placementSumsDown[x] = 0;
+		if (To.x + x - C4LR_BiasDistanceX < 0 || To.x + x - C4LR_BiasDistanceX >= iWidth) continue;
+		for(y = 1; y <= std::min(C4LR_BiasDistanceY, To.y); y++)
+			placementSumsUp[x] += pSource->_GetPlacement(To.x+x-C4LR_BiasDistanceX, To.y-y);
+		for(y = 1; y <= std::min(C4LR_BiasDistanceY, iHeight - 1 - To.y); y++)
+			placementSumsDown[x] += pSource->_GetPlacement(To.x+x-C4LR_BiasDistanceX, To.y+y);
 	}
 
 	// Get tex refs (shortcut, we will use them quite heavily)
-	C4TexRef *TexRefs[C4LR_SurfaceCount];
+	C4TexRef *texture[C4LR_SurfaceCount];
 	x = y = 0;
 	for(int i = 0; i < C4LR_SurfaceCount; i++)
-		Surfaces[i]->GetTexAt(&TexRefs[i], x, y);
+		texture[i] = Surfaces[i]->texture.get();
 
 	// Go through it from top to bottom
-	for(y = 0; y < To.Hgt; y++) {
+	for(y = 0; y < To.Hgt; y++)
+	{
+		// Initialize left & right placement sums. These are meant to contain
+		// the placement sum of a (C4LR_BiasDistanceX, 2*C4LR_BiasDistanceY+1)
+		// rectangle left/right of the current pixel. So we initialise it to
+		// be correct at x=0. Note that the placementSum arrays don't contain
+		// information about the current row, therefore we need a special case
+		// for those pixels.
+		int sumLeft = 0, sumRight = 0;
+		for(x = 1; x <= std::min(C4LR_BiasDistanceX, To.x); x++)
+			sumLeft += pSource->_GetPlacement(To.x-x,To.y+y);
+		for(x = 1; x <= std::min(C4LR_BiasDistanceX, iWidth - 1 - To.x ); x++)
+			sumRight += pSource->_GetPlacement(To.x+x,To.y+y);
+		for (int i = 1; i <= C4LR_BiasDistanceX; i++) {
+			sumLeft += placementSumsUp[C4LR_BiasDistanceX - i];
+			sumLeft += placementSumsDown[C4LR_BiasDistanceX - i];
+			sumRight += placementSumsUp[C4LR_BiasDistanceX + i];
+			sumRight += placementSumsDown[C4LR_BiasDistanceX + i];
+		}
 
-		// Initialize left & right
-		int iLeft = 0;
-		int iRight = 0;
-		for(x = 1; x < Min(C4LR_BiasDistanceX, To.x+1); x++)
-			iLeft += pSource->_GetPlacement(To.x-x,To.y+y);
-		for(x = 1; x < Min(C4LR_BiasDistanceX, iWidth - To.x); x++)
-			iRight += pSource->_GetPlacement(To.x+x,To.y+y);
+		// Initialise up & down sums. Same principle as above, but slightly
+		// easier as we do not miss pixels if we just use the placement sums.
+		int sumUp = 0, sumDown = 0;
+		for (int i = -C4LR_BiasDistanceX; i <= C4LR_BiasDistanceX; i++) {
+			sumUp += placementSumsUp[C4LR_BiasDistanceX + i];
+			sumDown += placementSumsDown[C4LR_BiasDistanceX + i];
+		}
 
-		for(x = 0; x < To.Wdt; x++) {
+		for(x = 0; x < To.Wdt; x++)
+		{
+			int pixel = pSource->_GetPix(To.x+x, To.y+y);
+			int placement = pSource->_GetPlacement(To.x+x, To.y+y);
 
-			// Biases
-			int iPix = pSource->_GetPix(To.x+x, To.y+y);
-			int iPlac = pSource->_GetPlacement(To.x+x, To.y+y);
-			int iMat = pSource->_GetMat(To.x+x, To.y+y);
-			int iHBias = Max(0, iPlac * (C4LR_BiasDistanceY-1) - iRight) -
-			             Max(0, iPlac * (C4LR_BiasDistanceY-1) - iLeft);
-			int iVBias = Max(0, iPlac * (C4LR_BiasDistanceY-1) - pDown[x]) -
-			             Max(0, iPlac * (C4LR_BiasDistanceY-1) - pUp[x]);
+			// Calculate bias. The scale here is the size of the rectangle (see above)
+			const int horizontalFactor = C4LR_BiasDistanceX * (2 * C4LR_BiasDistanceY + 1);
+			int horizontalBias = std::max(0, placement * horizontalFactor - sumRight) -
+			                     std::max(0, placement * horizontalFactor - sumLeft);
+			const int verticalFactor = C4LR_BiasDistanceY * (2 * C4LR_BiasDistanceX + 1);
+			int verticalBias = std::max(0, placement * verticalFactor - sumDown) -
+			                   std::max(0, placement * verticalFactor - sumUp);
 
-			// Maximum placement differences that make a difference in the result, 
-			// after which we are at the limits of what can be packed into a byte
-			const int iMaxPlacDiff = 40;
-			int iHBiasScaled = BoundBy(iHBias * 127 / iMaxPlacDiff / C4LR_BiasDistanceX + 128, 0, 255);
-			int iVBiasScaled = BoundBy(iVBias * 127 / iMaxPlacDiff / C4LR_BiasDistanceY + 128, 0, 255);
-
-			// Visit our neighbours
-			int iNeighbours[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
-			if(To.y+y > 0) {
-				if(To.x+x > 0)
-					iNeighbours[0] = pSource->_GetPix(To.x+x-1, To.y+y-1);
-				iNeighbours[1] = pSource->_GetPix(To.x+x, To.y+y-1);
-				if(To.x+x < iWidth-1)
-					iNeighbours[2] = pSource->_GetPix(To.x+x+1, To.y+y-1);
-			}
-			if(To.x+x > 0)
-				iNeighbours[3] = pSource->_GetPix(To.x+x-1, To.y+y);
-			if(To.x+x < iWidth-1)
-				iNeighbours[4] = pSource->_GetPix(To.x+x+1, To.y+y);
-			if(To.y+y+1 < iHeight-1) {
-				if(To.x+x > 0)
-					iNeighbours[5] = pSource->_GetPix(To.x+x-1, To.y+y+1);
-				iNeighbours[6] = pSource->_GetPix(To.x+x, To.y+y+1);
-				if(To.x+x < iWidth-1)
-					iNeighbours[7] = pSource->_GetPix(To.x+x+1, To.y+y+1);
-			}
-
-			// Look for highest-placement material in our surroundings
-			int iMaxPix = iPix, iMaxPlace = iPlac, i;
-			for(i = 0; i < 8; i++) {
-				int iTempPlace = MatPlacement(PixCol2Mat(iNeighbours[i]));
-				if(iTempPlace > iMaxPlace || (iTempPlace == iMaxPlace && iNeighbours[i] > iMaxPix) ) {
-					iMaxPix = iNeighbours[i]; iMaxPlace = iTempPlace;
-				}
-			}
-
-			// Scaler calculation depends on whether this is the highest-placement material around
-			int iScaler = 0;
-			if(iMaxPix == iPix) {
-
-				// If yes, we consider all other materials as "other"
-				for(i = 0; i < 8; i++)
-					if(iNeighbours[i] == iPix)
-						iScaler += (1<<i);
-
-			} else {
-
-				// Otherwise, we *only* consider the highest-placement material as "other"
-				for(i = 0; i < 8; i++)
-					if(iNeighbours[i] != iMaxPix)
-						iScaler += (1<<i);
-			}
+			// Maximum placement differences that make a difference in the result,  after which we are at the limits of
+			// what can be packed into a byte
+			const int maximumPlacementDifference = 40;
+			int horizontalBiasScaled = Clamp(horizontalBias * 127 / maximumPlacementDifference / horizontalFactor + 128, 0, 255);
+			int verticalBiasScaled = Clamp(verticalBias * 127 / maximumPlacementDifference / verticalFactor + 128, 0, 255);
 
 			// Collect data to save per pixel
 			unsigned char data[C4LR_SurfaceCount * 4];
 			memset(data, 0, sizeof(data));
 
-			data[C4LR_Material] = iPix;
-			data[C4LR_BiasX] = iHBiasScaled;
-			data[C4LR_BiasY] = iVBiasScaled;
-			data[C4LR_Scaler] = iScaler;
+			data[C4LR_Material] = pixel;
+			data[C4LR_BiasX] = horizontalBiasScaled;
+			data[C4LR_BiasY] = verticalBiasScaled;
+			data[C4LR_Scaler] = CalculateScalerBitmask(x, y, To, pSource);
+			data[C4LR_Place] = placement;
 
 			for(int i = 0; i < C4LR_SurfaceCount; i++)
-				TexRefs[i]->SetPix4(To.x+x, To.y+y, 
+				texture[i]->SetPix(To.x+x, To.y+y, 
 					RGBA(data[i*4+0], data[i*4+1], data[i*4+2], data[i*4+3]));
 
-			// Update left & right
-			if(To.x+x + 1 < iWidth)
-				iRight -= pSource->_GetPlacement(To.x+x + 1, To.y+y);
-			if(To.x+x + C4LR_BiasDistanceX < iWidth)
-				iRight += pSource->_GetPlacement(To.x+x + C4LR_BiasDistanceX, To.y+y);
-			iLeft += pSource->_GetPlacement(To.x+x, To.y+y);
-			if(To.x+x - C4LR_BiasDistanceX - 1 >= 0)
-				iLeft -= pSource->_GetPlacement(To.x+x - C4LR_BiasDistanceX - 1, To.y+y);
+			// Update sums (last column would be out-of-bounds, and not
+			// necessary as we will re-initialise it for the next row)
+			if (x < To.Wdt - 1) {
+				sumLeft -= placementSumsUp[x] + placementSumsDown[x];
+				sumLeft += placementSumsUp[x + C4LR_BiasDistanceX] + placementSumsDown[x + C4LR_BiasDistanceX];
+				sumRight -= placementSumsUp[x + C4LR_BiasDistanceX + 1] + placementSumsDown[x + C4LR_BiasDistanceX + 1];
+				sumUp -= placementSumsUp[x];
+				sumDown -= placementSumsDown[x];
+				sumRight += placementSumsUp[x + 2 * C4LR_BiasDistanceX + 1] + placementSumsDown[x + 2 * C4LR_BiasDistanceX + 1];
+				sumUp += placementSumsUp[x + 2 * C4LR_BiasDistanceX + 1];
+				sumDown += placementSumsDown[x + 2 * C4LR_BiasDistanceX + 1];
+			}
 
-			// Update up & down arrays
-			if(To.y+y + 1 < iHeight)
-				pDown[x] -= pSource->_GetPlacement(To.x+x, To.y+y + 1);
-			if(To.y+y + C4LR_BiasDistanceY < iHeight)
-				pDown[x] += pSource->_GetPlacement(To.x+x, To.y+y + C4LR_BiasDistanceY);
-			pUp[x] += pSource->_GetPlacement(To.x+x, To.y+y);
-			if(To.y+y - C4LR_BiasDistanceY + 1 >= 0) {
-				pUp[x] -= pSource->_GetPlacement(To.x+x, To.y+y - C4LR_BiasDistanceY + 1);
+			// Update left & right for next pixel in line
+			if(x + To.x + 1 < iWidth)
+				sumRight -= pSource->_GetPlacement(To.x+x + 1, To.y+y);
+			if(To.x+x + C4LR_BiasDistanceX + 1 < iWidth)
+				sumRight += pSource->_GetPlacement(To.x+x + C4LR_BiasDistanceX + 1, To.y+y);
+			sumLeft += placement;
+			if(To.x+x - C4LR_BiasDistanceX >= 0)
+				sumLeft -= pSource->_GetPlacement(To.x+x - C4LR_BiasDistanceX, To.y+y);
+
+			// Update up & down arrays (for next line already)
+			if (To.x + x >= C4LR_BiasDistanceX) {
+				if (To.y + y + 1 < iHeight)
+					placementSumsDown[x] -= pSource->_GetPlacement(To.x + x - C4LR_BiasDistanceX, To.y + y + 1);
+				if (To.y + y + C4LR_BiasDistanceY + 1 < iHeight)
+					placementSumsDown[x] += pSource->_GetPlacement(To.x + x - C4LR_BiasDistanceX, To.y + y + C4LR_BiasDistanceY + 1);
+				if (To.y + y - C4LR_BiasDistanceY >= 0)
+					placementSumsUp[x] -= pSource->_GetPlacement(To.x + x - C4LR_BiasDistanceX, To.y + y - C4LR_BiasDistanceY);
+				placementSumsUp[x] += pSource->_GetPlacement(To.x + x - C4LR_BiasDistanceX, To.y + y);
+			}
+		}
+
+		// Finish updating up & down arrays for the next line
+		if (To.x + x >= C4LR_BiasDistanceX)
+		{
+			for (; x < std::min(placementSumsWidth, iWidth - To.x + C4LR_BiasDistanceX); x++) {
+				if (To.y + y + 1 < iHeight)
+					placementSumsDown[x] -= pSource->_GetPlacement(To.x + x - C4LR_BiasDistanceX, To.y + y + 1);
+				if (To.y + y + C4LR_BiasDistanceY + 1 < iHeight)
+					placementSumsDown[x] += pSource->_GetPlacement(To.x + x - C4LR_BiasDistanceX, To.y + y + C4LR_BiasDistanceY + 1);
+				if (To.y + y - C4LR_BiasDistanceY >= 0)
+					placementSumsUp[x] -= pSource->_GetPlacement(To.x + x - C4LR_BiasDistanceX, To.y + y - C4LR_BiasDistanceY);
+				placementSumsUp[x] += pSource->_GetPlacement(To.x + x - C4LR_BiasDistanceX, To.y + y);
 			}
 		}
 	}
 
 	// done
-	delete[] pUp;
-	for (int i = 0; i < C4LR_SurfaceCount; i++)
-		Surfaces[i]->Unlock();
-
+	delete[] placementSumsUp;
+	for (auto & Surface : Surfaces)
+		Surface->Unlock();
 }
 
-void C4LandscapeRenderGL::DumpInfoLog(const char *szWhat, GLhandleARB hShader, int32_t iWorkaround)
+/** Returns the data used for the scaler shader for the given pixel. It is a 8-bit bitmask. The bits stand for the 8
+    neighbouring pixels in this order:
+	  1 2 3
+	  4 . 5
+	  6 7 8
+	... and denote whether the pixels belongs to the same group as this pixel.
+	*/
+int C4LandscapeRenderGL::CalculateScalerBitmask(int x, int y, C4Rect To, C4Landscape *pSource)
 {
-	// Get length of info line
-	int iLength = 0;
-	glGetObjectParameterivARB(hShader, GL_OBJECT_INFO_LOG_LENGTH_ARB, &iLength);
-	if(iLength <= 1) return;
+	int pixel = pSource->_GetPix(To.x+x, To.y+y);
+	int placement = pSource->_GetPlacement(To.x+x, To.y+y);
 
-	// Allocate buffer, get data
-	char *pBuf = new char [iLength + 1];
-	int iActualLength = 0;
-    glGetInfoLogARB(hShader, iLength, &iActualLength, pBuf);
-	if(iActualLength > iLength || iActualLength <= 0) return;
-	
-	// Terminate, log
-	pBuf[iActualLength] = '\0';
-	LogSilentF("  gl: Compiling %s %d:", szWhat, iWorkaround);
-	LogSilent(pBuf);
-	delete[] pBuf;
+	int neighbours[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
+	if(To.y+y > 0)
+	{
+		if(To.x+x > 0)
+			neighbours[0] = pSource->_GetPix(To.x+x-1, To.y+y-1);
+		neighbours[1] = pSource->_GetPix(To.x+x, To.y+y-1);
+		if(To.x+x < iWidth-1)
+			neighbours[2] = pSource->_GetPix(To.x+x+1, To.y+y-1);
+	}
+	if(To.x+x > 0)
+		neighbours[3] = pSource->_GetPix(To.x+x-1, To.y+y);
+	if(To.x+x < iWidth-1)
+		neighbours[4] = pSource->_GetPix(To.x+x+1, To.y+y);
+	if(To.y+y < iHeight-1)
+	{
+		if(To.x+x > 0)
+			neighbours[5] = pSource->_GetPix(To.x+x-1, To.y+y+1);
+		neighbours[6] = pSource->_GetPix(To.x+x, To.y+y+1);
+		if(To.x+x < iWidth-1)
+			neighbours[7] = pSource->_GetPix(To.x+x+1, To.y+y+1);
+	}
+
+	// Look for highest-placement material in our surroundings
+	int maxPixel = pixel, maxPlacement = placement;
+	for(int neighbour : neighbours)
+	{
+		int tempPlacement = MatPlacement(PixCol2Mat(neighbour));
+		if(tempPlacement > maxPlacement || (tempPlacement == maxPlacement && neighbour > maxPixel) )
+		{
+			maxPixel = neighbour;
+			maxPlacement = tempPlacement;
+		}
+	}
+
+	// Scaler calculation depends on whether this is the highest-placement material around
+	int scaler = 0;
+	if(maxPixel == pixel)
+	{
+		// If yes, we consider all other materials as "other"
+		for(int i = 0; i < 8; i++)
+			if(neighbours[i] == pixel)
+				scaler += (1<<i);
+
+	} else {
+
+		// Otherwise, we *only* consider the highest-placement material as "other"
+		for(int i = 0; i < 8; i++)
+			if(neighbours[i] != maxPixel)
+				scaler += (1<<i);
+	}
+	return scaler;
 }
 
-int C4LandscapeRenderGL::GetObjectStatus(GLhandleARB hObj, GLenum type)
+const char *C4LandscapeRenderGL::UniformNames[C4LRU_Count+1];
+
+bool C4LandscapeRenderGL::LoadShader(C4GroupSet *pGroups, C4Shader& shader, const char* name, int ssc)
 {
-	int iStatus = 0;
-	glGetObjectParameterivARB(hObj, type, &iStatus);
-	return iStatus;
-}
+	// Setup #defines
+	shader.AddDefine("OPENCLONK");
+	shader.AddDefine("OC_LANDSCAPE");
+	if(ssc & C4SSC_LIGHT) shader.AddDefine("OC_DYNAMIC_LIGHT"); // sample light from light texture
 
-GLhandleARB C4LandscapeRenderGL::CreateShader(GLenum iShaderType, const char *szWhat, const char *szCode, int32_t iWorkaround)
-{
-	// Create shader
-	GLhandleARB hShader = glCreateShaderObjectARB(iShaderType);
+	// Create vertex shader
+	shader.LoadVertexSlices(pGroups, "LandscapeVertexShader.glsl");
 
-	// Find #version
-	StdStrBuf Version("");
-	const char *szCodeRest = szCode;
-	if (const char *szVersion = SSearch(szCode, "#version"))
-	{
-		while (*szVersion && *szVersion != '\n')
-			szVersion++;
-		if (*szVersion == '\n')
-			szVersion++;
-		Version.Copy(szCode, szVersion - szCode);
-		szCodeRest = szVersion;
-	}
+	// Then load slices for fragment shader
+	shader.LoadFragmentSlices(pGroups, "CommonShader.glsl");
+	shader.LoadFragmentSlices(pGroups, "LandscapeShader.glsl");
 
-	// Get number of available uniforms from driver
-	GLint max_uniforms = 0;
-	glGetIntegerv(GL_MAX_FRAGMENT_UNIFORM_COMPONENTS_ARB, &max_uniforms);
-	Version.AppendFormat("#define MAX_FRAGMENT_UNIFORM_COMPONENTS %d\n", max_uniforms);
-	glGetIntegerv(GL_MAX_VERTEX_UNIFORM_COMPONENTS_ARB, &max_uniforms);
-	Version.AppendFormat("#define MAX_VERTEX_UNIFORM_COMPONENTS %d\n", max_uniforms);
+	// Categories for script shaders.
+	shader.SetScriptCategories({"Common", "Landscape"});
 
-	// Build code
-	const char *szCodes[C4LR_ShaderWorkaroundCount + 2];
-	szCodes[0] = Version.getData();
-	for(int i = 0; i < C4LR_ShaderWorkaroundCount; i++)
-		if(iWorkaround & (1 << i))
-			szCodes[i+1] = C4LR_ShaderWorkarounds[i];
-		else
-			szCodes[i+1] = "";
-	szCodes[C4LR_ShaderWorkaroundCount+1] = szCodeRest;
+	// Make attribute name map
+	const char* AttributeNames[C4LRA_Count + 1];
+	AttributeNames[C4LRA_Position] = "oc_Position";
+	AttributeNames[C4LRA_LandscapeTexCoord] = "oc_LandscapeTexCoord";
+	AttributeNames[C4LRA_LightTexCoord] = "oc_LightTexCoord"; // unused if no dynamic light
+	AttributeNames[C4LRA_Count] = nullptr;
 
-	// Compile
-	glShaderSourceARB(hShader, C4LR_ShaderWorkaroundCount + 2, szCodes, 0);
-	glCompileShaderARB(hShader);
-
-	// Dump any information to log
-	DumpInfoLog(szWhat, hShader, iWorkaround);
-
-	// Success?
-	if(GetObjectStatus(hShader, GL_OBJECT_COMPILE_STATUS_ARB) == 1)
-		return hShader;
-
-	// Did not work :/
-	glDeleteObjectARB(hShader);
-	return 0;
-}
-
-bool C4LandscapeRenderGL::InitShaders()
-{
-	// Already initialized or no shader load?
-	if(hProg || LandscapeShader.getLength() <= 0)
-		return false;
-
-	// No support?
-	if(!GLEW_ARB_fragment_program)
-	{
-		Log("   gl: no shader support!");
+	// Initialise!
+	if (!shader.Init(name, UniformNames, AttributeNames)) {
+		shader.ClearSlices();
 		return false;
 	}
 
-	// Try all workarounds until one works
-	int iWorkaround;
-	for(iWorkaround = 0; iWorkaround < (1 << C4LR_ShaderWorkaroundCount); iWorkaround++)
-	{
-		// Create trivial fragment shader
-		const char *szVert = "#version 110\nvoid main() { gl_TexCoord[0] = gl_MultiTexCoord0; gl_Position = ftransform(); } ";
-		hVert = CreateShader(GL_VERTEX_SHADER_ARB, "vertex shader", szVert, iWorkaround);
-		hFrag = CreateShader(GL_FRAGMENT_SHADER_ARB, "fragment shader", LandscapeShader.getData(), iWorkaround);
-		if(!hFrag || !hVert)
-			continue;
-
-		// Link program
-		hProg = glCreateProgramObjectARB();
-		glAttachObjectARB(hProg, hVert);
-		glAttachObjectARB(hProg, hFrag);
-		glLinkProgramARB(hProg);
-
-		// Link successful?
-		DumpInfoLog("shader program", hProg, iWorkaround);
-		if(GetObjectStatus(hProg, GL_OBJECT_LINK_STATUS_ARB) == 1)
-			break;
-
-		// Clear up
-		glDetachObjectARB(hProg, hVert);
-		glDetachObjectARB(hProg, hFrag);
-		glDeleteObjectARB(hVert);
-		glDeleteObjectARB(hFrag);
-		glDeleteObjectARB(hProg);
-		hProg = hVert = hFrag = 0;
-	}
-	
-	// Did not get it to work?
-	if(!hProg)
-	{
-		Log("  gl: Failed to link shader!");
-		return false;
-	}
-	LogF("  gl: Shader %d linked successfully", iWorkaround);
-
-	// Get uniform locations. Note this is expected to fail for a few of them
-	// because the respective uniforms got optimized out!
-	for (int i = 0; i < C4LRU_Count; i++)
-		hUniforms[i] = glGetUniformLocationARB(hProg, GetUniformName(i));
-
-	// Success?
-	if(int err = glGetError())
-	{
-		LogF("  gl: Error code %d while linking shader!", err);
-		return false;
-	}
 	return true;
-}
-
-void C4LandscapeRenderGL::ClearShaders()
-{
-	if (!hProg) return;
-
-	// Need to be detached, then deleted
-	glDetachObjectARB(hProg, hFrag);
-	glDetachObjectARB(hProg, hVert);
-	glDeleteObjectARB(hFrag);
-	glDeleteObjectARB(hVert);
-	glDeleteObjectARB(hProg);
-	hFrag = hVert = hProg = 0;
-
-	ZeroMem(hUniforms, sizeof(hUniforms));
 }
 
 bool C4LandscapeRenderGL::LoadShaders(C4GroupSet *pGroups)
 {
 	// First, clear out all existing shaders
 	ClearShaders();
-	// Search for our shaders
-	C4Group *pGroup = pGroups->FindEntry(C4CFN_LandscapeShader);
-	if(!pGroup) return false;
-	// Load it, save the path for later reloading
-	if(!pGroup->LoadEntryString(C4CFN_LandscapeShader, &LandscapeShader))
+
+	// Make uniform name map
+	ZeroMem(UniformNames, sizeof(UniformNames));
+	UniformNames[C4LRU_ProjectionMatrix]  = "projectionMatrix";
+	UniformNames[C4LRU_LandscapeTex]      = "landscapeTex";
+	UniformNames[C4LRU_ScalerTex]         = "scalerTex";
+	UniformNames[C4LRU_MaterialTex]       = "materialTex";
+	UniformNames[C4LRU_LightTex]          = "lightTex";
+	UniformNames[C4LRU_AmbientTex]        = "ambientTex";
+	UniformNames[C4LRU_Gamma]             = "gamma";
+	UniformNames[C4LRU_Resolution]        = "resolution";
+	UniformNames[C4LRU_Center]            = "center";
+	UniformNames[C4LRU_MatMapTex]         = "matMapTex";
+	UniformNames[C4LRU_MaterialDepth]     = "materialDepth";
+	UniformNames[C4LRU_MaterialSize]      = "materialSize";
+	UniformNames[C4LRU_AmbientBrightness] = "ambientBrightness";
+	UniformNames[C4LRU_AmbientTransform]  = "ambientTransform";
+	UniformNames[C4LRU_Modulation]        = "clrMod";
+	UniformNames[C4LRU_FrameCounter]      = "frameCounter";
+	UniformNames[C4LRU_Time]              = "time";
+
+	if(!LoadShader(pGroups, Shader, "landscape", 0))
 		return false;
-	// If it physically exists, save back file name
-	if(FileExists(pGroup->GetFullName().getData()))
+	if(!LoadShader(pGroups, ShaderLight, "landscapeLight", C4SSC_LIGHT))
+		return false;
+
+	return true;
+}
+
+bool C4LandscapeRenderGL::InitVBO()
+{
+	// Our VBO needs to hold 4 vertices with 6 floats each.
+	assert(hVBO == 0);
+	glGenBuffers(1, &hVBO);
+	glBindBuffer(GL_ARRAY_BUFFER, hVBO);
+	glBufferData(GL_ARRAY_BUFFER, 24 * sizeof(float), nullptr, GL_STREAM_DRAW);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	// Also allocate the VAO IDs
+	assert(hVAOIDLight == 0);
+	assert(hVAOIDNoLight == 0);
+	hVAOIDLight = pGL->GenVAOID();
+	hVAOIDNoLight = pGL->GenVAOID();
+	return true;
+}
+
+void C4LandscapeRenderGL::ClearShaders()
+{
+	if (Shader.Initialised())
 	{
-		LandscapeShaderPath.Format("%s" DirSep C4CFN_LandscapeShader, pGroup->GetFullName().getData());
-		iLandscapeShaderTime = FileTime(LandscapeShaderPath.getData());
+		Shader.Clear();
+		Shader.ClearSlices();
 	}
-	// Initialize
-	return InitShaders();
+
+	if (ShaderLight.Initialised())
+	{
+		ShaderLight.Clear();
+		ShaderLight.ClearSlices();
+	}
 }
 
 bool C4LandscapeRenderGL::LoadScaler(C4GroupSet *pGroups)
@@ -707,7 +682,7 @@ bool C4LandscapeRenderGL::LoadScaler(C4GroupSet *pGroups)
 	C4Group *pGroup = pGroups->FindEntry(C4CFN_LandscapeScaler);
 	if(!pGroup) return false;
 	// Load scaler from group
-	if(!fctScaler.Load(*pGroup, C4CFN_LandscapeScaler))
+	if(!fctScaler.Load(*pGroup, C4CFN_LandscapeScaler, C4FCT_Full, C4FCT_Full, false, 0))
 		return false;
 	// Check size
 	const int iOrigWdt = 8 * 3, iOrigHgt = 4 * 8 * 3;
@@ -796,26 +771,6 @@ bool C4LandscapeRenderGL::LoadScaler(C4GroupSet *pGroups)
 	return fctScaler.Surface->Unlock();
 }
 
-void C4LandscapeRenderGL::RefreshShaders()
-{
-	// File changed?
-	if(!LandscapeShaderPath.isNull() && 
-		FileTime(LandscapeShaderPath.getData()) != iLandscapeShaderTime)
-	{
-		ClearShaders();
-		// Load new shader
-		char szParentPath[_MAX_PATH+1]; C4Group Group;
-		GetParentPath(LandscapeShaderPath.getData(),szParentPath);
-		if(!Group.Open(szParentPath) ||
-			!Group.LoadEntryString(GetFilename(LandscapeShaderPath.getData()),&LandscapeShader) ||
-			!Group.Close())
-			return;
-		// Reinitialize
-		InitShaders();
-		iLandscapeShaderTime = FileTime(LandscapeShaderPath.getData());
-	}
-}
-
 int32_t C4LandscapeRenderGL::LookupTextureTransition(const char *szFrom, const char *szTo)
 {
 	// Is this actually a transition? Otherwise we're looking for a single texture
@@ -847,17 +802,17 @@ void C4LandscapeRenderGL::AddTextureTransition(const char *szFrom, const char *s
 	if (LookupTextureTransition(szTo, szFrom) >= 0) return;
 	// Single texture? Add it as single
 	if (SEqual(szTo, szFrom))
-		MaterialTextureMap.push_back(StdCopyStrBuf(szFrom));
+		MaterialTextureMap.emplace_back(szFrom);
 	// Have one of the textures at the end of the list?
 	else if(SEqual(MaterialTextureMap.back().getData(), szFrom))
-		MaterialTextureMap.push_back(StdCopyStrBuf(szTo));
+		MaterialTextureMap.emplace_back(szTo);
 	else if(SEqual(MaterialTextureMap.back().getData(), szTo))
-		MaterialTextureMap.push_back(StdCopyStrBuf(szFrom));
+		MaterialTextureMap.emplace_back(szFrom);
 	else
 	{
 		// Otherwise add both
-		MaterialTextureMap.push_back(StdCopyStrBuf(szFrom));
-		MaterialTextureMap.push_back(StdCopyStrBuf(szTo));
+		MaterialTextureMap.emplace_back(szFrom);
+		MaterialTextureMap.emplace_back(szTo);
 	}
 }
 
@@ -907,7 +862,7 @@ void C4LandscapeRenderGL::AddTexturesFromMap(C4TextureMap *pMap)
 
 }
 
-void C4LandscapeRenderGL::BuildMatMap(GLfloat *pFMap, GLubyte *pIMap)
+void C4LandscapeRenderGL::BuildMatMap(uint32_t *pTex)
 {
 	// TODO: Still merely an inefficient placeholder for things to come...
 
@@ -919,8 +874,8 @@ void C4LandscapeRenderGL::BuildMatMap(GLfloat *pFMap, GLubyte *pIMap)
 		if(!pEntry->GetTextureName())
 		{
 			// Undefined textures transparent
-			if(pFMap) pFMap[pix] = 0.5 / iMaterialTextureDepth;
-			if(pIMap) pIMap[pix] = 0;
+			pTex[2*pix] = 0;
+			pTex[2*pix+1] = RGBA(0,0,0,255);
 			continue;
 		}
 
@@ -928,8 +883,13 @@ void C4LandscapeRenderGL::BuildMatMap(GLfloat *pFMap, GLubyte *pIMap)
 		int iPhases = 1; const char *p = pEntry->GetTextureName();
 		while((p = strchr(p, '-'))) { p++; iPhases++; }
 		// Hard-coded hack. Fix me!
-		const int iPhaseLength = 300;
-		float phase = (iPhases == 1 ? 0 : float(C4TimeMilliseconds::Now().AsInt() % (iPhases * iPhaseLength)) / iPhaseLength);
+		C4Material *pMaterial = pEntry->GetMaterial();
+		const int iPhaseLength = pMaterial->AnimationSpeed;
+		float phase = 0;
+		if (iPhases > 1) {
+			phase = C4TimeMilliseconds::Now().AsInt() % (iPhases * iPhaseLength);
+			phase /= iPhaseLength;
+		}
 
 		// Find our transition
 		const char *pFrom = pEntry->GetTextureName();
@@ -958,86 +918,86 @@ void C4LandscapeRenderGL::BuildMatMap(GLfloat *pFMap, GLubyte *pIMap)
 		}
 
 		// Assign texture
-		if(pFMap) pFMap[pix] = (gTexCoo + 0.5) / iMaterialTextureDepth;
-		if(pIMap) pIMap[pix] = int((gTexCoo * 256.0 / iMaterialTextureDepth) + 0.5);
+		int iTexCoo = int((gTexCoo * 256.0 / iMaterialTextureDepth) + 0.5);
+		pTex[2*pix] = RGBA(
+			Clamp(pMaterial->LightEmit[0], 0, 255),
+			Clamp(pMaterial->LightEmit[1], 0, 255),
+			Clamp(pMaterial->LightEmit[2], 0, 255),
+			iTexCoo);
+		pTex[2*pix+1] = RGBA(
+			Clamp(pMaterial->LightSpot[0], 0, 255),
+			Clamp(pMaterial->LightSpot[1], 0, 255),
+			Clamp(pMaterial->LightSpot[2], 0, 255),
+			Clamp(pMaterial->LightAngle, 0, 255));
 	}
 }
 
-void C4LandscapeRenderGL::Draw(const C4TargetFacet &cgo)
+void C4LandscapeRenderGL::Draw(const C4TargetFacet &cgo, const C4FoWRegion *Light, uint32_t clrMod)
 {
 	// Must have GL and be initialized
-	if(!pGL && !hProg) return;
+	if(!pGL && !Shader.Initialised() && !ShaderLight.Initialised()) return;
 	
 	// prepare rendering to surface
 	C4Surface *sfcTarget = cgo.Surface;
 	if (!pGL->PrepareRendering(sfcTarget)) return;
 
-#ifdef AUTO_RELOAD_SHADERS
-	RefreshShaders();
-#endif // AUTO_RELOAD_SHADERS
-
-	// Clear error(s?)
-	while(glGetError()) {}
+	// Choose the right shader depending on whether we have dynamic lighting or not
+	const C4Shader* shader = &Shader;
+	if (Light) shader = &ShaderLight;
+	if (!shader->Initialised()) return;
 
 	// Activate shader
-	glUseProgramObjectARB(hProg);
+	C4ShaderCall ShaderCall(shader);
+	ShaderCall.Start();
 
 	// Bind data
-	if (hUniforms[C4LRU_Resolution] != GLhandleARB(-1))
-		glUniform2fARB(hUniforms[C4LRU_Resolution], Surfaces[0]->Wdt, Surfaces[0]->Hgt);
-	if (hUniforms[C4LRU_MatMap] != GLhandleARB(-1))
+	ShaderCall.SetUniformMatrix4x4(C4LRU_ProjectionMatrix, pGL->GetProjectionMatrix());
+	ShaderCall.SetUniform3fv(C4LRU_Gamma, 1, pGL->gammaOut);
+	ShaderCall.SetUniform2f(C4LRU_Resolution, Surfaces[0]->Wdt, Surfaces[0]->Hgt);
+	float centerX = float(cgo.TargetX)+float(cgo.Wdt)/2,
+		  centerY = float(cgo.TargetY)+float(cgo.Hgt)/2;
+	ShaderCall.SetUniform2f(C4LRU_Center,
+	                        centerX / float(Surfaces[0]->Wdt),
+	                        centerY / float(Surfaces[0]->Hgt));
+	ShaderCall.SetUniform1f(C4LRU_MaterialDepth, float(iMaterialTextureDepth));
+	ShaderCall.SetUniform2f(C4LRU_MaterialSize,
+	                        float(iMaterialWidth) / ::Game.C4S.Landscape.MaterialZoom,
+	                        float(iMaterialHeight) / ::Game.C4S.Landscape.MaterialZoom);
+	const float fMod[4] = {
+		((clrMod >> 16) & 0xff) / 255.0f,
+		((clrMod >>  8) & 0xff) / 255.0f,
+		((clrMod      ) & 0xff) / 255.0f,
+		((clrMod >> 24) & 0xff) / 255.0f
+	};
+	ShaderCall.SetUniform4fv(C4LRU_Modulation, 1, fMod);
+
+	if (Light)
 	{
-		GLfloat MatMap[256];
-		BuildMatMap(MatMap, NULL);
-		glUniform1fvARB(hUniforms[C4LRU_MatMap], 256, MatMap);
+		const FLOAT_RECT ViewportRect = Light->getViewportRegion();
+		const C4Rect ClipRect = pDraw->GetClipRect();
+		const C4Rect OutRect = pDraw->GetOutRect();
+		float ambientTransform[6];
+		Light->getFoW()->Ambient.GetFragTransform(ViewportRect, ClipRect, OutRect, ambientTransform);
+		ShaderCall.SetUniformMatrix2x3fv(C4LRU_AmbientTransform, 1, ambientTransform);
+		ShaderCall.SetUniform1f(C4LRU_AmbientBrightness, Light->getFoW()->Ambient.GetBrightness());
 	}
-	if (hUniforms[C4LRU_MaterialDepth] != GLhandleARB(-1))
-		glUniform1iARB(hUniforms[C4LRU_MaterialDepth], iMaterialTextureDepth);
-	if (hUniforms[C4LRU_MaterialSize] != GLhandleARB(-1))
-		glUniform2fARB(hUniforms[C4LRU_MaterialSize], float(iMaterialWidth) / ::Game.C4S.Landscape.MaterialZoom,
-		                                              float(iMaterialHeight) / ::Game.C4S.Landscape.MaterialZoom);
-		
-	// Setup facilities for texture unit allocation (gimme local functions...)
-	int iUnit = 0; int iUnitMap[32]; ZeroMem(iUnitMap, sizeof(iUnitMap));
-	#define ALLOC_UNIT(hUniform, iType) do { \
-		if(hUniform != GLhandleARB(-1)) glUniform1iARB(hUniform, iUnit); \
-		glActiveTexture(GL_TEXTURE0 + iUnit); \
-		iUnitMap[iUnit] = iType; \
-		glEnable(iType); \
-		iUnit++; \
-		assert(iUnit < 32); \
-	} while(false)
+
+	// time information
+	ShaderCall.SetUniform1i(C4LRU_FrameCounter, ::Game.FrameCounter);
+	const auto now = std::chrono::steady_clock::now();
+	const int epoch = std::chrono::duration_cast<std::chrono::milliseconds>(now - TimerStart).count();
+	ShaderCall.SetUniform1i(C4LRU_Time, epoch);
+
+	pDraw->scriptUniform.Apply(ShaderCall);
 
 	// Start binding textures
-	if(hUniforms[C4LRU_ScalerTex] != GLhandleARB(-1))
-	{
-		ALLOC_UNIT(hUniforms[C4LRU_ScalerTex], GL_TEXTURE_2D);
-		glBindTexture(GL_TEXTURE_2D, fctScaler.Surface->ppTex[0]->texName);
-		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	}
-	if(hUniforms[C4LRU_MaterialTex] != GLhandleARB(-1))
-	{
-		ALLOC_UNIT(hUniforms[C4LRU_MaterialTex], GL_TEXTURE_3D);
-
-		// Decide which mip-map level to use
-		double z = 0.5; int iMM = 0;
-		while(pGL->Zoom < z * ::Game.C4S.Landscape.MaterialZoom && iMM + 1 <C4LR_MipMapCount)
-			{ z /= 2; iMM++; }
-		glBindTexture(GL_TEXTURE_3D, hMaterialTexture[iMM]);
-		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	}
-	if(hUniforms[C4LRU_LandscapeTex] != GLhandleARB(-1))
+	if(shader->HaveUniform(C4LRU_LandscapeTex))
 	{
 		GLint iLandscapeUnits[C4LR_SurfaceCount];
 		for(int i = 0; i < C4LR_SurfaceCount; i++)
 		{
-			iLandscapeUnits[i] = iUnit;
-			ALLOC_UNIT(GLhandleARB(-1), GL_TEXTURE_2D);
-			glBindTexture(GL_TEXTURE_2D, Surfaces[i]->ppTex[0]->texName);
+			iLandscapeUnits[i] = ShaderCall.AllocTexUnit(-1) - GL_TEXTURE0;
+			glBindTexture(GL_TEXTURE_2D, Surfaces[i]->texture->texName);
 			if (pGL->Zoom != 1.0)
 			{
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -1049,26 +1009,48 @@ void C4LandscapeRenderGL::Draw(const C4TargetFacet &cgo)
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 			}
 		}
-		glUniform1ivARB(hUniforms[C4LRU_LandscapeTex], C4LR_SurfaceCount, iLandscapeUnits);
+		ShaderCall.SetUniform1iv(C4LRU_LandscapeTex, C4LR_SurfaceCount, iLandscapeUnits);
 	}
-	if(hUniforms[C4LRU_MatMapTex] != GLhandleARB(-1))
+	if(Light && ShaderCall.AllocTexUnit(C4LRU_LightTex))
 	{
-		ALLOC_UNIT(hUniforms[C4LRU_MatMapTex], GL_TEXTURE_1D);
-		GLubyte MatMap[256];
-		BuildMatMap(NULL, MatMap);
-		glTexImage1D(GL_TEXTURE_1D, 0, 1, 256, 0, GL_RED, GL_UNSIGNED_BYTE, MatMap);
-		glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glBindTexture(GL_TEXTURE_2D, Light->getSurfaceName());
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	}
+	if(Light && ShaderCall.AllocTexUnit(C4LRU_AmbientTex))
+	{
+		glBindTexture(GL_TEXTURE_2D, Light->getFoW()->Ambient.Tex);
+	}
+	if(ShaderCall.AllocTexUnit(C4LRU_ScalerTex))
+	{
+		glBindTexture(GL_TEXTURE_2D, fctScaler.Surface->texture->texName);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	}
+	if(ShaderCall.AllocTexUnit(C4LRU_MaterialTex))
+	{
+		glBindTexture(GL_TEXTURE_2D_ARRAY, hMaterialTexture);
+	}
+	if(ShaderCall.AllocTexUnit(C4LRU_MatMapTex))
+	{
+		uint32_t MatMap[2*256];
+		BuildMatMap(MatMap);
+		glBindTexture(GL_TEXTURE_1D, matMapTexture);
+		glTexImage1D(GL_TEXTURE_1D, 0, GL_RGBA8, 2*256, 0, GL_RGBA, GL_UNSIGNED_BYTE, MatMap);
+		glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	}
 
-	// set up blit data as rect
-	FLOAT_RECT fTexBlt, tTexBlt;
+	// Calculate coordinates into landscape texture
+	FLOAT_RECT fTexBlt;
 	float fx = float(cgo.TargetX), fy = float(cgo.TargetY);
-	fTexBlt.left  = fx;
-	fTexBlt.top   = fy;
-	fTexBlt.right = fx + float(cgo.Wdt);
-	fTexBlt.bottom= fy + float(cgo.Hgt);
+	fTexBlt.left  = fx / Surfaces[0]->Wdt;
+	fTexBlt.top   = fy / Surfaces[0]->Hgt;
+	fTexBlt.right = (fx + float(cgo.Wdt)) / Surfaces[0]->Wdt;
+	fTexBlt.bottom= (fy + float(cgo.Hgt)) / Surfaces[0]->Hgt;
 
-	// apply Zoom
+	// Calculate coordinates on screen (zoomed!)
+	FLOAT_RECT tTexBlt;
 	float tx = float(cgo.X), ty = float(cgo.Y);
 	pGL->ApplyZoom(tx, ty);
 	tTexBlt.left  = tx;
@@ -1076,56 +1058,87 @@ void C4LandscapeRenderGL::Draw(const C4TargetFacet &cgo)
 	tTexBlt.right = tx + float(cgo.Wdt) * pGL->Zoom;
 	tTexBlt.bottom= ty + float(cgo.Hgt) * pGL->Zoom;
 
-	// blit positions
-	C4BltVertex Vtx[4];
-	Vtx[0].ftx = tTexBlt.left;  Vtx[0].fty = tTexBlt.top;
-	Vtx[1].ftx = tTexBlt.right; Vtx[1].fty = tTexBlt.top;
-	Vtx[2].ftx = tTexBlt.right; Vtx[2].fty = tTexBlt.bottom;
-	Vtx[3].ftx = tTexBlt.left;  Vtx[3].fty = tTexBlt.bottom;
-	Vtx[0].tx = fTexBlt.left;  Vtx[0].ty = fTexBlt.top;
-	Vtx[1].tx = fTexBlt.right; Vtx[1].ty = fTexBlt.top;
-	Vtx[2].tx = fTexBlt.right; Vtx[2].ty = fTexBlt.bottom;
-	Vtx[3].tx = fTexBlt.left;  Vtx[3].ty = fTexBlt.bottom;
-	for (int i=0; i<4; ++i)
-	{
-		Vtx[i].tx /= float(Surfaces[0]->Wdt);
-		Vtx[i].ty /= float(Surfaces[0]->Hgt);
-		Vtx[i].ftz = 0;
-		Vtx[i].color[0] = 255;
-		Vtx[i].color[1] = 255;
-		Vtx[i].color[2] = 255;
-		Vtx[i].color[3] = 255;
-		//DwTo4UB(RGBA(255, 255, 255, 255), Vtx[i].color);
-	}
-
-	// color modulation?
-	//DWORD dwModClr = BlitModulated ? BlitModulateClr : 0xffffffff;
-	//for (int i=0; i<4; ++i)
-	//	DwTo4UB(dwModClr | dwModMask, Vtx[i].color);
-
 	// Blend it
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-	// Blit
-	glInterleavedArrays(GL_T2F_C4UB_V3F, sizeof(C4BltVertex), Vtx);
-	glDrawArrays(GL_QUADS, 0, 4);
+	// Prepare vertex data
+	float vtxData[24];
+	float* pos = &vtxData[0];
+	float* tex = &vtxData[8];
+	float* lightTex = &vtxData[16];
 
-	// Remove shader
-	glUseProgramObjectARB(0);
+	pos[0] = tTexBlt.left;
+	pos[1] = tTexBlt.top;
+	pos[2] = tTexBlt.right;
+	pos[3] = tTexBlt.top;
+	pos[4] = tTexBlt.left;
+	pos[5] = tTexBlt.bottom;
+	pos[6] = tTexBlt.right;
+	pos[7] = tTexBlt.bottom;
 
-	// Unbind textures
-	while(iUnit > 0)
+	tex[0] = fTexBlt.left;
+	tex[1] = fTexBlt.top;
+	tex[2] = fTexBlt.right;
+	tex[3] = fTexBlt.top;
+	tex[4] = fTexBlt.left;
+	tex[5] = fTexBlt.bottom;
+	tex[6] = fTexBlt.right;
+	tex[7] = fTexBlt.bottom;
+
+	unsigned int nFloats = 16;
+	if (Light)
 	{
-		iUnit--;
-		glActiveTexture(GL_TEXTURE0 + iUnit);
-		glDisable(iUnitMap[iUnit]);
+		FLOAT_RECT lTexBlt;
+		const C4Rect LightRect = Light->getRegion();
+		int32_t iLightWdt = Light->getSurfaceWidth(),
+			iLightHgt = Light->getSurfaceHeight();
+		lTexBlt.left = (fx - LightRect.x) / iLightWdt;
+		lTexBlt.top = 1.0 - (fy - LightRect.y) / iLightHgt;
+		lTexBlt.right = (fx + cgo.Wdt - LightRect.x) / iLightWdt;
+		lTexBlt.bottom = 1.0 - (fy + cgo.Hgt - LightRect.y) / iLightHgt;
+
+		lightTex[0] = lTexBlt.left;
+		lightTex[1] = lTexBlt.top;
+		lightTex[2] = lTexBlt.right;
+		lightTex[3] = lTexBlt.top;
+		lightTex[4] = lTexBlt.left;
+		lightTex[5] = lTexBlt.bottom;
+		lightTex[6] = lTexBlt.right;
+		lightTex[7] = lTexBlt.bottom;
+		nFloats = 24;
 	}
 
-	// Got an error?
-	if(int err = glGetError())
+	// Upload vertex data
+	glBindBuffer(GL_ARRAY_BUFFER, hVBO);
+	glBufferSubData(GL_ARRAY_BUFFER, 0, nFloats * sizeof(float), vtxData);
+
+	// Bind VAO
+	unsigned int vaoid = Light ? hVAOIDLight : hVAOIDNoLight;
+	GLuint vao;
+	const bool has_vao = pGL->GetVAO(vaoid, vao);
+	glBindVertexArray(vao);
+	if (!has_vao)
 	{
-		LogF("GL error: %d", err /*, gluErrorString(err)*/);
+		// Setup state
+		glEnableVertexAttribArray(shader->GetAttribute(C4LRA_Position));
+		glEnableVertexAttribArray(shader->GetAttribute(C4LRA_LandscapeTexCoord));
+		if (Light)
+			glEnableVertexAttribArray(shader->GetAttribute(C4LRA_LightTexCoord));
+
+		glVertexAttribPointer(shader->GetAttribute(C4LRA_Position), 2, GL_FLOAT, GL_FALSE, 0, nullptr);
+		glVertexAttribPointer(shader->GetAttribute(C4LRA_LandscapeTexCoord), 2, GL_FLOAT, GL_FALSE, 0, reinterpret_cast<const uint8_t*>(8 * sizeof(float)));
+		if (Light)
+			glVertexAttribPointer(shader->GetAttribute(C4LRA_LightTexCoord), 2, GL_FLOAT, GL_FALSE, 0, reinterpret_cast<const uint8_t*>(16 * sizeof(float)));
 	}
+
+	// Do the blit
+	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+	// Reset state
+	glBindVertexArray(0);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+	ShaderCall.Finish();
 }
 
 #endif // #ifndef USE_CONSOLE

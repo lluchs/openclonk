@@ -9,15 +9,24 @@
 #include Library_Goal
 
 local goal_rect, has_winner;
+local is_cooperative;
 
 protected func Initialize()
 {
+	// default to race mode
+	is_cooperative = false;
 	return inherited(...);
 }
 
 func SetGoalRect(r)
 {
 	goal_rect = r;
+	return true;
+}
+
+func SetCooperative(bool to_val)
+{
+	is_cooperative = to_val;
 	return true;
 }
 
@@ -28,6 +37,7 @@ func SaveScenarioObject(props)
 {
 	if (!inherited(props, ...)) return false;
 	if (goal_rect) props->AddCall("Goal", this, "SetGoalRect", goal_rect);
+	if (is_cooperative) props->AddCall("Goal", this, "SetCooperative", is_cooperative);
 	return true;
 }
 
@@ -39,7 +49,7 @@ public func IsFulfilled()
 {
 	var winner=NO_OWNER, winners, winner_teams;
 	if (has_winner) return true;
-	for (var ruby in FindObjects(Find_InRect(goal_rect.x, goal_rect.y, goal_rect.w, goal_rect.h), Find_ID(Ruby)))
+	for (var ruby in FindObjects(Find_InRect(goal_rect.x, goal_rect.y, goal_rect.wdt, goal_rect.hgt), Find_ID(Ruby)))
 	{
 		if (ruby->Contained()) winner = ruby->Contained()->GetOwner();
 		if (winner==NO_OWNER) winner = ruby->GetController();
@@ -58,6 +68,9 @@ public func IsFulfilled()
 		for (var flag in [PLRZOOM_LimitMax, PLRZOOM_Direct])
 			SetPlayerZoomByViewRange(plr,LandscapeWidth(),LandscapeWidth(),flag);
 		SetPlayerViewLock(plr, false);
+		SetFoW(false, plr);
+		// Eliminate non-winning players
+		if (is_cooperative) continue; // in coop mode, everyone wins
 		if (GetIndexOf(winners, plr) >= 0) continue;
 		if (winner_teams) if (GetIndexOf(winner_teams, GetPlayerTeam(plr)) >= 0) continue;
 		EliminatePlayer(plr);

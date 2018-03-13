@@ -2,7 +2,7 @@
  * OpenClonk, http://www.openclonk.org
  *
  * Copyright (c) 2005-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -18,7 +18,7 @@
 #ifndef INC_C4Startup
 #define INC_C4Startup
 
-#include "C4Gui.h"
+#include "gui/C4Gui.h"
 
 #define C4CFN_StartupBackgroundMain    "StartupMainMenuBG"
 
@@ -32,6 +32,18 @@ const int32_t
 	C4StartupBtnBorderColor1 = 0xffccc3b4,
 	C4StartupBtnBorderColor2 = 0xff94846a;
 
+// Titles in StartupAboutTitles
+enum
+{
+    C4StartupAboutEngineAndTools,
+    C4StartupAboutScriptingAndContent,
+    C4StartupAboutAdministration,
+    C4StartupAboutArtAndContent,
+    C4StartupAboutMusicAndSound,
+    C4StartupAboutContributors,
+    C4StartupAboutTitleCount
+};
+
 // graphics needed only by startup
 class C4StartupGraphics
 {
@@ -40,13 +52,8 @@ private:
 
 public:
 	// backgrounds
-#if 0
-	C4FacetID fctScenSelBG; // for scenario selection screen
-	C4FacetID fctPlrSelBG;  // for player selection screen
-	C4FacetID fctNetBG;     // for network screen
-#endif
-	C4FacetID fctPlrPropBG; // for player property subpage
-	C4FacetID fctAboutBG;   // for about screen
+	C4FacetID fctPlrPropBG;   // for player property subpage
+	C4FacetID fctAboutTitles; // for about screen
 	C4FacetID fctDlgPaper;
 
 	C4FacetID fctStartupLogo; // logo
@@ -88,10 +95,11 @@ public:
 class C4StartupDlg : public C4GUI::FullscreenDialog
 {
 public:
-	C4StartupDlg(const char *szTitle) : C4GUI::FullscreenDialog(szTitle, NULL) {}
+	C4StartupDlg(const char *szTitle) : C4GUI::FullscreenDialog(szTitle, nullptr) {}
 
 	virtual bool SetSubscreen(const char *szToScreen) { return false; } // go to specified subdialog, e.g. a specific property sheet in the options dlg
 	virtual void OnKeyboardLayoutChanged() {}
+	virtual void OnLeagueOptionChanged() {}
 };
 
 class C4Startup
@@ -106,17 +114,17 @@ public:
 	enum DialogID { SDID_Main=0, SDID_ScenSel, SDID_ScenSelNetwork, SDID_NetJoin, SDID_Options, SDID_About, SDID_PlrSel, SDID_Back };
 
 private:
-	bool fInStartup, fLastDlgWasBack;
+	bool fInStartup{false}, fLastDlgWasBack;
 	static C4Startup *pInstance; // singleton instance
 	static DialogID eLastDlgID;
 	static StdCopyStrBuf sSubDialog; // subdialog to go into (e.g.: property sheet in options dialog)
 
-	C4StartupDlg *pLastDlg, *pCurrDlg; // startup dlg that is currently shown, and dialog that was last shown
+	C4StartupDlg *pLastDlg{nullptr}, *pCurrDlg{nullptr}; // startup dlg that is currently shown, and dialog that was last shown
 
 protected:
 	void DoStartup(); // create main dlg
 	void DontStartup(); // close main dlg
-	class C4StartupDlg *SwitchDialog(DialogID eToDlg, bool fFade=true, const char *szSubDialog=NULL); // do transition to another dialog
+	class C4StartupDlg *SwitchDialog(DialogID eToDlg, bool fFade=true, const char *szSubDialog=nullptr); // do transition to another dialog
 
 	friend class C4StartupMainDlg;
 	friend class C4StartupNetDlg;
@@ -132,8 +140,10 @@ public:
 	static void CloseStartup();
 	static bool SetStartScreen(const char *szScreen); // set screen that is shown first by case insensitive identifier
 	void OnKeyboardLayoutChanged();
+	void OnLeagueOptionChanged(); // callback from network options dialogue: Updates settings in scenario selction
 
 	static C4Startup *Get() { assert(pInstance); return pInstance; }
+
 };
 
 #endif // INC_C4Startup

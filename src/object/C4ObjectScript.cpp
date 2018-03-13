@@ -3,7 +3,7 @@
  *
  * Copyright (c) 1998-2000, Matthes Bender
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -15,42 +15,78 @@
  * for the above references.
  */
 
-#include <C4Include.h>
+#include "C4Include.h"
+#include "C4ForbidLibraryCompilation.h"
 
-#include <C4Aul.h>
-#include <C4AulDefFunc.h>
-#include <C4Command.h>
-#include <C4DefList.h>
-#include <C4Draw.h>
-#include <C4GameMessage.h>
-#include <C4GraphicsResource.h>
-#include <C4Material.h>
-#include <C4MeshAnimation.h>
-#include <C4ObjectCom.h>
-#include <C4ObjectInfo.h>
-#include <C4ObjectMenu.h>
-#include <C4Player.h>
-#include <C4PlayerList.h>
-#include <C4Random.h>
-#include <C4RankSystem.h>
-#include <C4Teams.h>
+#include "control/C4Teams.h"
+#include "graphics/C4Draw.h"
+#include "graphics/C4GraphicsResource.h"
+#include "gui/C4GameMessage.h"
+#include "landscape/C4Material.h"
+#include "landscape/C4Particles.h"
+#include "lib/C4Random.h"
+#include "lib/StdMeshMath.h"
+#include "object/C4Command.h"
+#include "object/C4DefList.h"
+#include "object/C4MeshAnimation.h"
+#include "object/C4MeshDenumerator.h"
+#include "object/C4ObjectCom.h"
+#include "object/C4ObjectInfo.h"
+#include "object/C4ObjectMenu.h"
+#include "player/C4Player.h"
+#include "player/C4PlayerList.h"
+#include "player/C4RankSystem.h"
+#include "script/C4Aul.h"
+#include "script/C4AulDefFunc.h"
+
+bool C4ValueToMatrix(C4Value& value, StdMeshMatrix* matrix)
+{
+	const C4ValueArray* array = value.getArray();
+	if (!array) return false;
+	return C4ValueToMatrix(*array, matrix);
+}
+
+bool C4ValueToMatrix(const C4ValueArray& array, StdMeshMatrix* matrix)
+{
+	if (array.GetSize() != 12) return false;
+
+	StdMeshMatrix& trans = *matrix;
+	trans(0,0) = array[0].getInt()/1000.0f;
+	trans(0,1) = array[1].getInt()/1000.0f;
+	trans(0,2) = array[2].getInt()/1000.0f;
+	trans(0,3) = array[3].getInt()/1000.0f;
+	trans(1,0) = array[4].getInt()/1000.0f;
+	trans(1,1) = array[5].getInt()/1000.0f;
+	trans(1,2) = array[6].getInt()/1000.0f;
+	trans(1,3) = array[7].getInt()/1000.0f;
+	trans(2,0) = array[8].getInt()/1000.0f;
+	trans(2,1) = array[9].getInt()/1000.0f;
+	trans(2,2) = array[10].getInt()/1000.0f;
+	trans(2,3) = array[11].getInt()/1000.0f;
+
+	return true;
+}
 
 static bool FnChangeDef(C4Object *Obj, C4ID to_id)
 {
 	return !!Obj->ChangeDef(to_id);
 }
 
-static C4Void FnSetSolidMask(C4Object *Obj, long iX, long iY, long iWdt, long iHgt, long iTX, long iTY)
+static void FnSetSolidMask(C4Object *Obj, long iX, long iY, long iWdt, long iHgt, long iTX, long iTY)
 {
 	Obj->SetSolidMask(iX,iY,iWdt,iHgt,iTX,iTY);
-	return C4Void();
 }
 
-static C4Void FnDeathAnnounce(C4Object *Obj)
+static void FnSetHalfVehicleSolidMask(C4Object *Obj, bool set)
+{
+	Obj->SetHalfVehicleSolidMask(set);
+}
+
+static void FnDeathAnnounce(C4Object *Obj)
 {
 	const long MaxDeathMsg=7;
 	if (Game.C4S.Head.Film)
-		return C4Void();
+		return;
 	// Check if crew member has an own death message
 	if (Obj->Info && *(Obj->Info->DeathMessage))
 	{
@@ -58,10 +94,9 @@ static C4Void FnDeathAnnounce(C4Object *Obj)
 	}
 	else
 	{
-		char idDeathMsg[128+1]; sprintf(idDeathMsg, "IDS_OBJ_DEATH%d", 1 + SafeRandom(MaxDeathMsg));
+		char idDeathMsg[128+1]; sprintf(idDeathMsg, "IDS_OBJ_DEATH%d", 1 + UnsyncedRandom(MaxDeathMsg));
 		GameMsgObject(FormatString(LoadResStr(idDeathMsg), Obj->GetName()).getData(), Obj);
 	}
-	return C4Void();
 }
 
 static bool FnGrabContents(C4Object *Obj, C4Object *from)
@@ -90,14 +125,13 @@ static bool FnKill(C4PropList * _this, C4Object *pObj, bool fForced)
 	return true;
 }
 
-static C4Void FnFling(C4Object *Obj, long iXDir, long iYDir, long iPrec, bool fAddSpeed)
+static void FnFling(C4Object *Obj, long iXDir, long iYDir, long iPrec, bool fAddSpeed)
 {
 	if (!iPrec) iPrec=1;
 	Obj->Fling(itofix(iXDir, iPrec),itofix(iYDir, iPrec),fAddSpeed);
 	// unstick from ground, because Fling command may be issued in an Action-callback,
 	// where attach-values have already been determined for that frame
 	Obj->Action.t_attach=0;
-	return C4Void();
 }
 
 static bool FnJump(C4Object *Obj)
@@ -107,7 +141,7 @@ static bool FnJump(C4Object *Obj)
 
 static bool FnEnter(C4Object *Obj, C4Object *pTarget)
 {
-	return !!Obj->Enter(pTarget,true,true,NULL);
+	return !!Obj->Enter(pTarget,true,true,nullptr);
 }
 
 static bool FnExit(C4Object *Obj, long tx, long ty, long tr, long txdir, long tydir, long trdir)
@@ -134,13 +168,12 @@ static bool FnCollect(C4Object *Obj, C4Object *pItem, bool ignoreOCF)
 	return false;
 }
 
-static C4Void FnRemoveObject(C4Object *Obj, bool fEjectContents)
+static void FnRemoveObject(C4Object *Obj, bool fEjectContents)
 {
 	Obj->AssignRemoval(fEjectContents);
-	return C4Void();
 }
 
-static C4Void FnSetPosition(C4Object *Obj, long iX, long iY, bool fCheckBounds, long iPrec)
+static void FnSetPosition(C4Object *Obj, long iX, long iY, bool fCheckBounds, long iPrec)
 {
 	if (!iPrec) iPrec = 1;
 	C4Real i_x = itofix(iX, iPrec), i_y = itofix(iY, iPrec);
@@ -152,14 +185,12 @@ static C4Void FnSetPosition(C4Object *Obj, long iX, long iY, bool fCheckBounds, 
 	Obj->ForcePosition(i_x, i_y);
 	// update liquid
 	Obj->UpdateInLiquid();
-	return C4Void();
 }
 
-static C4Void FnDoCon(C4Object *Obj, long iChange, long iPrec)
+static void FnDoCon(C4Object *Obj, long iChange, long iPrec, bool bGrowFromCenter)
 {
 	if (!iPrec) iPrec = 100;
-	Obj->DoCon(FullCon*iChange/iPrec);
-	return C4Void();
+	Obj->DoCon(FullCon*iChange / iPrec, bGrowFromCenter);
 }
 
 static long FnGetCon(C4Object *Obj, long iPrec)
@@ -168,20 +199,12 @@ static long FnGetCon(C4Object *Obj, long iPrec)
 	return iPrec*Obj->GetCon()/FullCon;
 }
 
-static C4String *FnGetName(C4PropList * _this)
-{
-	if (!_this)
-		throw new NeedNonGlobalContext("GetName");
-	else
-		return String(_this->GetName());
-}
-
 static bool FnSetName(C4PropList * _this, C4String *pNewName, bool fSetInInfo, bool fMakeValidIfExists)
 {
 	if (!Object(_this))
 	{
 		if (!_this)
-			throw new NeedNonGlobalContext("SetName");
+			throw NeedNonGlobalContext("SetName");
 		else if (fSetInInfo)
 			return false;
 		// Definition name
@@ -206,7 +229,7 @@ static bool FnSetName(C4PropList * _this, C4String *pNewName, bool fSetInInfo, b
 			// make sure names in info list aren't duplicated
 			// querying owner info list here isn't 100% accurate, as infos might have been stolen by other players
 			// however, there is no good way to track the original list ATM
-			C4ObjectInfoList *pInfoList = NULL;
+			C4ObjectInfoList *pInfoList = nullptr;
 			C4Player *pOwner = ::Players.Get(Object(_this)->Owner);
 			if (pOwner) pInfoList = &pOwner->CrewInfoList;
 			char NameBuf[C4MaxName+1];
@@ -219,13 +242,13 @@ static bool FnSetName(C4PropList * _this, C4String *pNewName, bool fSetInInfo, b
 				}
 			SCopy(szName, pInfo->Name, C4MaxName);
 			Object(_this)->SetName(); // make sure object uses info name
-			Object(_this)->Call(PSF_NameChange,&C4AulParSet(C4VBool(true)));
+			Object(_this)->Call(PSF_NameChange,&C4AulParSet(true));
 		}
 		else
 		{
 			if (!pNewName) Object(_this)->SetName();
 			else Object(_this)->SetName(pNewName->GetCStr());
-			Object(_this)->Call(PSF_NameChange,&C4AulParSet(C4VBool(false)));
+			Object(_this)->Call(PSF_NameChange,&C4AulParSet(false));
 		}
 	}
 	return true;
@@ -278,87 +301,63 @@ static C4Value FnGetCrewExtraData(C4Object *Obj, C4String * DataName)
 	return pInfo->ExtraData[ival];
 }
 
-static C4Void FnDoEnergy(C4Object *Obj, long iChange, bool fExact, Nillable<long> iEngType, Nillable<long> iCausedBy)
+static void FnDoEnergy(C4Object *Obj, long iChange, bool fExact, Nillable<long> iEngType, Nillable<long> iCausedBy)
 {
 	if (iEngType.IsNil()) iEngType = C4FxCall_EngScript;
 	if (iCausedBy.IsNil())
-		//if (cthr->Caller && cthr->Caller->Obj)
-		//  iCausedBy = cthr->Caller->Obj->Controller;
-		//else
 		iCausedBy = NO_OWNER;
 	Obj->DoEnergy(iChange, fExact, iEngType, iCausedBy);
-	return C4Void();
 }
 
-static C4Void FnDoBreath(C4Object *Obj, long iChange)
+static void FnDoBreath(C4Object *Obj, long iChange)
 {
 	Obj->DoBreath(iChange);
-	return C4Void();
 }
 
-static C4Void FnDoDamage(C4Object *Obj, long iChange, Nillable<long> iDmgType, Nillable<long> iCausedBy)
+static void FnDoDamage(C4Object *Obj, long iChange, Nillable<long> iDmgType, Nillable<long> iCausedBy)
 {
 	if (iDmgType.IsNil()) iDmgType = C4FxCall_DmgScript;
 	if (iCausedBy.IsNil())
-		//if (cthr->Caller && cthr->Caller->Obj)
-		//  iCausedBy = cthr->Caller->Obj->Controller;
-		//else
 		iCausedBy = NO_OWNER;
 	Obj->DoDamage(iChange, iCausedBy, iDmgType);
-	return C4Void();
 }
 
-static C4Void FnSetEntrance(C4Object *Obj, bool e_status)
+static void FnSetEntrance(C4Object *Obj, bool e_status)
 {
 	Obj->EntranceStatus = e_status;
-	return C4Void();
 }
 
 
-static C4Void FnSetXDir(C4Object *Obj, long nxdir, long iPrec)
+static void FnSetXDir(C4Object *Obj, long nxdir, long iPrec)
 {
 	// precision (default 10.0)
 	if (!iPrec) iPrec=10;
 	// update xdir
 	Obj->xdir=itofix(nxdir, iPrec);
-	// special: negative dirs must be rounded
-	//if (nxdir<0) pObj->xdir += C4REAL100(-50)/iPrec;
-	Obj->Mobile=1;
-	// success
-	return C4Void();
+	Obj->Mobile=true;
 }
 
-static C4Void FnSetRDir(C4Object *Obj, long nrdir, long iPrec)
+static void FnSetRDir(C4Object *Obj, long nrdir, long iPrec)
 {
 	// precision (default 10.0)
 	if (!iPrec) iPrec=10;
 	// update rdir
 	Obj->rdir=itofix(nrdir, iPrec);
-	// special: negative dirs must be rounded
-	//if (nrdir<0) pObj->rdir += C4REAL100(-50)/iPrec;
-	Obj->Mobile=1;
-	// success
-	return C4Void();
+	Obj->Mobile=true;
 }
 
-static C4Void FnSetYDir(C4Object *Obj, long nydir, long iPrec)
+static void FnSetYDir(C4Object *Obj, long nydir, long iPrec)
 {
 	// precision (default 10.0)
 	if (!iPrec) iPrec=10;
 	// update ydir
 	Obj->ydir=itofix(nydir, iPrec);
-	// special: negative dirs must be rounded
-	//if (nydir<0) pObj->ydir += C4REAL100(-50)/iPrec;
-	Obj->Mobile=1;
-	return C4Void();
+	Obj->Mobile=true;
 }
 
-static C4Void FnSetR(C4Object *Obj, long nr)
+static void FnSetR(C4Object *Obj, long nr)
 {
-	// set rotation
 	Obj->SetRotation(nr);
-	// success
-	return C4Void();
 }
 
 static bool FnSetAction(C4Object *Obj, C4String *szAction,
@@ -397,28 +396,24 @@ static bool FnSetActionData(C4Object *Obj, long iData)
 	return true;
 }
 
-static C4Void FnSetComDir(C4Object *Obj, long ncomdir)
+static void FnSetComDir(C4Object *Obj, long ncomdir)
 {
 	Obj->Action.ComDir=ncomdir;
-	return C4Void();
 }
 
-static C4Void FnSetDir(C4Object *Obj, long ndir)
+static void FnSetDir(C4Object *Obj, long ndir)
 {
 	Obj->SetDir(ndir);
-	return C4Void();
 }
 
-static C4Void FnSetCategory(C4Object *Obj, long iCategory)
+static void FnSetCategory(C4Object *Obj, long iCategory)
 {
 	Obj->SetCategory(iCategory);
-	return C4Void();
 }
 
-static C4Void FnSetAlive(C4Object *Obj, bool nalv)
+static void FnSetAlive(C4Object *Obj, bool nalv)
 {
 	Obj->SetAlive(nalv);
-	return C4Void();
 }
 
 static bool FnSetOwner(C4Object *Obj, long iOwner)
@@ -446,7 +441,7 @@ static bool FnSetCommand(C4Object *Obj, C4String * szCommand, C4Object * pTarget
 	long iCommand = CommandByName(FnStringPar(szCommand));
 	if (!iCommand) { Obj->ClearCommands(); return false; }
 	// Special: convert iData to szText
-	C4String *szText=NULL;
+	C4String *szText=nullptr;
 	if (iCommand==C4CMD_Call)
 		szText=Data.getStr();
 	// FIXME: throw if Tx isn't int
@@ -465,7 +460,7 @@ static bool FnAddCommand(C4Object *Obj, C4String * szCommand, C4Object * pTarget
 	long iCommand = CommandByName(FnStringPar(szCommand));
 	if (!iCommand) return false;
 	// Special: convert iData to szText
-	C4String *szText=NULL;
+	C4String *szText=nullptr;
 	if (iCommand==C4CMD_Call)
 		szText=Data.getStr();
 	// Add
@@ -481,7 +476,7 @@ static bool FnAppendCommand(C4Object *Obj, C4String * szCommand, C4Object * pTar
 	long iCommand = CommandByName(FnStringPar(szCommand));
 	if (!iCommand) return false;
 	// Special: convert iData to szText
-	C4String *szText=NULL;
+	C4String *szText=nullptr;
 	if (iCommand==C4CMD_Call)
 		szText=Data.getStr();
 	// Add
@@ -538,15 +533,14 @@ static C4Object *FnGetActionTarget(C4Object *Obj, long target_index)
 {
 	if (target_index==0) return Obj->Action.Target;
 	if (target_index==1) return Obj->Action.Target2;
-	return NULL;
+	return nullptr;
 }
 
-static C4Void FnSetActionTargets(C4Object *Obj, C4Object *pTarget1, C4Object *pTarget2)
+static void FnSetActionTargets(C4Object *Obj, C4Object *pTarget1, C4Object *pTarget2)
 {
 	// set targets
 	Obj->Action.Target=pTarget1;
 	Obj->Action.Target2=pTarget2;
-	return C4Void();
 }
 
 static long FnGetDir(C4Object *Obj)
@@ -578,7 +572,7 @@ static long FnGetMass(C4PropList * _this)
 {
 	if (!Object(_this))
 		if (!_this || !_this->GetDef())
-			throw new NeedNonGlobalContext("GetMass");
+			throw NeedNonGlobalContext("GetMass");
 		else
 			return _this->GetDef()->Mass;
 	else
@@ -639,7 +633,8 @@ enum VertexUpdateMode
 static Nillable<long> FnGetVertex(C4Object *Obj, long iIndex, long iValueToGet)
 {
 	if (Obj->Shape.VtxNum<1) return C4Void();
-	iIndex=Min<long>(iIndex,Obj->Shape.VtxNum-1);
+	if (iIndex < 0 || iIndex >= Obj->Shape.VtxNum) return C4Void();
+	iIndex=std::min<long>(iIndex,Obj->Shape.VtxNum-1);
 	switch (static_cast<VertexDataIndex>(iValueToGet))
 	{
 	case VTX_X: return Obj->Shape.VtxX[iIndex]; break;
@@ -665,7 +660,7 @@ static bool FnSetVertex(C4Object *Obj, long iIndex, long iValueToSet, long iValu
 		if (!Obj->fOwnVertices)
 		{
 			Obj->Shape.CreateOwnOriginalCopy(Obj->Def->Shape);
-			Obj->fOwnVertices = 1;
+			Obj->fOwnVertices = true;
 		}
 		// set vertices at end of buffer
 		iIndex += C4D_VertexCpyPos;
@@ -694,15 +689,19 @@ static bool FnAddVertex(C4Object *Obj, long iX, long iY)
 	return !!Obj->Shape.AddVertex(iX,iY);
 }
 
+static bool FnInsertVertex(C4Object *Obj, long iIndex, long iX, long iY)
+{
+	return !!Obj->Shape.InsertVertex(iIndex,iX,iY);
+}
+
 static bool FnRemoveVertex(C4Object *Obj, long iIndex)
 {
 	return !!Obj->Shape.RemoveVertex(iIndex);
 }
 
-static C4Void FnSetContactDensity(C4Object *Obj, long iDensity)
+static void FnSetContactDensity(C4Object *Obj, long iDensity)
 {
 	Obj->Shape.ContactDensity = iDensity;
-	return C4Void();
 }
 
 static bool FnGetAlive(C4Object *Obj)
@@ -747,7 +746,7 @@ static long FnGetCategory(C4PropList * _this)
 {
 	if (!Object(_this))
 		if (!_this || !_this->GetDef())
-			throw new NeedNonGlobalContext("GetCategory");
+			throw NeedNonGlobalContext("GetCategory");
 		else
 			return _this->GetDef()->Category;
 	else
@@ -768,7 +767,7 @@ static long FnGetValue(C4PropList * _this, C4Object *pInBase, long iForPlayer)
 {
 	if (!Object(_this))
 		if (!_this || !_this->GetDef())
-			throw new NeedNonGlobalContext("GetValue");
+			throw NeedNonGlobalContext("GetValue");
 		else
 			return _this->GetDef()->GetValue(pInBase, iForPlayer);
 	else
@@ -792,10 +791,10 @@ static C4PropList* FnGetID(C4Object *Obj)
 	return Obj->GetPrototype();
 }
 
-static Nillable<C4ID> FnGetMenu(C4Object *Obj)
+static Nillable<C4Def*> FnGetMenu(C4Object *Obj)
 {
 	if (Obj->Menu && Obj->Menu->IsActive())
-		return C4ID(Obj->Menu->GetIdentification());
+		return C4Id2Def(C4ID(Obj->Menu->GetIdentification()));
 	return C4Void();
 }
 
@@ -824,16 +823,17 @@ static bool FnCreateMenu(C4Object *Obj, C4Def *pDef, C4Object *pCommandObj,
 	return true;
 }
 
-const int C4MN_Add_ImgRank     =   1,
-          C4MN_Add_ImgIndexed  =   2,
-          C4MN_Add_ImgObjRank  =   3,
-          C4MN_Add_ImgObject   =   4,
-          C4MN_Add_ImgTextSpec =   5,
-          C4MN_Add_ImgColor    =   6,
-          C4MN_Add_MaxImage    = 127, // mask for param which decides what to draw as the menu symbol
-          C4MN_Add_PassValue   = 128,
-          C4MN_Add_ForceCount  = 256,
-          C4MN_Add_ForceNoDesc = 512;
+const int C4MN_Add_ImgRank         =   1,
+          C4MN_Add_ImgIndexed      =   2,
+          C4MN_Add_ImgObjRank      =   3,
+          C4MN_Add_ImgObject       =   4,
+          C4MN_Add_ImgTextSpec     =   5,
+          C4MN_Add_ImgColor        =   6,
+          C4MN_Add_ImgPropListSpec =   7,
+          C4MN_Add_MaxImage        = 127, // mask for param which decides what to draw as the menu symbol
+          C4MN_Add_PassValue       = 128,
+          C4MN_Add_ForceCount      = 256,
+          C4MN_Add_ForceNoDesc     = 512;
 
 #ifndef _MSC_VER
 #define _snprintf snprintf
@@ -858,10 +858,10 @@ static bool FnAddMenuItem(C4Object *Obj, C4String * szCaption, C4String * szComm
 	{
 		const char * s = FnStringPar(szCaption);
 		const char * sep = strstr(s, "%s");
-		if (sep)
+		if (sep && pDef)
 		{
-			strncpy(caption, s, Min<intptr_t>(sep - s,256));
-			caption[Min<intptr_t>(sep - s,256)] = 0;
+			strncpy(caption, s, std::min<intptr_t>(sep - s,256));
+			caption[std::min<intptr_t>(sep - s,256)] = 0;
 			strncat(caption, pDef->GetName(), 256);
 			strncat(caption, sep + 2, 256);
 		}
@@ -887,9 +887,9 @@ static bool FnAddMenuItem(C4Object *Obj, C4String * szCaption, C4String * szComm
 		if (Parameter.getPropList()->GetObject())
 			sprintf(parameter, "Object(%d)", Parameter.getPropList()->GetObject()->Number);
 		else if (Parameter.getPropList()->GetDef())
-			sprintf(parameter, "C4Id(\"%s\")", Parameter.getPropList()->GetDef()->id.ToString());
+			sprintf(parameter, R"(C4Id("%s"))", Parameter.getPropList()->GetDef()->id.ToString());
 		else
-			throw new C4AulExecError("proplist as parameter to AddMenuItem");
+			throw C4AulExecError("proplist as parameter to AddMenuItem");
 		break;
 	case C4V_String:
 		// note this breaks if there is '"' in the string.
@@ -902,7 +902,7 @@ static bool FnAddMenuItem(C4Object *Obj, C4String * szCaption, C4String * szComm
 		break;
 	case C4V_Array:
 		// Arrays were never allowed, so tell the scripter
-		throw new C4AulExecError("array as parameter to AddMenuItem");
+		throw C4AulExecError("array as parameter to AddMenuItem");
 	default:
 		return false;
 	}
@@ -924,8 +924,8 @@ static bool FnAddMenuItem(C4Object *Obj, C4String * szCaption, C4String * szComm
 	{
 		// Search for "%d" an replace it by "%s" for insertion of formatted parameter
 		SCopy(FnStringPar(szCommand), dummy, 256);
-		char* pFound = const_cast<char*>(SSearch(dummy, "%d"));
-		if (pFound != 0)
+		auto* pFound = const_cast<char*>(SSearch(dummy, "%d"));
+		if (pFound != nullptr)
 			*(pFound - 1) = 's';
 		// Compose left-click command
 		sprintf(command, dummy, parameter, 0);
@@ -961,13 +961,11 @@ static bool FnAddMenuItem(C4Object *Obj, C4String * szCaption, C4String * szComm
 
 	// Info caption
 	SCopy(FnStringPar(szInfoCaption),infocaption,C4MaxTitle);
-	// Default info caption by def desc
-	//if (pDef && !infocaption[0] && !(iExtra & C4MN_Add_ForceNoDesc)) SCopy(pDef->GetDesc(),infocaption,C4MaxTitle);
 
 	// Create symbol
 	C4FacetSurface fctSymbol;
-	C4DefGraphics* pGfx = NULL;
-	C4Object* pGfxObj = NULL;
+	C4DefGraphics* pGfx = nullptr;
+	C4Object* pGfxObj = nullptr;
 	switch (iExtra & C4MN_Add_MaxImage)
 	{
 	case C4MN_Add_ImgRank:
@@ -988,7 +986,7 @@ static bool FnAddMenuItem(C4Object *Obj, C4String * szCaption, C4String * szComm
 		// draw indexed facet
 		fctSymbol.Create(iSymbolSize,iSymbolSize);
 		if (pDef)
-			pDef->Draw(fctSymbol, false, 0, NULL, XPar.getInt());
+			pDef->Draw(fctSymbol, false, 0, nullptr, XPar.getInt());
 		break;
 	case C4MN_Add_ImgObjRank:
 	{
@@ -1047,12 +1045,10 @@ static bool FnAddMenuItem(C4Object *Obj, C4String * szCaption, C4String * szComm
 	{
 		// draw object picture
 		if (!XPar.CheckConversion(C4V_Object))
-			throw new C4AulExecError(FormatString("call to \"%s\" parameter %d: got \"%s\", but expected \"%s\"!",
+			throw C4AulExecError(FormatString(R"(call to "%s" parameter %d: got "%s", but expected "%s"!)",
 			                                      "AddMenuItem", 8, XPar.GetTypeName(), GetC4VName(C4V_Object)
 			                                     ).getData());
 		pGfxObj = XPar.getObj();
-		//fctSymbol.Wdt = fctSymbol.Hgt = iSymbolSize;
-		//pGfxObj->Picture2Facet(fctSymbol);
 	}
 	break;
 
@@ -1067,10 +1063,19 @@ static bool FnAddMenuItem(C4Object *Obj, C4String * szCaption, C4String * szComm
 		{
 			fctSymbol.Create(iSymbolSize,iSymbolSize);
 			uint32_t dwClr = XPar.getInt();
-			if (!szCaption || !Game.DrawTextSpecImage(fctSymbol, caption, NULL, dwClr ? dwClr : 0xff))
+			if (!szCaption || !Game.DrawTextSpecImage(fctSymbol, caption, nullptr, dwClr ? dwClr : 0xff))
 				return false;
 		}
 		*caption = '\0';
+	}
+	break;
+
+	case C4MN_Add_ImgPropListSpec:
+	{
+		C4PropList *gfx_proplist = XPar.getPropList();
+		fctSymbol.Create(iSymbolSize,iSymbolSize);
+		if (!Game.DrawPropListSpecImage(fctSymbol, gfx_proplist))
+			return false;
 	}
 	break;
 
@@ -1103,11 +1108,11 @@ static bool FnAddMenuItem(C4Object *Obj, C4String * szCaption, C4String * szComm
 
 	// Add menu item
 	if(pGfxObj)
-		Obj->Menu->Add(caption,pGfxObj,command,iCount,NULL,infocaption,pDef ? pDef->id : C4ID::None,command2,fOwnValue,iValue,fIsSelectable);
+		Obj->Menu->Add(caption,pGfxObj,command,iCount,nullptr,infocaption,pDef ? pDef->id : C4ID::None,command2,fOwnValue,iValue,fIsSelectable);
 	else if(pGfx)
-		Obj->Menu->Add(caption,pGfx,command,iCount,NULL,infocaption,pDef ? pDef->id : C4ID::None,command2,fOwnValue,iValue,fIsSelectable);
+		Obj->Menu->Add(caption,pGfx,command,iCount,nullptr,infocaption,pDef ? pDef->id : C4ID::None,command2,fOwnValue,iValue,fIsSelectable);
 	else
-		Obj->Menu->Add(caption,fctSymbol,command,iCount,NULL,infocaption,pDef ? pDef->id : C4ID::None,command2,fOwnValue,iValue,fIsSelectable);
+		Obj->Menu->Add(caption,fctSymbol,command,iCount,nullptr,infocaption,pDef ? pDef->id : C4ID::None,command2,fOwnValue,iValue,fIsSelectable);
 
 	return true;
 }
@@ -1153,7 +1158,7 @@ static C4Object *FnContents(C4Object *Obj, long index)
 	while ((cobj=Obj->Contents.GetObject(index++)))
 		if (cobj->GetProcedure()!=DFA_ATTACH) return cobj;
 
-	return NULL;
+	return nullptr;
 }
 
 static bool FnShiftContents(C4Object *Obj, bool fShiftBack, C4Def * idTarget, bool fDoCalls)
@@ -1201,9 +1206,9 @@ static bool FnActIdle(C4Object *Obj)
 	return !Obj->GetAction();
 }
 
-static bool FnStuck(C4Object *Obj)
+static bool FnStuck(C4Object *Obj, long off_x, long off_y)
 {
-	return !!Obj->Shape.CheckContact(Obj->GetX(),Obj->GetY());
+	return !!Obj->Shape.CheckContact(Obj->GetX()+off_x,Obj->GetY()+off_y);
 }
 
 static bool FnInLiquid(C4Object *Obj)
@@ -1219,38 +1224,16 @@ static bool FnOnFire(C4Object *Obj)
 	return !!Obj->pEffects->Get(C4Fx_AnyFire);
 }
 
-static bool FnComponentAll(C4Object *Obj, C4ID c_id)
-{
-	long cnt;
-	C4IDList Components;
-	Obj->Def->GetComponents(&Components, Obj);
-	for (cnt=0; Components.GetID(cnt); cnt++)
-		if (Components.GetID(cnt)!=c_id)
-			if (Components.GetCount(cnt)>0)
-				return false;
-	return true;
-}
-
 static C4Object *FnCreateContents(C4Object *Obj, C4PropList * PropList, Nillable<long> iCount)
 {
 	// default amount parameter
 	if (iCount.IsNil()) iCount = 1;
 	// create objects
-	C4Object *pNewObj = NULL;
+	C4Object *pNewObj = nullptr;
 	while (iCount-- > 0) pNewObj = Obj->CreateContents(PropList);
 	// controller will automatically be set upon entrance
 	// return last created
 	return pNewObj;
-}
-
-static C4Object *FnComposeContents(C4Object *Obj, C4ID c_id)
-{
-	return Obj->ComposeContents(c_id);
-}
-
-static C4String *FnGetNeededMatStr(C4Object *Obj)
-{
-	return String(Obj->GetNeededMatStr().getData());
 }
 
 static bool FnMakeCrewMember(C4Object *Obj, long iPlayer)
@@ -1265,11 +1248,6 @@ static bool FnGrabObjectInfo(C4Object *Obj, C4Object *pFrom)
 	if (!pFrom) return false;
 	// grab info
 	return !!Obj->GrabInfo(pFrom);
-}
-
-static bool FnSetComponent(C4Object *Obj, C4ID idComponent, long iCount)
-{
-	return Obj->Component.SetIDCount(idComponent,iCount,true);
 }
 
 static bool FnSetCrewStatus(C4Object *Obj, long iPlr, bool fInCrew)
@@ -1305,11 +1283,10 @@ static long FnShowInfo(C4Object *Obj, C4Object *pObj)
 	return Obj->ActivateMenu(C4MN_Info,0,0,0,pObj);
 }
 
-static C4Void FnSetMass(C4Object *Obj, long iValue)
+static void FnSetMass(C4Object *Obj, long iValue)
 {
 	Obj->OwnMass=iValue-Obj->Def->Mass;
 	Obj->UpdateMass();
-	return C4Void();
 }
 
 static long FnGetColor(C4Object *Obj)
@@ -1317,35 +1294,49 @@ static long FnGetColor(C4Object *Obj)
 	return Obj->Color;
 }
 
-static C4Void FnSetColor(C4Object *Obj, long iValue)
+static void FnSetColor(C4Object *Obj, long iValue)
 {
 	Obj->Color=iValue;
 	Obj->UpdateGraphics(false);
 	Obj->UpdateFace(false);
-	return C4Void();
 }
 
-static C4Void FnSetPlrViewRange(C4Object *Obj, long iRange)
+static void FnSetLightRange(C4Object *Obj, long iRange, Nillable<long> iFadeoutRange)
 {
+	if (iFadeoutRange.IsNil())
+	{
+		if(iRange == 0)
+			iFadeoutRange = 0;
+		else
+			iFadeoutRange = C4FOW_DefLightFadeoutRangeX;
+	}
 	// set range
-	Obj->SetPlrViewRange(iRange);
-	// success
-	return C4Void();
+	Obj->SetLightRange(iRange, iFadeoutRange);
 }
 
-static C4Void FnSetPicture(C4Object *Obj, long iX, long iY, long iWdt, long iHgt)
+static long FnGetLightColor(C4Object *Obj)
+{
+	// get it
+	return Obj->GetLightColor();
+}
+
+
+static void FnSetLightColor(C4Object *Obj, long iValue)
+{
+	Obj->SetLightColor(iValue);
+}
+
+static void FnSetPicture(C4Object *Obj, long iX, long iY, long iWdt, long iHgt)
 {
 	// set new picture rect
 	Obj->PictureRect.Set(iX, iY, iWdt, iHgt);
-	// success
-	return C4Void();
 }
 
 static C4String *FnGetProcedure(C4Object *Obj)
 {
 	// no action?
 	C4PropList* pActionDef = Obj->GetAction();
-	if (!pActionDef) return NULL;
+	if (!pActionDef) return nullptr;
 	// get proc
 	return pActionDef->GetPropertyStr(P_Procedure);
 }
@@ -1430,7 +1421,7 @@ static bool FnSetGraphics(C4Object *Obj, C4String *pGfxName, C4Def *pSrcDef, lon
 		// any overlays must be positive for now
 		if (iOverlayID<0) { Log("SetGraphics: Background overlays not implemented!"); return false; }
 		// deleting overlay?
-		C4DefGraphics *pGrp = NULL;
+		C4DefGraphics *pGrp = nullptr;
 		if (iOverlayMode == C4GraphicsOverlay::MODE_Object || iOverlayMode == C4GraphicsOverlay::MODE_Rank || iOverlayMode == C4GraphicsOverlay::MODE_ObjectPicture)
 		{
 			if (!pOverlayObject) return Obj->RemoveGraphicsOverlay(iOverlayID);
@@ -1462,7 +1453,7 @@ static bool FnSetGraphics(C4Object *Obj, C4String *pGfxName, C4Def *pSrcDef, lon
 			break;
 
 		case C4GraphicsOverlay::MODE_Object:
-			if (pOverlayObject && !pOverlayObject->Status) pOverlayObject = NULL;
+			if (pOverlayObject && !pOverlayObject->Status) pOverlayObject = nullptr;
 			pOverlay->SetAsObject(pOverlayObject, dwBlitMode);
 			break;
 
@@ -1471,18 +1462,18 @@ static bool FnSetGraphics(C4Object *Obj, C4String *pGfxName, C4Def *pSrcDef, lon
 			break;
 
 		case C4GraphicsOverlay::MODE_Rank:
-			if (pOverlayObject && !pOverlayObject->Status) pOverlayObject = NULL;
+			if (pOverlayObject && !pOverlayObject->Status) pOverlayObject = nullptr;
 			pOverlay->SetAsRank(dwBlitMode, pOverlayObject);
 			break;
 
 		case C4GraphicsOverlay::MODE_ObjectPicture:
-			if (pOverlayObject && !pOverlayObject->Status) pOverlayObject = NULL;
+			if (pOverlayObject && !pOverlayObject->Status) pOverlayObject = nullptr;
 			pOverlay->SetAsObjectPicture(pOverlayObject, dwBlitMode);
 			break;
 
 		default:
 			DebugLog("SetGraphics: Invalid overlay mode");
-			pOverlay->SetAsBase(NULL, 0); // make invalid, so it will be removed
+			pOverlay->SetAsBase(nullptr, 0); // make invalid, so it will be removed
 			break;
 		}
 		// remove if invalid
@@ -1495,14 +1486,14 @@ static bool FnSetGraphics(C4Object *Obj, C4String *pGfxName, C4Def *pSrcDef, lon
 		return true;
 	}
 	// no overlay: Base graphics
-	// set graphics - pSrcDef==NULL defaults to pObj->pDef
+	// set graphics - pSrcDef==nullptr defaults to pObj->pDef
 	return Obj->SetGraphics(FnStringPar(pGfxName), pSrcDef);
 }
 
 static long FnGetDefBottom(C4PropList * _this)
 {
 	if (!_this || !_this->GetDef())
-		throw new NeedNonGlobalContext("GetDefBottom");
+		throw NeedNonGlobalContext("GetDefBottom");
 
 	C4Object *obj = Object(_this);
 	C4Def *def = _this->GetDef();
@@ -1521,7 +1512,7 @@ static bool FnSetMenuSize(C4Object *Obj, long iCols, long iRows)
 	// get menu
 	C4Menu *pMnu=Obj->Menu;
 	if (!pMnu || !pMnu->IsActive()) return false;
-	pMnu->SetSize(BoundBy<long>(iCols, 0, 50), BoundBy<long>(iRows, 0, 50));
+	pMnu->SetSize(Clamp<long>(iCols, 0, 50), Clamp<long>(iRows, 0, 50));
 	return true;
 }
 
@@ -1531,7 +1522,7 @@ static bool FnGetCrewEnabled(C4Object *Obj)
 	return !Obj->CrewDisabled;
 }
 
-static C4Void FnSetCrewEnabled(C4Object *Obj, bool fEnabled)
+static void FnSetCrewEnabled(C4Object *Obj, bool fEnabled)
 {
 	bool change = (Obj->CrewDisabled == fEnabled) ? true : false;
 
@@ -1560,17 +1551,12 @@ static C4Void FnSetCrewEnabled(C4Object *Obj, bool fEnabled)
 		else
 			Obj->Call(PSF_CrewDisabled);
 	}
-
-	// success
-	return C4Void();
 }
 
-static C4Void FnDoCrewExp(C4Object *Obj, long iChange)
+static void FnDoCrewExp(C4Object *Obj, long iChange)
 {
 	// do exp
 	Obj->DoExperience(iChange);
-	// success
-	return C4Void();
 }
 
 static bool FnClearMenuItems(C4Object *Obj)
@@ -1589,19 +1575,17 @@ static C4Object *FnGetObjectLayer(C4Object *Obj)
 	return Obj->Layer;
 }
 
-static C4Void FnSetObjectLayer(C4Object *Obj, C4Object *pNewLayer)
+static void FnSetObjectLayer(C4Object *Obj, C4Object *pNewLayer)
 {
 	// set layer object
 	Obj->Layer = pNewLayer;
 	// set for all contents as well
-	for (C4ObjectLink *pLnk=Obj->Contents.First; pLnk; pLnk=pLnk->Next)
-		if ((Obj=pLnk->Obj) && Obj->Status)
-			Obj->Layer = pNewLayer;
-	// success
-	return C4Void();
+	for (C4Object* contentObj : Obj->Contents)
+		if (contentObj && contentObj->Status)
+			contentObj->Layer = pNewLayer;
 }
 
-static C4Void FnSetShape(C4Object *Obj, long iX, long iY, long iWdt, long iHgt)
+static void FnSetShape(C4Object *Obj, long iX, long iY, long iWdt, long iHgt)
 {
 	// update shape
 	Obj->Shape.x = iX;
@@ -1610,8 +1594,6 @@ static C4Void FnSetShape(C4Object *Obj, long iX, long iY, long iWdt, long iHgt)
 	Obj->Shape.Hgt = iHgt;
 	// section list needs refresh
 	Obj->UpdatePos();
-	// done, success
-	return C4Void();
 }
 
 static bool FnSetObjDrawTransform(C4Object *Obj, long iA, long iB, long iC, long iD, long iE, long iF, long iOverlayID)
@@ -1639,7 +1621,7 @@ static bool FnSetObjDrawTransform(C4Object *Obj, long iA, long iB, long iC, long
 			{
 				// kill identity-transform, then
 				delete pTransform;
-				Obj->pDrawTransform=NULL;
+				Obj->pDrawTransform=nullptr;
 				return true;
 			}
 			// flipdir must remain: set identity
@@ -1786,19 +1768,16 @@ static long FnGetUnusedOverlayID(C4Object *Obj, long iBaseIndex)
 	return iBaseIndex;
 }
 
-static C4Void FnDoNoCollectDelay(C4Object *Obj, int change)
-{
-	Obj->NoCollectDelay = Max<int32_t>(Obj->NoCollectDelay + change, 0);
-	return C4Void();
-}
-
-static Nillable<int> FnPlayAnimation(C4Object *Obj, C4String *szAnimation, int iSlot, C4ValueArray* PositionProvider, C4ValueArray* WeightProvider, Nillable<int> iSibling, Nillable<int> iAttachNumber)
+static Nillable<int> FnPlayAnimation(C4Object *Obj, C4String *szAnimation, int iSlot, C4ValueArray* PositionProvider, Nillable<C4ValueArray*> WeightProvider, Nillable<int> iSibling, Nillable<int> iAttachNumber)
 {
 	if (!Obj) return C4Void();
 	if (!Obj->pMeshInstance) return C4Void();
 	if (iSlot == 0) return C4Void(); // Reserved for ActMap animations
 	if (!PositionProvider) return C4Void();
-	if (!WeightProvider) return C4Void();
+	// If no weight provider is passed, this animation should be played exclusively.
+	bool stop_previous_animations = WeightProvider.IsNil();
+	// Exclusive mode cannot work with a sibling
+	if (!iSibling.IsNil() && stop_previous_animations) return C4Void();
 
 	StdMeshInstance* Instance = Obj->pMeshInstance;
 	if (!iAttachNumber.IsNil())
@@ -1809,15 +1788,26 @@ static Nillable<int> FnPlayAnimation(C4Object *Obj, C4String *szAnimation, int i
 		Instance = Attached->Child;
 	}
 
-	StdMeshInstance::AnimationNode* s_node = NULL;
+	StdMeshInstance::AnimationNode* s_node = nullptr;
 	if (!iSibling.IsNil())
 	{
 		s_node = Instance->GetAnimationNodeByNumber(iSibling);
 		if (!s_node || s_node->GetSlot() != iSlot) return C4Void();
 	}
 
-	StdMeshInstance::ValueProvider* p_provider = CreateValueProviderFromArray(Obj, *PositionProvider);
-	StdMeshInstance::ValueProvider* w_provider = CreateValueProviderFromArray(Obj, *WeightProvider);
+	const StdMeshAnimation* animation = Instance->GetMesh().GetSkeleton().GetAnimationByName(szAnimation->GetData());
+	if (!animation) return C4Void();
+
+	StdMeshInstance::ValueProvider* p_provider = CreateValueProviderFromArray(Obj, *PositionProvider, animation);
+	StdMeshInstance::ValueProvider* w_provider;
+	if (stop_previous_animations)
+	{
+		w_provider = new C4ValueProviderConst(Fix1);
+	}
+	else
+	{
+		w_provider = CreateValueProviderFromArray(Obj, *WeightProvider);
+	}
 	if (!p_provider || !w_provider)
 	{
 		delete p_provider;
@@ -1825,7 +1815,7 @@ static Nillable<int> FnPlayAnimation(C4Object *Obj, C4String *szAnimation, int i
 		return C4Void();
 	}
 
-	StdMeshInstance::AnimationNode* n_node = Instance->PlayAnimation(szAnimation->GetData(), iSlot, s_node, p_provider, w_provider);
+	StdMeshInstance::AnimationNode* n_node = Instance->PlayAnimation(*animation, iSlot, s_node, p_provider, w_provider, stop_previous_animations);
 	if (!n_node) return C4Void();
 
 	return n_node->GetNumber();
@@ -1848,14 +1838,14 @@ static Nillable<int> FnTransformBone(C4Object *Obj, C4String *szBoneName, C4Valu
 		Instance = Attached->Child;
 	}
 
-	StdMeshInstance::AnimationNode* s_node = NULL;
+	StdMeshInstance::AnimationNode* s_node = nullptr;
 	if (!iSibling.IsNil())
 	{
 		s_node = Instance->GetAnimationNodeByNumber(iSibling);
 		if (!s_node || s_node->GetSlot() != iSlot) return C4Void();
 	}
 
-	const StdMeshBone* bone = Instance->GetMesh().GetBoneByName(szBoneName->GetData());
+	const StdMeshBone* bone = Instance->GetMesh().GetSkeleton().GetBoneByName(szBoneName->GetData());
 	if(!bone) return C4Void();
 
 	StdMeshInstance::ValueProvider* w_provider = CreateValueProviderFromArray(Obj, *WeightProvider);
@@ -1863,7 +1853,7 @@ static Nillable<int> FnTransformBone(C4Object *Obj, C4String *szBoneName, C4Valu
 
 	StdMeshMatrix matrix;
 	if (!C4ValueToMatrix(*Transformation, &matrix))
-		throw new C4AulExecError("TransformBone: Transformation is not a valid 3x4 matrix");
+		throw C4AulExecError("TransformBone: Transformation is not a valid 3x4 matrix");
 
 	// For bone transformations we cannot use general matrix transformations, but we use decomposed
 	// translate, scale and rotation components (represented by the StdMeshTransformation class). This
@@ -1875,7 +1865,7 @@ static Nillable<int> FnTransformBone(C4Object *Obj, C4String *szBoneName, C4Valu
 	// a check here and return nil if the matrix cannot be decomposed.
 	StdMeshTransformation trans = matrix.Decompose();
 
-	StdMeshInstance::AnimationNode* n_node = Instance->PlayAnimation(bone, trans, iSlot, s_node, w_provider);
+	StdMeshInstance::AnimationNode* n_node = Instance->PlayAnimation(bone, trans, iSlot, s_node, w_provider, false);
 	if (!n_node) return C4Void();
 
 	return n_node->GetNumber();
@@ -1922,6 +1912,43 @@ static Nillable<int> FnGetRootAnimation(C4Object *Obj, int iSlot, Nillable<int> 
 	return node->GetNumber();
 }
 
+static Nillable<C4ValueArray*> FnGetAnimationList(C4PropList* _this, Nillable<int> iAttachNumber)
+{
+	C4Object *Obj = Object(_this);
+	const StdMeshSkeleton* skeleton;
+	if (!Obj)
+	{
+		if (!_this || !_this->GetDef()) throw NeedNonGlobalContext("GetAnimationList");
+		C4Def *def = _this->GetDef();
+		if (!def->Graphics.IsMesh()) return C4Void();
+
+		skeleton = &def->Graphics.Mesh->GetSkeleton();
+	}
+	else
+	{
+		if (!Obj) return C4Void();
+		if (!Obj->pMeshInstance) return C4Void();
+
+		StdMeshInstance* Instance = Obj->pMeshInstance;
+		if (!iAttachNumber.IsNil())
+		{
+			const StdMeshInstance::AttachedMesh* Attached = Instance->GetAttachedMeshByNumber(iAttachNumber);
+			// OwnChild is set if an object's instance is attached. In that case the animation list should be obtained directly on that object.
+			if (!Attached || !Attached->OwnChild) return C4Void();
+			Instance = Attached->Child;
+		}
+
+		skeleton = &Instance->GetMesh().GetSkeleton();
+	}
+
+	const std::vector<const StdMeshAnimation*> animations = skeleton->GetAnimations();
+
+	C4ValueArray* retval = new C4ValueArray(animations.size());
+	for(unsigned int i = 0; i < animations.size(); ++i)
+		(*retval)[i] = C4VString(animations[i]->Name);
+	return retval;
+}
+
 static Nillable<int> FnGetAnimationLength(C4Object *Obj, C4String *szAnimation, Nillable<int> iAttachNumber)
 {
 	if (!Obj) return C4Void();
@@ -1936,7 +1963,7 @@ static Nillable<int> FnGetAnimationLength(C4Object *Obj, C4String *szAnimation, 
 		Instance = Attached->Child;
 	}
 
-	const StdMeshAnimation* animation = Instance->GetMesh().GetAnimationByName(szAnimation->GetData());
+	const StdMeshAnimation* animation = Instance->GetMesh().GetSkeleton().GetAnimationByName(szAnimation->GetData());
 	if (!animation) return C4Void();
 	return fixtoi(ftofix(animation->Length), 1000); // sync critical!
 }
@@ -2046,7 +2073,7 @@ static bool FnSetAnimationBoneTransform(C4Object *Obj, Nillable<int> iAnimationN
 
 	StdMeshMatrix matrix;
 	if (!C4ValueToMatrix(*Transformation, &matrix))
-		throw new C4AulExecError("TransformBone: Transformation is not a valid 3x4 matrix");
+		throw C4AulExecError("TransformBone: Transformation is not a valid 3x4 matrix");
 	// Here the same remark applies as in FnTransformBone
 	StdMeshTransformation trans = matrix.Decompose();
 
@@ -2078,7 +2105,7 @@ static bool FnSetAnimationWeight(C4Object *Obj, Nillable<int> iAnimationNumber, 
 	return true;
 }
 
-static Nillable<int> FnAttachMesh(C4Object *Obj, C4PropList* Mesh, C4String * szParentBone, C4String * szChildBone, C4ValueArray * Transformation, int Flags)
+static Nillable<int> FnAttachMesh(C4Object *Obj, C4PropList* Mesh, C4String * szParentBone, C4String * szChildBone, C4ValueArray * Transformation, int Flags, int AttachNumber)
 {
 	if (!Obj->pMeshInstance) return C4Void();
 	if (!Mesh) return C4Void();
@@ -2086,21 +2113,21 @@ static Nillable<int> FnAttachMesh(C4Object *Obj, C4PropList* Mesh, C4String * sz
 	StdMeshMatrix trans = StdMeshMatrix::Identity();
 	if (Transformation)
 		if (!C4ValueToMatrix(*Transformation, &trans))
-			throw new C4AulExecError("AttachMesh: Transformation is not a valid 3x4 matrix");
+			throw C4AulExecError("AttachMesh: Transformation is not a valid 3x4 matrix");
 
 	StdMeshInstance::AttachedMesh* attach;
 	C4Object* pObj = Mesh->GetObject();
 	if (pObj)
 	{
 		if (!pObj->pMeshInstance) return C4Void();
-		attach = Obj->pMeshInstance->AttachMesh(*pObj->pMeshInstance, new C4MeshDenumerator(pObj), szParentBone->GetData(), szChildBone->GetData(), trans, Flags);
+		attach = Obj->pMeshInstance->AttachMesh(*pObj->pMeshInstance, new C4MeshDenumerator(pObj), szParentBone->GetData(), szChildBone->GetData(), trans, Flags, false, AttachNumber);
 	}
 	else
 	{
 		C4Def* pDef = Mesh->GetDef();
 		if (!pDef) return C4Void();
 		if (pDef->Graphics.Type != C4DefGraphics::TYPE_Mesh) return C4Void();
-		attach = Obj->pMeshInstance->AttachMesh(*pDef->Graphics.Mesh, new C4MeshDenumerator(pDef), szParentBone->GetData(), szChildBone->GetData(), trans, Flags);
+		attach = Obj->pMeshInstance->AttachMesh(*pDef->Graphics.Mesh, new C4MeshDenumerator(pDef), szParentBone->GetData(), szChildBone->GetData(), trans, Flags, AttachNumber);
 		if(attach) attach->Child->SetFaceOrderingForClrModulation(Obj->ColorMod);
 	}
 
@@ -2144,7 +2171,7 @@ static bool FnSetAttachTransform(C4Object *Obj, long iAttachNumber, C4ValueArray
 
 	StdMeshMatrix trans;
 	if (!C4ValueToMatrix(*Transformation, &trans))
-		throw new C4AulExecError("SetAttachTransform: Transformation is not a valid 3x4 matrix");
+		throw C4AulExecError("SetAttachTransform: Transformation is not a valid 3x4 matrix");
 
 	attach->SetAttachTransformation(trans);
 	return true;
@@ -2156,7 +2183,7 @@ static Nillable<C4String*> FnGetMeshMaterial(C4PropList * _this, int iSubMesh)
 	C4Object *Obj = Object(_this);
 	if (!Obj)
 	{
-		if (!_this || !_this->GetDef()) throw new NeedNonGlobalContext("GetMeshMaterial");
+		if (!_this || !_this->GetDef()) throw NeedNonGlobalContext("GetMeshMaterial");
 		// Called in definition context: Get definition default mesh material
 		C4Def *def = _this->GetDef();
 		if (!def->Graphics.IsMesh()) return C4Void();
@@ -2183,8 +2210,7 @@ static bool FnSetMeshMaterial(C4Object *Obj, C4String* Material, int iSubMesh)
 	const StdMeshMaterial* material = ::MeshMaterialManager.GetMaterial(Material->GetData().getData());
 	if (!material) return false;
 
-	StdSubMeshInstance& submesh = Obj->pMeshInstance->GetSubMesh(iSubMesh);
-	submesh.SetMaterial(*material);
+	Obj->pMeshInstance->SetMaterial(iSubMesh, *material);
 	return true;
 }
 
@@ -2196,7 +2222,7 @@ static bool FnCreateParticleAtBone(C4Object* Obj, C4String* szName, C4String* sz
 	// Get bone
 	if(!Obj->pMeshInstance) return false;
 	const StdMesh& mesh = Obj->pMeshInstance->GetMesh();
-	const StdMeshBone* bone = mesh.GetBoneByName(szBoneName->GetData());
+	const StdMeshBone* bone = mesh.GetSkeleton().GetBoneByName(szBoneName->GetData());
 	if(!bone) return false;
 	// get particle
 	C4ParticleDef *pDef=::Particles.definitions.GetDef(FnStringPar(szName));
@@ -2210,34 +2236,32 @@ static bool FnCreateParticleAtBone(C4Object* Obj, C4String* szName, C4String* sz
 	if(Pos)
 	{
 		if(Pos->GetSize() != 3)
-			throw new C4AulExecError("CreateParticleAtBone: Pos is not a three-vector");
-		x.x = (*Pos)[0].getInt();
-		x.y = (*Pos)[1].getInt();
-		x.z = (*Pos)[2].getInt();
+			throw C4AulExecError("CreateParticleAtBone: Pos is not a three-vector");
+		x.x = (*Pos).GetItem(0).getInt();
+		x.y = (*Pos).GetItem(1).getInt();
+		x.z = (*Pos).GetItem(2).getInt();
 	}
 	else { x.x = x.y = x.z = 0.0f; }
 
 	if(Dir)
 	{
 		if(Dir->GetSize() != 3)
-			throw new C4AulExecError("CreateParticleAtBone: Dir is not a three-vector");
-		dir.x = (*Dir)[0].getInt() / 10.0f;
-		dir.y = (*Dir)[1].getInt() / 10.0f;
-		dir.z = (*Dir)[2].getInt() / 10.0f;
+			throw C4AulExecError("CreateParticleAtBone: Dir is not a three-vector");
+		dir.x = (*Dir).GetItem(0).getInt() / 10.0f;
+		dir.y = (*Dir).GetItem(1).getInt() / 10.0f;
+		dir.z = (*Dir).GetItem(2).getInt() / 10.0f;
 	}
 	else { dir.x = dir.y = dir.z = 0.0f; }
 	// Apply the bone transformation to them, to go from bone coordinates
-	// to mesh coordinates (note that bone coordinates use the OGRE
-	// coordinate system, so they need to be transformed to Clonk coordinates).
-	const StdMeshMatrix ClonkToOgre = StdMeshMatrix::Inverse(C4Draw::OgreToClonk);
+	// to mesh coordinates.
 	// This is a good example why we should have different types for
 	// position vectors and displacement vectors. TODO.
-	StdMeshVector transformed_x = transform * (ClonkToOgre * x);
+	StdMeshVector transformed_x = transform * x;
 	transformed_x.x += transform(0,3);
 	transformed_x.y += transform(1,3);
 	transformed_x.z += transform(2,3);
-	x = C4Draw::OgreToClonk * transformed_x;
-	dir = C4Draw::OgreToClonk * (transform * (ClonkToOgre * dir));
+	x = transformed_x;
+	dir = transform * dir;
 	// Apply MeshTransformation in the mesh reference frame
 	C4Value value;
 	Obj->GetProperty(P_MeshTransformation, &value);
@@ -2257,8 +2281,6 @@ static bool FnCreateParticleAtBone(C4Object* Obj, C4String* szName, C4String* sz
 	StdMeshVector v1, v2;
 	v1.x = box.x1; v1.y = box.y1; v1.z = box.z1;
 	v2.x = box.x2; v2.y = box.y2; v2.z = box.z2;
-	v1 = C4Draw::OgreToClonk * v1; // TODO: Include translation
-	v2 = C4Draw::OgreToClonk * v2; // TODO: Include translation
 	const float tx = fixtof(Obj->fix_x) + Obj->Def->Shape.GetX();
 	const float ty = fixtof(Obj->fix_y) + Obj->Def->Shape.GetY();
 	const float twdt = Obj->Def->Shape.Wdt;
@@ -2269,29 +2291,37 @@ static bool FnCreateParticleAtBone(C4Object* Obj, C4String* szName, C4String* sz
 	const float dy = ty + ry*thgt;
 	x.x += dx;
 	x.y += dy;
-	// Finally, apply DrawTransform to the world coordinates
-	StdMeshMatrix DrawTransform;
+	// This was added in the block before and could also just be removed from tx/ty.
+	// However, the block would no longer be equal to where it came from.
+	x.x -= fixtof(Obj->fix_x);
+	x.y -= fixtof(Obj->fix_y);
+	// Finally, apply DrawTransform to the world coordinates,
+	// and incorporate object rotation into the transformation
+	C4DrawTransform draw_transform;
 	if(Obj->pDrawTransform)
 	{
-		C4DrawTransform transform(*Obj->pDrawTransform, fixtof(Obj->fix_x), fixtof(Obj->fix_y));
-
-		DrawTransform(0, 0) = transform.mat[0];
-		DrawTransform(0, 1) = transform.mat[1];
-		DrawTransform(0, 2) = 0.0f;
-		DrawTransform(0, 3) = transform.mat[2];
-		DrawTransform(1, 0) = transform.mat[3];
-		DrawTransform(1, 1) = transform.mat[4];
-		DrawTransform(1, 2) = 0.0f;
-		DrawTransform(1, 3) = transform.mat[5];
-		DrawTransform(2, 0) = 0.0f;
-		DrawTransform(2, 1) = 0.0f;
-		DrawTransform(2, 2) = 1.0f;
-		DrawTransform(2, 3) = 0.0f;
+		draw_transform.SetTransformAt(*Obj->pDrawTransform, fixtof(Obj->fix_x), fixtof(Obj->fix_y));
+		draw_transform.Rotate(fixtof(Obj->fix_r), 0.0f, 0.0f);
 	}
 	else
 	{
-		DrawTransform = StdMeshMatrix::Identity();
+		draw_transform.SetRotate(fixtof(Obj->fix_r), 0.0f, 0.0f);
 	}
+
+	StdMeshMatrix DrawTransform;
+	DrawTransform(0, 0) = draw_transform.mat[0];
+	DrawTransform(0, 1) = draw_transform.mat[1];
+	DrawTransform(0, 2) = 0.0f;
+	DrawTransform(0, 3) = draw_transform.mat[2];
+	DrawTransform(1, 0) = draw_transform.mat[3];
+	DrawTransform(1, 1) = draw_transform.mat[4];
+	DrawTransform(1, 2) = 0.0f;
+	DrawTransform(1, 3) = draw_transform.mat[5];
+	DrawTransform(2, 0) = 0.0f;
+	DrawTransform(2, 1) = 0.0f;
+	DrawTransform(2, 2) = 1.0f;
+	DrawTransform(2, 3) = 0.0f;
+
 	x = DrawTransform * x;
 	dir = DrawTransform * dir;
 	x.x += DrawTransform(0,3);
@@ -2307,6 +2337,7 @@ static bool FnCreateParticleAtBone(C4Object* Obj, C4String* szName, C4String* sz
 	valueLifetime.Set(lifetime);
 
 	// cast
+	if (amount < 1) amount = 1;
 	::Particles.Create(pDef, valueX, valueY, valueSpeedX, valueSpeedY, valueLifetime, properties, amount, Obj);
 #endif
 	// success, even if not created
@@ -2314,10 +2345,27 @@ static bool FnCreateParticleAtBone(C4Object* Obj, C4String* szName, C4String* sz
 
 }
 
+static Nillable<long> FnGetDefWidth(C4PropList * _this)
+{
+	if (!_this) return C4Void();
+	C4Def *def = _this->GetDef();
+	if (!def) return  C4Void();
+	return def->Shape.Wdt;
+}
+
+static Nillable<long> FnGetDefHeight(C4PropList * _this)
+{
+	if (!_this) return C4Void();
+	C4Def *def = _this->GetDef();
+	if (!def) return  C4Void();
+	return def->Shape.Hgt;
+}
+
 //=========================== C4Script Function Map ===================================
 
 C4ScriptConstDef C4ScriptObjectConstMap[]=
 {
+	{ "C4D_None"               ,C4V_Int,          C4D_None},
 	{ "C4D_All"                ,C4V_Int,          C4D_All},
 	{ "C4D_StaticBack"         ,C4V_Int,          C4D_StaticBack},
 	{ "C4D_Structure"          ,C4V_Int,          C4D_Structure},
@@ -2336,6 +2384,11 @@ C4ScriptConstDef C4ScriptObjectConstMap[]=
 
 	{ "C4D_GrabGet"            ,C4V_Int,          C4D_Grab_Get},
 	{ "C4D_GrabPut"            ,C4V_Int,          C4D_Grab_Put},
+
+	{ "C4D_Border_Sides"       ,C4V_Int,          C4D_Border_Sides},
+	{ "C4D_Border_Top"         ,C4V_Int,          C4D_Border_Top},
+	{ "C4D_Border_Bottom"      ,C4V_Int,          C4D_Border_Bottom},
+	{ "C4D_Border_Layer"       ,C4V_Int,          C4D_Border_Layer},
 
 	{ "COMD_None"              ,C4V_Int,          COMD_None},
 	{ "COMD_Stop"              ,C4V_Int,          COMD_Stop},
@@ -2365,7 +2418,6 @@ C4ScriptConstDef C4ScriptObjectConstMap[]=
 	{ "OCF_HitSpeed3"          ,C4V_Int,          OCF_HitSpeed3},
 	{ "OCF_Collection"         ,C4V_Int,          OCF_Collection},
 	{ "OCF_HitSpeed4"          ,C4V_Int,          OCF_HitSpeed4},
-	{ "OCF_AttractLightning"   ,C4V_Int,          OCF_AttractLightning},
 	{ "OCF_NotContained"       ,C4V_Int,          OCF_NotContained},
 	{ "OCF_CrewMember"         ,C4V_Int,          OCF_CrewMember},
 	{ "OCF_InLiquid"           ,C4V_Int,          OCF_InLiquid},
@@ -2384,6 +2436,7 @@ C4ScriptConstDef C4ScriptObjectConstMap[]=
 	{ "VIS_God"                ,C4V_Int,          VIS_God},
 	{ "VIS_LayerToggle"        ,C4V_Int,          VIS_LayerToggle},
 	{ "VIS_OverlayOnly"        ,C4V_Int,          VIS_OverlayOnly},
+	{ "VIS_Editor"             ,C4V_Int,          VIS_Editor},
 
 	{ "C4MN_Style_Normal"      ,C4V_Int,          C4MN_Style_Normal},
 	{ "C4MN_Style_Context"     ,C4V_Int,          C4MN_Style_Context},
@@ -2392,7 +2445,6 @@ C4ScriptConstDef C4ScriptObjectConstMap[]=
 	{ "C4MN_Style_EqualItemHeight",C4V_Int,       C4MN_Style_EqualItemHeight},
 
 	{ "C4MN_Extra_None"        ,C4V_Int,          C4MN_Extra_None},
-	{ "C4MN_Extra_Components"  ,C4V_Int,          C4MN_Extra_Components},
 	{ "C4MN_Extra_Value"       ,C4V_Int,          C4MN_Extra_Value},
 	{ "C4MN_Extra_Info"        ,C4V_Int,          C4MN_Extra_Info},
 
@@ -2401,6 +2453,7 @@ C4ScriptConstDef C4ScriptObjectConstMap[]=
 	{ "C4MN_Add_ImgObjRank"    ,C4V_Int,          C4MN_Add_ImgObjRank},
 	{ "C4MN_Add_ImgObject"     ,C4V_Int,          C4MN_Add_ImgObject},
 	{ "C4MN_Add_ImgTextSpec"   ,C4V_Int,          C4MN_Add_ImgTextSpec},
+	{ "C4MN_Add_ImgPropListSpec",C4V_Int,         C4MN_Add_ImgPropListSpec},
 	{ "C4MN_Add_ImgColor"      ,C4V_Int,          C4MN_Add_ImgColor},
 	{ "C4MN_Add_PassValue"     ,C4V_Int,          C4MN_Add_PassValue},
 	{ "C4MN_Add_ForceCount"    ,C4V_Int,          C4MN_Add_ForceCount},
@@ -2438,6 +2491,7 @@ C4ScriptConstDef C4ScriptObjectConstMap[]=
 	{ "CNAT_Center"               ,C4V_Int,      CNAT_Center                },
 	{ "CNAT_MultiAttach"          ,C4V_Int,      CNAT_MultiAttach           },
 	{ "CNAT_NoCollision"          ,C4V_Int,      CNAT_NoCollision           },
+	{ "CNAT_PhaseHalfVehicle"     ,C4V_Int,      CNAT_PhaseHalfVehicle      },
 
 	// vertex data
 	{ "VTX_X"                     ,C4V_Int,      VTX_X                      },
@@ -2469,9 +2523,11 @@ C4ScriptConstDef C4ScriptObjectConstMap[]=
 	{ "C4AVP_R"                   ,C4V_Int,      C4AVP_R },
 	{ "C4AVP_AbsX"                ,C4V_Int,      C4AVP_AbsX },
 	{ "C4AVP_AbsY"                ,C4V_Int,      C4AVP_AbsY },
+	{ "C4AVP_Dist"                ,C4V_Int,      C4AVP_Dist },
 	{ "C4AVP_XDir"                ,C4V_Int,      C4AVP_XDir },
 	{ "C4AVP_YDir"                ,C4V_Int,      C4AVP_YDir },
 	{ "C4AVP_RDir"                ,C4V_Int,      C4AVP_RDir },
+	{ "C4AVP_AbsRDir"             ,C4V_Int,      C4AVP_AbsRDir },
 	{ "C4AVP_CosR"                ,C4V_Int,      C4AVP_CosR },
 	{ "C4AVP_SinR"                ,C4V_Int,      C4AVP_SinR },
 	{ "C4AVP_CosV"                ,C4V_Int,      C4AVP_CosV },
@@ -2484,8 +2540,9 @@ C4ScriptConstDef C4ScriptObjectConstMap[]=
 
 	{ "AM_None"                   ,C4V_Int,      StdMeshInstance::AM_None },
 	{ "AM_DrawBefore"             ,C4V_Int,      StdMeshInstance::AM_DrawBefore },
+	{ "AM_MatchSkeleton"          ,C4V_Int,      StdMeshInstance::AM_MatchSkeleton },
 
-	{ NULL, C4V_Nil, 0}
+	{ nullptr, C4V_Nil, 0}
 };
 
 
@@ -2497,163 +2554,166 @@ void InitObjectFunctionMap(C4AulScriptEngine *pEngine)
 		assert(pCDef->ValType == C4V_Int); // only int supported currently
 		pEngine->RegisterGlobalConstant(pCDef->Identifier, C4VInt(pCDef->Data));
 	}
+	C4PropListStatic * p = pEngine->GetPropList();
+#define F(f) ::AddFunc(p, #f, Fn##f)
 
-//  AddFunc(pEngine, "SetSaturation", FnSetSaturation); //public: 0
-	AddFunc(pEngine, "DoCon", FnDoCon);
-	AddFunc(pEngine, "GetCon", FnGetCon);
-	AddFunc(pEngine, "DoDamage", FnDoDamage);
-	AddFunc(pEngine, "DoEnergy", FnDoEnergy);
-	AddFunc(pEngine, "DoBreath", FnDoBreath);
-	AddFunc(pEngine, "GetEnergy", FnGetEnergy);
-	AddFunc(pEngine, "OnFire", FnOnFire);
-	AddFunc(pEngine, "Stuck", FnStuck);
-	AddFunc(pEngine, "InLiquid", FnInLiquid);
-	AddFunc(pEngine, "SetAction", FnSetAction);
-	AddFunc(pEngine, "SetActionData", FnSetActionData);
+	F(DoCon);
+	F(GetCon);
+	F(DoDamage);
+	F(DoEnergy);
+	F(DoBreath);
+	F(GetEnergy);
+	F(OnFire);
+	F(Stuck);
+	F(InLiquid);
+	F(SetAction);
+	F(SetActionData);
 
-	AddFunc(pEngine, "SetBridgeActionData", FnSetBridgeActionData);
-	AddFunc(pEngine, "GetAction", FnGetAction);
-	AddFunc(pEngine, "GetActTime", FnGetActTime);
-	AddFunc(pEngine, "GetOwner", FnGetOwner);
-	AddFunc(pEngine, "GetMass", FnGetMass);
-	AddFunc(pEngine, "GetBreath", FnGetBreath);
-	AddFunc(pEngine, "GetMenu", FnGetMenu);
-	AddFunc(pEngine, "GetVertexNum", FnGetVertexNum);
-	AddFunc(pEngine, "GetVertex", FnGetVertex);
-	AddFunc(pEngine, "SetVertex", FnSetVertex);
-	AddFunc(pEngine, "AddVertex", FnAddVertex);
-	AddFunc(pEngine, "RemoveVertex", FnRemoveVertex);
-	AddFunc(pEngine, "SetContactDensity", FnSetContactDensity, false);
-	AddFunc(pEngine, "GetController", FnGetController);
-	AddFunc(pEngine, "SetController", FnSetController);
-	AddFunc(pEngine, "GetName", FnGetName);
-	AddFunc(pEngine, "SetName", FnSetName);
-	AddFunc(pEngine, "GetKiller", FnGetKiller);
-	AddFunc(pEngine, "SetKiller", FnSetKiller);
-	AddFunc(pEngine, "GetPhase", FnGetPhase);
-	AddFunc(pEngine, "SetPhase", FnSetPhase);
-	AddFunc(pEngine, "GetCategory", FnGetCategory);
-	AddFunc(pEngine, "GetOCF", FnGetOCF);
-	AddFunc(pEngine, "SetAlive", FnSetAlive);
-	AddFunc(pEngine, "GetAlive", FnGetAlive);
-	AddFunc(pEngine, "GetDamage", FnGetDamage);
-	AddFunc(pEngine, "ComponentAll", FnComponentAll, false);
-	AddFunc(pEngine, "SetComDir", FnSetComDir);
-	AddFunc(pEngine, "GetComDir", FnGetComDir);
-	AddFunc(pEngine, "SetDir", FnSetDir);
-	AddFunc(pEngine, "GetDir", FnGetDir);
-	AddFunc(pEngine, "SetEntrance", FnSetEntrance);
-	AddFunc(pEngine, "GetEntrance", FnGetEntrance);
-	AddFunc(pEngine, "SetCategory", FnSetCategory);
-	AddFunc(pEngine, "FinishCommand", FnFinishCommand);
-	AddFunc(pEngine, "ActIdle", FnActIdle);
-	AddFunc(pEngine, "SetRDir", FnSetRDir);
-	AddFunc(pEngine, "GetRDir", FnGetRDir);
-	AddFunc(pEngine, "GetXDir", FnGetXDir);
-	AddFunc(pEngine, "GetYDir", FnGetYDir);
-	AddFunc(pEngine, "GetR", FnGetR);
-	AddFunc(pEngine, "SetXDir", FnSetXDir);
-	AddFunc(pEngine, "SetYDir", FnSetYDir);
-	AddFunc(pEngine, "SetR", FnSetR);
-	AddFunc(pEngine, "SetOwner", FnSetOwner);
-	AddFunc(pEngine, "MakeCrewMember", FnMakeCrewMember);
-	AddFunc(pEngine, "GrabObjectInfo", FnGrabObjectInfo);
-	AddFunc(pEngine, "CreateContents", FnCreateContents);
-	AddFunc(pEngine, "ShiftContents", FnShiftContents);
-	AddFunc(pEngine, "ComposeContents", FnComposeContents);
-	AddFunc(pEngine, "GetNeededMatStr", FnGetNeededMatStr);
-	AddFunc(pEngine, "GetID", FnGetID);
-	AddFunc(pEngine, "Contents", FnContents);
-	AddFunc(pEngine, "ScrollContents", FnScrollContents);
-	AddFunc(pEngine, "Contained", FnContained);
-	AddFunc(pEngine, "ContentsCount", FnContentsCount);
-	AddFunc(pEngine, "FindContents", FnFindContents, false);
-	AddFunc(pEngine, "FindOtherContents", FnFindOtherContents, false);
-	AddFunc(pEngine, "RemoveObject", FnRemoveObject);
-	AddFunc(pEngine, "GetActionTarget", FnGetActionTarget);
-	AddFunc(pEngine, "SetActionTargets", FnSetActionTargets);
-	AddFunc(pEngine, "SetComponent", FnSetComponent);
-	AddFunc(pEngine, "SetCrewStatus", FnSetCrewStatus, false);
-	AddFunc(pEngine, "SetPosition", FnSetPosition);
-	AddFunc(pEngine, "CreateMenu", FnCreateMenu);
-	AddFunc(pEngine, "AddMenuItem", FnAddMenuItem);
-	AddFunc(pEngine, "SelectMenuItem", FnSelectMenuItem);
-	AddFunc(pEngine, "SetMenuDecoration", FnSetMenuDecoration);
-	AddFunc(pEngine, "SetMenuTextProgress", FnSetMenuTextProgress);
-	AddFunc(pEngine, "ObjectDistance", FnObjectDistance);
-	AddFunc(pEngine, "GetValue", FnGetValue);
-	AddFunc(pEngine, "GetRank", FnGetRank);
-	AddFunc(pEngine, "SetTransferZone", FnSetTransferZone);
-	AddFunc(pEngine, "SetMass", FnSetMass);
-	AddFunc(pEngine, "GetColor", FnGetColor);
-	AddFunc(pEngine, "SetColor", FnSetColor);
-	AddFunc(pEngine, "SetPlrViewRange", FnSetPlrViewRange);
-	AddFunc(pEngine, "SetPicture", FnSetPicture);
-	AddFunc(pEngine, "GetProcedure", FnGetProcedure);
-	AddFunc(pEngine, "CanConcatPictureWith", FnCanConcatPictureWith);
-	AddFunc(pEngine, "SetGraphics", FnSetGraphics);
-	AddFunc(pEngine, "ObjectNumber", FnObjectNumber);
-	AddFunc(pEngine, "ShowInfo", FnShowInfo);
-	AddFunc(pEngine, "CheckVisibility", FnCheckVisibility);
-	AddFunc(pEngine, "SetClrModulation", FnSetClrModulation);
-	AddFunc(pEngine, "GetClrModulation", FnGetClrModulation);
-	AddFunc(pEngine, "CloseMenu", FnCloseMenu);
-	AddFunc(pEngine, "GetMenuSelection", FnGetMenuSelection);
-	AddFunc(pEngine, "GetDefBottom", FnGetDefBottom);
-	AddFunc(pEngine, "SetMenuSize", FnSetMenuSize);
-	AddFunc(pEngine, "GetCrewEnabled", FnGetCrewEnabled);
-	AddFunc(pEngine, "SetCrewEnabled", FnSetCrewEnabled);
-	AddFunc(pEngine, "DoCrewExp", FnDoCrewExp);
-	AddFunc(pEngine, "ClearMenuItems", FnClearMenuItems);
-	AddFunc(pEngine, "GetObjectLayer", FnGetObjectLayer);
-	AddFunc(pEngine, "SetObjectLayer", FnSetObjectLayer);
-	AddFunc(pEngine, "SetShape", FnSetShape);
-	AddFunc(pEngine, "SetObjDrawTransform", FnSetObjDrawTransform);
-	AddFunc(pEngine, "SetObjDrawTransform2", FnSetObjDrawTransform2, false);
-	AddFunc(pEngine, "SetObjectStatus", FnSetObjectStatus, false);
-	AddFunc(pEngine, "GetObjectStatus", FnGetObjectStatus, false);
-	AddFunc(pEngine, "AdjustWalkRotation", FnAdjustWalkRotation, false);
-	AddFunc(pEngine, "GetContact", FnGetContact);
-	AddFunc(pEngine, "SetObjectBlitMode", FnSetObjectBlitMode);
-	AddFunc(pEngine, "GetObjectBlitMode", FnGetObjectBlitMode);
-	AddFunc(pEngine, "GetUnusedOverlayID", FnGetUnusedOverlayID, false);
-	AddFunc(pEngine, "ExecuteCommand", FnExecuteCommand);
+	F(SetBridgeActionData);
+	F(GetAction);
+	F(GetActTime);
+	F(GetOwner);
+	F(GetMass);
+	F(GetBreath);
+	F(GetMenu);
+	F(GetVertexNum);
+	F(GetVertex);
+	F(SetVertex);
+	F(AddVertex);
+	F(InsertVertex);
+	F(RemoveVertex);
+	::AddFunc(p, "SetContactDensity", FnSetContactDensity, false);
+	F(GetController);
+	F(SetController);
+	F(SetName);
+	F(GetKiller);
+	F(SetKiller);
+	F(GetPhase);
+	F(SetPhase);
+	F(GetCategory);
+	F(GetOCF);
+	F(SetAlive);
+	F(GetAlive);
+	F(GetDamage);
+	F(SetComDir);
+	F(GetComDir);
+	F(SetDir);
+	F(GetDir);
+	F(SetEntrance);
+	F(GetEntrance);
+	F(SetCategory);
+	F(FinishCommand);
+	F(ActIdle);
+	F(SetRDir);
+	F(GetRDir);
+	F(GetXDir);
+	F(GetYDir);
+	F(GetR);
+	F(SetXDir);
+	F(SetYDir);
+	F(SetR);
+	F(SetOwner);
+	F(MakeCrewMember);
+	F(GrabObjectInfo);
+	F(CreateContents);
+	F(ShiftContents);
+	F(GetID);
+	F(Contents);
+	F(ScrollContents);
+	F(Contained);
+	F(ContentsCount);
+	::AddFunc(p, "FindContents", FnFindContents, false);
+	::AddFunc(p, "FindOtherContents", FnFindOtherContents, false);
+	F(RemoveObject);
+	F(GetActionTarget);
+	F(SetActionTargets);
+	::AddFunc(p, "SetCrewStatus", FnSetCrewStatus, false);
+	F(SetPosition);
+	F(CreateMenu);
+	F(AddMenuItem);
+	F(SelectMenuItem);
+	F(SetMenuDecoration);
+	F(SetMenuTextProgress);
+	F(ObjectDistance);
+	F(GetValue);
+	F(GetRank);
+	F(SetTransferZone);
+	F(SetMass);
+	F(GetColor);
+	F(SetColor);
+	F(SetLightRange);
+	F(GetLightColor);
+	F(SetLightColor);
+	F(SetPicture);
+	F(GetProcedure);
+	F(CanConcatPictureWith);
+	F(SetGraphics);
+	F(ObjectNumber);
+	F(ShowInfo);
+	F(CheckVisibility);
+	F(SetClrModulation);
+	F(GetClrModulation);
+	F(CloseMenu);
+	F(GetMenuSelection);
+	F(GetDefBottom);
+	F(SetMenuSize);
+	F(GetCrewEnabled);
+	F(SetCrewEnabled);
+	F(DoCrewExp);
+	F(ClearMenuItems);
+	F(GetObjectLayer);
+	F(SetObjectLayer);
+	F(SetShape);
+	F(SetObjDrawTransform);
+	::AddFunc(p, "SetObjDrawTransform2", FnSetObjDrawTransform2, false);
+	::AddFunc(p, "SetObjectStatus", FnSetObjectStatus, false);
+	::AddFunc(p, "GetObjectStatus", FnGetObjectStatus, false);
+	::AddFunc(p, "AdjustWalkRotation", FnAdjustWalkRotation, false);
+	F(GetContact);
+	F(SetObjectBlitMode);
+	F(GetObjectBlitMode);
+	::AddFunc(p, "GetUnusedOverlayID", FnGetUnusedOverlayID, false);
+	F(ExecuteCommand);
 
-	AddFunc(pEngine, "PlayAnimation", FnPlayAnimation);
-	AddFunc(pEngine, "TransformBone", FnTransformBone);
-	AddFunc(pEngine, "StopAnimation", FnStopAnimation);
-	AddFunc(pEngine, "GetRootAnimation", FnGetRootAnimation);
-	AddFunc(pEngine, "GetAnimationLength", FnGetAnimationLength);
-	AddFunc(pEngine, "GetAnimationName", FnGetAnimationName);
-	AddFunc(pEngine, "GetAnimationPosition", FnGetAnimationPosition);
-	AddFunc(pEngine, "GetAnimationWeight", FnGetAnimationWeight);
-	AddFunc(pEngine, "SetAnimationPosition", FnSetAnimationPosition);
-	AddFunc(pEngine, "SetAnimationBoneTransform", FnSetAnimationBoneTransform);
-	AddFunc(pEngine, "SetAnimationWeight", FnSetAnimationWeight);
-	AddFunc(pEngine, "AttachMesh", FnAttachMesh);
-	AddFunc(pEngine, "DetachMesh", FnDetachMesh);
-	AddFunc(pEngine, "SetAttachBones", FnSetAttachBones);
-	AddFunc(pEngine, "SetAttachTransform", FnSetAttachTransform);
-	AddFunc(pEngine, "GetMeshMaterial", FnGetMeshMaterial);
-	AddFunc(pEngine, "SetMeshMaterial", FnSetMeshMaterial);
-	AddFunc(pEngine, "CreateParticleAtBone", FnCreateParticleAtBone);
-	AddFunc(pEngine, "ChangeDef", FnChangeDef);
-	AddFunc(pEngine, "GrabContents", FnGrabContents);
-	AddFunc(pEngine, "Punch", FnPunch);
-	AddFunc(pEngine, "Kill", FnKill);
-	AddFunc(pEngine, "Fling", FnFling);
-	AddFunc(pEngine, "Jump", FnJump, false);
-	AddFunc(pEngine, "Enter", FnEnter);
-	AddFunc(pEngine, "DeathAnnounce", FnDeathAnnounce);
-	AddFunc(pEngine, "SetSolidMask", FnSetSolidMask);
-	AddFunc(pEngine, "Exit", FnExit);
-	AddFunc(pEngine, "Collect", FnCollect);
-	AddFunc(pEngine, "DoNoCollectDelay", FnDoNoCollectDelay);
+	F(PlayAnimation);
+	F(TransformBone);
+	F(StopAnimation);
+	F(GetRootAnimation);
+	F(GetAnimationList);
+	F(GetAnimationLength);
+	F(GetAnimationName);
+	F(GetAnimationPosition);
+	F(GetAnimationWeight);
+	F(SetAnimationPosition);
+	F(SetAnimationBoneTransform);
+	F(SetAnimationWeight);
+	F(AttachMesh);
+	F(DetachMesh);
+	F(SetAttachBones);
+	F(SetAttachTransform);
+	F(GetMeshMaterial);
+	F(SetMeshMaterial);
+	F(CreateParticleAtBone);
+	F(ChangeDef);
+	F(GrabContents);
+	F(Punch);
+	F(Kill);
+	F(Fling);
+	::AddFunc(p, "Jump", FnJump, false);
+	F(Enter);
+	F(DeathAnnounce);
+	F(SetSolidMask);
+	F(SetHalfVehicleSolidMask);
+	F(Exit);
+	F(Collect);
 
-	AddFunc(pEngine, "SetCommand", FnSetCommand);
-	AddFunc(pEngine, "AddCommand", FnAddCommand);
-	AddFunc(pEngine, "AppendCommand", FnAppendCommand);
-	AddFunc(pEngine, "GetCommand", FnGetCommand);
-	AddFunc(pEngine, "SetCrewExtraData", FnSetCrewExtraData);
-	AddFunc(pEngine, "GetCrewExtraData", FnGetCrewExtraData);
+	F(SetCommand);
+	F(AddCommand);
+	F(AppendCommand);
+	F(GetCommand);
+	F(SetCrewExtraData);
+	F(GetCrewExtraData);
+	F(GetDefWidth);
+	F(GetDefHeight);
+#undef F
 }

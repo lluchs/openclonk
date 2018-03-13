@@ -1,0 +1,2 @@
+Name=Rauchbombe
+Description=Verteilt Rauch. Anzünden um Rauch zu verteilen.

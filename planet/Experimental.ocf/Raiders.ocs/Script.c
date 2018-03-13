@@ -16,11 +16,11 @@ func Initialize()
 	goal.Description = "$GoalDesc1$";
 
 	// Vegetation
-	Tree_Coniferous->Place(20, Rectangle(106,121, 826,335), { keep_area = true });
+	Tree_Coniferous->Place(20, Shape->Rectangle(106, 121, 826, 335), { keep_area = true });
 	PlaceGrass(20, 0,106);
 
 	// The castle
-	CreateObject(Raiders_CastleBack, 1068, 256, NO_OWNER);
+	CreateObjectAbove(Raiders_CastleBack, 1068, 256, NO_OWNER);
 }
 
 // Player related supplies and structures
@@ -30,11 +30,11 @@ func DoInit(int plr)
 	if (is_initialized) return;
 
 	// Supplies
-	var crate = CreateObject(Crate, 30, FindHeight(30), plr);
+	var crate = CreateObjectAbove(Crate, 30, FindHeight(30), plr);
 	crate->CreateContents(Shovel);
 	crate->CreateContents(Hammer);
 	crate->CreateContents(Axe);
-	crate = CreateObject(Crate, 45, FindHeight(30), plr);
+	crate = CreateObjectAbove(Crate, 45, FindHeight(30), plr);
 	crate->CreateContents(Bread, 3);
 
 	// A flag

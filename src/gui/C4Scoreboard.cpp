@@ -2,7 +2,7 @@
  * OpenClonk, http://www.openclonk.org
  *
  * Copyright (c) 2005-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -16,13 +16,12 @@
 // script-controlled InGame dialog to show player infos
 
 #include "C4Include.h"
-#include <utility>
+#include "gui/C4Scoreboard.h"
 
-#include "C4Scoreboard.h"
-#include "C4Gui.h"
-
-#include "C4GameOverDlg.h"
-#include <C4GraphicsResource.h>
+#include "gui/C4GameOverDlg.h"
+#include "gui/C4Gui.h"
+#include "graphics/C4Draw.h"
+#include "graphics/C4GraphicsResource.h"
 
 
 class C4ScoreboardDlg : public C4GUI::Dialog
@@ -35,19 +34,19 @@ private:
 
 public:
 	C4ScoreboardDlg(C4Scoreboard *pForScoreboard);
-	~C4ScoreboardDlg();
+	~C4ScoreboardDlg() override;
 
 protected:
-	void InvalidateRows() { delete [] piColWidths; piColWidths = NULL; }
+	void InvalidateRows() { delete [] piColWidths; piColWidths = nullptr; }
 	void Update(); // update row widths and own size and caption
 
-	virtual bool DoPlacement(C4GUI::Screen *pOnScreen, const C4Rect &rPreferredDlgRect);
-	virtual void Draw(C4TargetFacet &cgo);
-	virtual void DrawElement(C4TargetFacet &cgo);
+	bool DoPlacement(C4GUI::Screen *pOnScreen, const C4Rect &rPreferredDlgRect) override;
+	void Draw(C4TargetFacet &cgo) override;
+	void DrawElement(C4TargetFacet &cgo) override;
 
-	virtual const char *GetID() { return "Scoreboard"; }
+	const char *GetID() override { return "Scoreboard"; }
 
-	virtual bool IsMouseControlled() { return false; }
+	bool IsMouseControlled() override { return false; }
 
 	friend class C4Scoreboard;
 };
@@ -66,10 +65,10 @@ void C4Scoreboard::Clear()
 {
 	// del all cells
 	delete [] pEntries;
-	pEntries = NULL; iRows=iCols=0;
+	pEntries = nullptr; iRows=iCols=0;
 	// del dialog
 	iDlgShow = 0;
-	if (pDlg) { delete pDlg; pDlg = NULL; }
+	if (pDlg) { delete pDlg; pDlg = nullptr; }
 }
 
 void C4Scoreboard::AddRow(int32_t iInsertBefore)
@@ -110,7 +109,7 @@ void C4Scoreboard::DelRow(int32_t iDelIndex)
 {
 	// counts
 	int32_t iNewEntryCount = (iRows-1) * iCols;
-	if (!iNewEntryCount) { --iRows; delete [] pEntries; pEntries = NULL; return; }
+	if (!iNewEntryCount) { --iRows; delete [] pEntries; pEntries = nullptr; return; }
 	// realloc and copy array
 	Entry *pNewEntries = new Entry[iNewEntryCount]; Entry *pCpy = pNewEntries;
 	for (int32_t iRow = 0, iFromRow = 0; iRow < (iRows-1); ++iRow,++iFromRow)
@@ -127,7 +126,7 @@ void C4Scoreboard::DelCol(int32_t iDelIndex)
 {
 	// counts
 	int32_t iNewEntryCount = iRows * (iCols-1);
-	if (!iNewEntryCount) { --iCols; delete [] pEntries; pEntries = NULL; return; }
+	if (!iNewEntryCount) { --iCols; delete [] pEntries; pEntries = nullptr; return; }
 	// realloc and copy array
 	Entry *pNewEntries = new Entry[iNewEntryCount]; Entry *pCpy = pNewEntries;
 	for (int32_t iRow = 0; iRow < iRows; ++iRow)
@@ -217,7 +216,7 @@ const char *C4Scoreboard::GetCellString(int32_t iColKey, int32_t iRowKey)
 	// get row/col
 	int32_t iCol = GetColByKey(iColKey);
 	int32_t iRow = GetRowByKey(iRowKey);
-	if (iCol<0 || iRow<0) return NULL;
+	if (iCol<0 || iRow<0) return nullptr;
 	// now get value
 	Entry *pCell = GetCell(iCol, iRow);
 	return pCell->Text.getData();
@@ -315,14 +314,14 @@ void C4Scoreboard::HideDlg()
 
 void C4Scoreboard::CompileFunc(StdCompiler *pComp)
 {
-	bool fCompiler = pComp->isCompiler();
-	if (fCompiler) Clear();
+	bool deserializing = pComp->isDeserializer();
+	if (deserializing) Clear();
 	pComp->Value(mkNamingAdapt(iRows,     "Rows",     0));
 	pComp->Value(mkNamingAdapt(iCols,     "Cols",     0));
 	pComp->Value(mkNamingAdapt(iDlgShow,  "DlgShow",  0));
 	if (iRows * iCols)
 	{
-		if (fCompiler) pEntries = new Entry[iRows * iCols];
+		if (deserializing) pEntries = new Entry[iRows * iCols];
 		for (int32_t iRow = 0; iRow < iRows; ++iRow)
 			for (int32_t iCol = 0; iCol < iCols; ++iCol)
 			{
@@ -332,7 +331,7 @@ void C4Scoreboard::CompileFunc(StdCompiler *pComp)
 			}
 		// recheck dlg show in read mode
 		// will usually not do anything, because reading is done before enetering shared mode
-		if (pComp->isCompiler()) DoDlgShow(0, false);
+		if (pComp->isDeserializer()) DoDlgShow(0, false);
 	}
 }
 
@@ -341,7 +340,7 @@ void C4Scoreboard::CompileFunc(StdCompiler *pComp)
 // *** C4ScoreboardDlg
 
 C4ScoreboardDlg::C4ScoreboardDlg(C4Scoreboard *pForScoreboard)
-		: C4GUI::Dialog(100, 100, "nops", false), piColWidths(NULL), pBrd(pForScoreboard)
+		: C4GUI::Dialog(100, 100, "nops", false), piColWidths(nullptr), pBrd(pForScoreboard)
 {
 	Update();
 }
@@ -349,14 +348,14 @@ C4ScoreboardDlg::C4ScoreboardDlg(C4Scoreboard *pForScoreboard)
 C4ScoreboardDlg::~C4ScoreboardDlg()
 {
 	delete [] piColWidths;
-	pBrd->pDlg = NULL;
+	pBrd->pDlg = nullptr;
 }
 
 void C4ScoreboardDlg::Update()
 {
 	// counts
 	int32_t iRowCount = pBrd->iRows; int32_t iColCount = pBrd->iCols;
-	delete [] piColWidths; piColWidths = NULL;
+	delete [] piColWidths; piColWidths = nullptr;
 	// invalid board - scipters can create those, but there's no reason why the engine
 	// should display something pretty then; just keep dialog defaults
 	if (!iRowCount || !iColCount) return;
@@ -369,13 +368,13 @@ void C4ScoreboardDlg::Update()
 		for (int32_t iRow = 0; iRow < iRowCount; ++iRow)
 		{
 			C4Scoreboard::Entry *pCell = pBrd->GetCell(iCol, iRow);
-			if ((iRow || iCol) && !pCell->Text.isNull()) piColWidths[iCol] = Max<int32_t>(piColWidths[iCol], ::GraphicsResource.FontRegular.GetTextWidth(pCell->Text.getData()) + XIndent);
+			if ((iRow || iCol) && !pCell->Text.isNull()) piColWidths[iCol] = std::max<int32_t>(piColWidths[iCol], ::GraphicsResource.FontRegular.GetTextWidth(pCell->Text.getData()) + XIndent);
 		}
 		iWdt += piColWidths[iCol];
 	}
 	iHgt += iRowCount * (::GraphicsResource.FontRegular.GetLineHeight() + YIndent);
 	const char *szTitle = pBrd->GetCell(0,0)->Text.getData();
-	if (szTitle) iWdt = Max<int32_t>(iWdt, ::GraphicsResource.FontRegular.GetTextWidth(szTitle) + 40);
+	if (szTitle) iWdt = std::max<int32_t>(iWdt, ::GraphicsResource.FontRegular.GetTextWidth(szTitle) + 40);
 	if (!pTitle != !szTitle) SetTitle(szTitle); // needed for title margin...
 	iWdt += GetMarginLeft() + GetMarginRight();
 	iHgt += GetMarginTop() + GetMarginBottom();

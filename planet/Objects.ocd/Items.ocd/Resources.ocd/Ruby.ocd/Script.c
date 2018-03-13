@@ -4,6 +4,7 @@ local Collectible = 1;
 local Name = "$Name$";
 local Description = "$Description$";
 local Plane = 480;
+local graphics_index = 0;
 
 // returns the color of the gem (used for effects)
 func GetGemColor()
@@ -14,8 +15,8 @@ func GetGemColor()
 func Initialize()
 {
 	AddEffect("Sparkle", this, 1, 30 + RandomX(-3, 3), this);
-	var gfx = Random(4);
-	if (gfx) SetGraphics(Format("%d", gfx+1));
+	graphics_index = Random(4);
+	if (graphics_index) SetGraphics(Format("%d", graphics_index+1));
 	return true;
 }
 
@@ -34,23 +35,24 @@ func FxSparkleStart(target, effect, temp)
 
 func FxSparkleTimer(target, effect, effect_time)
 {
-	if(this()->Contained() || !Random(2)) return FX_OK;
+	if(this->Contained() || !Random(2)) return FX_OK;
 	CreateParticle("MagicRing", 0, 0, 0, 0, effect.Interval, effect.particles, 1);
 	return FX_OK;
 }
 
 func IsValuable() { return true; }
+func QueryRebuy() { return true; }
 
-func QueryOnSell()
+func OnSale(int to_player, object sale_base)
 {
 	// Inform goal of gem sale
 	var goal = FindObject(Find_ID(Goal_SellGems));
 	if (goal) goal->OnGemSold();
-	return false; // do perform selling
+	return true;
 }
 
 func Hit()
 {
-	Sound("GlassHit*");
+	Sound("Hits::Materials::Glass::GlassHit*");
 	return true;
 }

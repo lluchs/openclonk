@@ -2,7 +2,7 @@
  * OpenClonk, http://www.openclonk.org
  *
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -18,16 +18,7 @@
 #ifndef STDBUF_H
 #define STDBUF_H
 
-#include "PlatformAbstraction.h"
-
 #include <zlib.h>
-
-#include <cstdlib>
-#include <cstring>
-#include <cassert>
-#include <cstdarg>
-#include <utility>
-#include <algorithm>
 
 // debug memory management
 #if defined(_DEBUG) && defined(_MSC_VER)
@@ -41,13 +32,13 @@ public:
 
 	// *** Construction
 	// Standard constructor
-	StdBuf() : fRef(true), pData(NULL), iSize(0) { }
+	StdBuf() = default;
 
 	// Constructor from other buffer (copy construction):
 	// Will take over buffer ownership. Copies data if specified.
 	// Note: Construct with Buf2.getRef() to construct a reference (This will work for a constant Buf2, too)
 	StdBuf(StdBuf & Buf2, bool fCopy = false)
-			: fRef(true), pData(NULL), iSize(0)
+			: pData(nullptr)
 	{
 		if (fCopy)
 			Copy(Buf2);
@@ -56,30 +47,26 @@ public:
 		else
 			Ref(Buf2);
 	}
-#ifdef HAVE_RVALUE_REF
 	StdBuf(const StdBuf & Buf2, bool fCopy = true)
-			: fRef(true), pData(NULL), iSize(0)
+			: pData(nullptr)
 	{
 		if (fCopy)
 			Copy(Buf2);
 		else
 			Ref(Buf2);
 	}
-	StdBuf(StdBuf RREF Buf2, bool fCopy = false)
-			: fRef(true), pData(NULL), iSize(0)
+	StdBuf(StdBuf && Buf2) noexcept
+			: pData(nullptr)
 	{
-		if (fCopy)
-			Copy(Buf2);
-		else if (!Buf2.isRef())
+		if (!Buf2.isRef())
 			Take(std::move(Buf2));
 		else
 			Ref(Buf2);
 	}
-#endif
 
 	// Set by constant data. Copies data if desired.
 	StdBuf(const void *pData, size_t iSize, bool fCopy = false)
-			: fRef(true), pData(pData), iSize(iSize)
+			: pData(pData), iSize(iSize)
 	{
 		if (fCopy) Copy();
 	}
@@ -89,22 +76,20 @@ public:
 		Clear();
 	}
 
-	ALLOW_TEMP_TO_REF(StdBuf)
-
 protected:
 
 	// Reference? Otherwise, this object holds the data.
-	bool fRef;
+	bool fRef = true;
 	// Data
 	union
 	{
-		const void *pData;
+		const void *pData = nullptr;
 		void *pMData;
 #if defined(_DEBUG)
 		char *szString; // for debugger preview
 #endif
 	};
-	unsigned int iSize;
+	unsigned int iSize = 0;
 
 public:
 
@@ -147,7 +132,7 @@ public:
 	// Transfer puffer ownership to the caller
 	void *GrabPointer()
 	{
-		if (isNull()) return NULL;
+		if (isNull()) return nullptr;
 		// Do not give out a buffer which someone else will free
 		if (fRef) Copy();
 		void *pMData = getMData();
@@ -205,7 +190,7 @@ public:
 	void Clear()
 	{
 		if (!fRef) free(pMData);
-		pMData = NULL; fRef = true; iSize = 0;
+		pMData = nullptr; fRef = true; iSize = 0;
 	}
 	// Free buffer that had been grabbed
 	static void DeletePointer(void *data)
@@ -292,12 +277,10 @@ public:
 	{
 		Take(Buf2.GrabPointer(), Buf2.getSize());
 	}
-#ifdef HAVE_RVALUE_REF
-	void Take(StdBuf RREF Buf2)
+	void Take(StdBuf &&Buf2)
 	{
 		Take(Buf2.GrabPointer(), Buf2.getSize());
 	}
-#endif
 
 	// * File support
 	bool LoadFromFile(const char *szFile);
@@ -329,7 +312,7 @@ public:
 	bool operator != (const StdBuf &Buf2) const { return ! operator == (Buf2); }
 
 	// Set (as constructor: take if possible)
-	StdBuf &operator = (StdBuf RREF Buf2)
+	StdBuf &operator = (StdBuf &&Buf2)
 	{
 		if (Buf2.isRef()) Ref(Buf2); else Take(std::move(Buf2));
 		return *this;
@@ -369,8 +352,7 @@ class StdCopyBuf : public StdBuf
 {
 public:
 
-	StdCopyBuf()
-	{ }
+	StdCopyBuf() = default;
 
 	// Set by buffer. Copies data by default.
 	StdCopyBuf(const StdBuf &Buf2, bool fCopy = true)
@@ -381,14 +363,12 @@ public:
 	StdCopyBuf(const StdCopyBuf &Buf2, bool fCopy = true)
 			: StdBuf(Buf2.getRef(), fCopy)
 	{ }
-#ifdef HAVE_RVALUE_REF
-	StdCopyBuf(StdBuf RREF Buf2, bool fCopy = false)
-			: StdBuf(std::move(Buf2), fCopy)
+	StdCopyBuf(StdBuf & Buf2) noexcept
+			: StdBuf(std::move(Buf2))
 	{ }
-	StdCopyBuf(StdCopyBuf RREF Buf2, bool fCopy = false)
-			: StdBuf(std::move(Buf2), fCopy)
+	StdCopyBuf(StdCopyBuf &&Buf2) noexcept
+			: StdBuf(std::move(Buf2))
 	{ }
-#endif
 
 	// Set by constant data. Copies data by default.
 	StdCopyBuf(const void *pData, size_t iSize, bool fCopy = true)
@@ -407,9 +387,7 @@ public:
 
 	// *** Construction
 
-	StdStrBuf()
-			: StdBuf()
-	{ }
+	StdStrBuf() = default;
 
 	// See StdBuf::StdBuf. Will take data if possible.
 	// The static_cast is necessary to pass a rvalue reference to
@@ -421,16 +399,14 @@ public:
 			: StdBuf(Buf2, fCopy)
 	{ }
 
-#ifdef HAVE_RVALUE_REF
 	// This constructor is important, because the compiler will create one
 	// otherwise, despite having two other constructors to choose from
 	StdStrBuf(const StdStrBuf & Buf2, bool fCopy = true)
 			: StdBuf(Buf2, fCopy)
 	{ }
-	StdStrBuf(StdStrBuf RREF Buf2, bool fCopy = false)
-			: StdBuf(std::move(Buf2), fCopy)
+	StdStrBuf(StdStrBuf && Buf2) noexcept
+			: StdBuf(std::move(Buf2))
 	{ }
-#endif
 
 	// Set by constant data. References data by default, copies if specified.
 	explicit StdStrBuf(const char *pData, bool fCopy = false)
@@ -457,8 +433,6 @@ public:
 	StdStrBuf(const char *pData, size_t iLength, bool fCopy = false)
 			: StdBuf(pData, pData ? iLength + 1 : 0, fCopy)
 	{ }
-
-	ALLOW_TEMP_TO_REF(StdStrBuf)
 
 public:
 
@@ -487,9 +461,7 @@ public:
 	void Ref(const StdStrBuf &Buf2) { StdBuf::Ref(Buf2.getData(), Buf2.getSize()); }
 	StdStrBuf getRef() const { return StdStrBuf(getData(), getLength()); }
 	void Take(StdStrBuf & Buf2) { StdBuf::Take(Buf2); }
-#ifdef HAVE_RVALUE_REF
-	void Take(StdStrBuf RREF Buf2) { StdBuf::Take(std::move(Buf2)); }
-#endif
+	void Take(StdStrBuf &&Buf2) { StdBuf::Take(std::move(Buf2)); }
 	
 	void Clear() { StdBuf::Clear(); }
 	void Copy() { StdBuf::Copy(); }
@@ -498,16 +470,27 @@ public:
 	StdStrBuf Duplicate() const { StdStrBuf Buf; Buf.Copy(*this); return Buf; }
 	void Move(size_t iFrom, size_t inSize, size_t iTo = 0) { StdBuf::Move(iFrom, inSize, iTo); }
 
-	// Byte-wise compare (will compare characters up to the length of the second string)
+	// Byte-wise compare (will compare this string from iAt to the full string in Buf2)
 	int Compare(const StdStrBuf &Buf2, size_t iAt = 0) const
 	{
 		assert(iAt <= getLength());
-		return StdBuf::Compare(Buf2.getData(), Buf2.getLength(), iAt);
+		const int result = StdBuf::Compare(Buf2.getData(), std::min(getLength() - iAt, Buf2.getLength()), iAt);
+		if (result) return result;
+
+		if (getLength() < Buf2.getLength() + iAt) return -1;
+		else if (getLength() > Buf2.getLength() + iAt) return 1;
+		return 0;
 	}
 	int Compare_(const char *pCData, size_t iAt = 0) const
 	{
 		StdStrBuf str(pCData); // GCC needs this, for some obscure reason
 		return Compare(str, iAt);
+	}
+	bool BeginsWith(const char *beginning) const
+	{
+		// Return whether string starts with beginning
+		return strncmp((const char 
+			*)pData, beginning, strlen(beginning)) == 0;
 	}
 
 	// Grows the string to contain the specified number more/less characters.
@@ -535,7 +518,6 @@ public:
 	// Append string
 	void Append(const char *pnData, size_t iChars)
 	{
-		//assert(iChars <= std::strlen(pnData));
 		Grow(iChars);
 		Write(pnData, iChars, iSize - iChars - 1);
 	}
@@ -567,6 +549,7 @@ public:
 	StdStrBuf &operator += (const char *szString) { Append(szString); return *this; }
 	StdStrBuf operator + (const StdStrBuf &Buf2) const { StdStrBuf Buf = getRef(); Buf.Append(Buf2); return Buf; }
 	StdStrBuf operator + (const char *szString) const { StdStrBuf Buf = getRef(); Buf.Append(szString); return Buf; }
+	StdStrBuf operator + (char c) const { StdStrBuf Buf = getRef(); Buf.AppendChar(c); return Buf; }
 
 	bool operator == (const StdStrBuf &Buf2) const
 	{
@@ -668,8 +651,8 @@ public:
 	// get an indexed section from the string like Section1;Section2;Section3
 	bool GetSection(size_t idx, StdStrBuf *psOutSection, char cSeparator=';') const;
 
-	// Checks whether the content is valid UTF-8, and if not, convert it from windows-1252 to UTF-8.
-	void EnsureUnicode();
+	// Checks whether the content is valid UTF-8, and if not, convert it from windows-1252 to UTF-8 and return true.
+	bool EnsureUnicode();
 
 	// convert to lower case
 	void ToLowerCase();
@@ -685,8 +668,8 @@ public:
 
 	void EscapeString()
 	{
-		Replace("\\", "\\\\");
-		Replace("\"", "\\\"");
+		Replace(R"(\)", R"(\\)");
+		Replace(R"(")", R"(\")");
 	}
 
 	bool TrimSpaces(); // kill spaces at beginning and end. Return if changed.
@@ -702,8 +685,7 @@ class StdCopyStrBuf : public StdStrBuf
 {
 public:
 
-	StdCopyStrBuf()
-	{ }
+	StdCopyStrBuf() = default;
 
 	explicit StdCopyStrBuf(const StdStrBuf &Buf2, bool fCopy = true)
 			: StdStrBuf(Buf2.getRef(), fCopy)
@@ -712,14 +694,12 @@ public:
 	StdCopyStrBuf(const StdCopyStrBuf &Buf2, bool fCopy = true)
 			: StdStrBuf(Buf2.getRef(), fCopy)
 	{ }
-#ifdef HAVE_RVALUE_REF
-	StdCopyStrBuf(StdStrBuf RREF Buf2, bool fCopy = false)
-			: StdStrBuf(std::move(Buf2), fCopy)
+	StdCopyStrBuf(StdStrBuf && Buf2) noexcept
+			: StdStrBuf(std::move(Buf2))
 	{ }
-	StdCopyStrBuf(StdCopyStrBuf RREF Buf2, bool fCopy = false)
-			: StdStrBuf(std::move(Buf2), fCopy)
+	StdCopyStrBuf(StdCopyStrBuf && Buf2) noexcept
+			: StdStrBuf(std::move(Buf2))
 	{ }
-#endif
 
 	// Set by constant data. Copies data if desired.
 	explicit StdCopyStrBuf(const char *pData, bool fCopy = true)
@@ -730,24 +710,28 @@ public:
 	explicit StdCopyStrBuf(const wchar_t * utf16): StdStrBuf(utf16) {}
 #endif
 
+	StdCopyStrBuf(const std::string &s) noexcept
+		: StdStrBuf(s.c_str(), s.size(), true)
+	{ }
+
 	StdCopyStrBuf &operator = (const StdStrBuf &Buf2) { Copy(Buf2); return *this; }
 	StdCopyStrBuf &operator = (const StdCopyStrBuf &Buf2) { Copy(Buf2); return *this; }
 	StdCopyStrBuf &operator = (const char *szString) { Copy(szString); return *this; }
+	StdCopyStrBuf &operator = (const std::string &s) { Copy(s.c_str(), s.size()); return *this; }
 
+	operator std::string() const
+	{
+		return std::string(getData(), getLength());
+	}
 };
-
-#if 0
-// const char* + StdStrBuf
-inline StdStrBuf operator + (const char* szString, const StdStrBuf& Buf2)
-{
-	StdStrBuf Buf(szString);
-	Buf.Append(Buf2);
-	return Buf;
-}
-#endif
 
 // Wrappers
 extern StdStrBuf FormatString(const char *szFmt, ...) GNUC_FORMAT_ATTRIBUTE;
 extern StdStrBuf FormatStringV(const char *szFmt, va_list args);
+
+#ifdef _WIN32
+// Converts a wide char string to UTF-8 std::string
+std::string WStrToString(wchar_t *s);
+#endif
 
 #endif

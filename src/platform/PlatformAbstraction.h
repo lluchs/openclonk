@@ -3,7 +3,7 @@
  *
  * Copyright (c) 1998-2000, Matthes Bender
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -20,9 +20,15 @@
 #ifndef INC_PLATFORMABSTRACTION
 #define INC_PLATFORMABSTRACTION
 
+#include <vector>
+
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif // HAVE_CONFIG_H
+
+#if defined(USE_WIN32_WINDOWS)
+#define USE_WGL
+#endif
 
 // We need to #define the target Windows version selector macros before we
 // including any MinGW header.
@@ -48,10 +54,6 @@
 #endif
 #endif
 
-#if defined(_WIN32) && !defined(USE_CONSOLE) && !defined(USE_SDL_MAINLOOP) && !defined(USE_X11) && !defined(USE_COCOA)
-#define USE_WIN32_WINDOWS
-#endif
-
 #ifdef _MSC_VER
 #define DEPRECATED __declspec(deprecated)
 #elif defined(__GNUC__)
@@ -67,20 +69,13 @@
 #pragma warning(disable: 4521) // multiple copy constructors specified
 // Get non-standard <cmath> constants (M_PI etc.)
 #	define _USE_MATH_DEFINES
+// Use IPv4 functions (inet_ntoa) since we don't support IPv6 yet.
+#define _WINSOCK_DEPRECATED_NO_WARNINGS
 #endif
-
-
-
-// C++0x nullptr
-#ifdef HAVE_NULLPTR
-#undef NULL
-#define NULL nullptr
-#endif
-
 
 
 // Integer dataypes
-#include <stdint.h>
+#include <cstdint>
 
 
 #ifdef HAVE_UNISTD_H
@@ -89,44 +84,22 @@
 typedef ptrdiff_t ssize_t;
 #endif
 
-
-
-#ifndef HAVE_STATIC_ASSERT
-#include <boost/static_assert.hpp>
-#ifndef BOOST_HAS_STATIC_ASSERT
-#define static_assert(x, y) BOOST_STATIC_ASSERT(x)
-#endif
-#endif
-
-
-
 #if defined(__GNUC__)
 // Allow checks for correct printf-usage
 #define GNUC_FORMAT_ATTRIBUTE __attribute__ ((format (printf, 1, 2)))
 #define GNUC_FORMAT_ATTRIBUTE_O __attribute__ ((format (printf, 2, 3)))
 #define ALWAYS_INLINE inline __attribute__ ((always_inline))
 #define NORETURN __attribute__ ((noreturn))
-#else
+#elif defined(_MSC_VER)
 #define GNUC_FORMAT_ATTRIBUTE
 #define GNUC_FORMAT_ATTRIBUTE_O
 #define ALWAYS_INLINE __forceinline
+#define NORETURN __declspec(noreturn)
+#else
+#define GNUC_FORMAT_ATTRIBUTE
+#define GNUC_FORMAT_ATTRIBUTE_O
+#define ALWAYS_INLINE inline
 #define NORETURN
-#endif
-
-
-
-// Temporary-To-Reference-Fix
-#if !defined(__clang__) && defined(__GNUC__) && ((__GNUC__ < 4) || (__GNUC__ == 4 && __GNUC_MINOR__ < 3))
-#define ALLOW_TEMP_TO_REF(ClassName) operator ClassName & () { return *this; }
-#else
-#define ALLOW_TEMP_TO_REF(ClassName)
-#endif
-
-#ifdef HAVE_RVALUE_REF
-# define RREF &&
-#else
-# define RREF &
-namespace std { template<typename T> inline T &move (T &t) { return t; } }
 #endif
 
 
@@ -141,10 +114,10 @@ namespace std { template<typename T> inline T &move (T &t) { return t; } }
 #  if defined(SIGTRAP)
 #    define BREAKPOINT_HERE raise(SIGTRAP);
 #  else
-#    define BREAKPOINT_HERE
+#    define BREAKPOINT_HERE ((void)0)
 #  endif
 #else
-#  define BREAKPOINT_HERE
+#  define BREAKPOINT_HERE ((void)0)
 #endif
 
 
@@ -196,6 +169,9 @@ bool IsGermanSystem();
 
 // open a weblink in an external browser
 bool OpenURL(const char* szURL);
+
+// reopen the engine with given parameters
+bool RestartApplication(std::vector<const char *> parameters);
 
 #ifdef _WIN32
 #include <io.h>

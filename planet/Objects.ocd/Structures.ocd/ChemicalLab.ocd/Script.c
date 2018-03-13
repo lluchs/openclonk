@@ -3,14 +3,19 @@
 #include Library_Structure
 #include Library_Ownable
 #include Library_Producer
+#include Library_LampPost
 
 local hold_production;
+
+public func LampPosition(id def) { return [GetCalcDir()*24,2]; }
 
 func Construction(object creator)
 {
 	SetAction("Default");
 	return _inherited(creator, ...);
 }
+
+public func IsHammerBuildable() { return true; }
 
 /*-- Production --*/
 
@@ -19,38 +24,33 @@ public func IsProduct(id product_id)
 	return product_id->~IsChemicalProduct();
 }
 
-private func ProductionTime(id toProduce) { return 100; }
-private func PowerNeed() { return 100; }
-
-public func NeedRawMaterial(id rawmat_id)
-{
-	return true;
-}
+private func ProductionTime(id product) { return _inherited(product, ...) ?? 100; }
+public func PowerNeed() { return 40; }
 
 public func OnProductionStart(id product)
 {
 	AddEffect("Working", this, 100, 1, this);
 	hold_production = false;
-	Sound("Boiling", false, nil, nil, 1);
+	Sound("Liquids::Boiling", {loop_count = 1});
 }
 
 public func OnProductionHold(id product)
 {
 	hold_production = true;
-	Sound("Boiling", false, nil, nil, -1);
-	Sound("Blowout");
+	Sound("Liquids::Boiling", {loop_count = -1});
+	Sound("Fire::Blowout");
 }
 
 public func OnProductionContinued(id product)
 {
 	hold_production = false;
-	Sound("Boiling", false, nil, nil, 1);
+	Sound("Liquids::Boiling", {loop_count = 1});
 }
 
 public func OnProductionFinish(id product)
 {
 	RemoveEffect("Working", this);
-	Sound("Boiling", false, nil, nil, -1);
+	Sound("Liquids::Boiling", {loop_count = -1});
 }
 
 protected func FxWorkingTimer()
@@ -61,7 +61,7 @@ protected func FxWorkingTimer()
 
 private func Smoking()
 {
-	Smoke(-10, -40, 6);
+	Smoke(-10, -28, 6);
 }
 
 local ActMap = {
@@ -80,5 +80,8 @@ local ActMap = {
 
 local Name = "$Name$";
 local Description ="$Description$";
+local ContainBlast = true;
 local BlastIncinerate = 100;
+local FireproofContainer = true;
 local HitPoints = 70;
+local Components = {Wood = 3, Metal = 2};

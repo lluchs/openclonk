@@ -101,7 +101,7 @@ public func Interact(object clonk)
 
 protected func Hit()
 {
-	Sound("MetalHit?");
+	Sound("Hits::Materials::Metal::LightMetalHit?");
 }
 
 func Construction(object constructor)
@@ -124,7 +124,7 @@ func SetRope(bool no_connect)
 		tower->SetRope(rope);
 	}
 	return rope;
-	/*rope = CreateObject(LiftTower_Rope,0,0,NO_OWNER);
+	/*rope = CreateObjectAbove(LiftTower_Rope,0,0,NO_OWNER);
 	if (!no_connect) rope->Connect(tower, this);
 	tower->SetRope(rope);
 	return rope;*/

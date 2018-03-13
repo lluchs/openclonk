@@ -71,6 +71,11 @@
         <col>The scenario will only load if the player gained this password in another scenario. See script function <funclink>GainMissionAccess</funclink>().</col>
       </row>
       <row>
+        <col>Secret</col>
+        <col>Bool</col>
+        <col>If true and MissionAccess is set, the scenario is invisible in the scenario selection list if the player does not have the required password access.</col>
+      </row>
+      <row>
         <col>ForcedFairCrew</col>
         <col>Integer</col>
         <col>0 or 1. If 1, fair crew is always used in this scenario.</col>
@@ -96,6 +101,11 @@
         <col>Description</col>
       </rowh>
       <row>
+        <col>Mode</col>
+        <col>String</col>
+        <col>General game mode of this scenario. Used by network and league servers to determine which league to host the game in. Currently suggested identifiers are: Melee, Parkour, Settlement, Defense. Strings should be valid identifiers.</col>
+      </row>
+      <row>
         <col>Rules</col>
         <col>ID list</col>
         <col>Game rules.</col>
@@ -111,9 +121,14 @@
         <col>List of definitions for which the values should be overridden. The amount will be the new value.</col>
       </row>
       <row>
-        <col>FoWColor</col>
-        <col>DWORD</col>
-        <col>Color of the fog of war</col>
+        <col>FoWEnabled</col>
+        <col>Bool</col>
+        <col>0 or 1. If 0, FoW is disabled, and the whole landscape is visible. Default 1.</col>
+      </row>
+      <row>
+        <col>EvaluateOnAbort</col>
+        <col>Bool</col>
+        <col>If enabled, the game will be evaluated even when aborted by the player. This is intended for scenarios like Tower of Despair that save progress in players. Default false.</col>
       </row>
     </table>
   </text>
@@ -238,7 +253,7 @@
       <row>
         <literal_col>AutoScanSideOpen</literal_col>
         <col>Integer</col>
-        <col>0 or 1. If 1, LeftOpen and RightOpen will be set automatically depending on the landscape at game start.</col>
+        <col>0, 1, or 2. If 1, the left and right borders are closed if the corresponding map pixel in the left or right row has non-sky foreground or background and open otherwise. If 2, it only checks the background.</col>
       </row>
       <row>
         <literal_col>MapWidth</literal_col>
@@ -253,7 +268,7 @@
       <row>
         <literal_col>MapZoom</literal_col>
         <col>4 integers</col>
-        <col>Factor for zooming the map to the real game world. Default is 10.</col>
+        <col>Factor for zooming the map to the real game world. Default is 8.</col>
       </row>
       <row>
         <literal_col>Amplitude</literal_col>
@@ -334,6 +349,11 @@
         <literal_col>FlatChunkShapes</literal_col>
         <col>Integer</col>
         <col>0 or 1. If 1, all landscape chunks are drawn flat when the map is zoomed to draw the landscape. Set this while drawing a static map in console mode to fix small gaps of lower order materials hidden behind materials of chunky shape.</col>
+      </row>
+      <row>
+        <literal_col>Secret</literal_col>
+        <col>Bool</col>
+        <col>Whether to hide the map from <code><funclink>NO_OWNER</funclink></code> viewports (e.g. observers not following a player in network rounds)</col>
       </row>
     </table>
   </text>

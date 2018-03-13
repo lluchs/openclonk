@@ -2,7 +2,7 @@
  * OpenClonk, http://www.openclonk.org
  * Copyright (c) 1998-2000, Matthes Bender
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -16,19 +16,16 @@
 
 /* Game configuration as stored in registry */
 
-#include <C4Include.h>
-#include <C4Config.h>
+#include "C4Include.h"
+#include "C4ForbidLibraryCompilation.h"
+#include "config/C4Config.h"
 
-#include <C4Version.h>
-#include <C4Log.h>
-#include <C4Components.h>
-#include <C4Network2.h>
-#include <C4Language.h>
+#include "C4Version.h"
+#include "c4group/C4Components.h"
+#include "network/C4Network2.h"
 
-#include <utility>
-#include <StdFile.h>
-#include <C4Window.h>
-#include <StdRegistry.h>
+#include "platform/C4Window.h"
+#include "platform/StdRegistry.h"
 
 #ifdef HAVE_SYS_STAT_H
 #include <sys/stat.h>
@@ -37,8 +34,16 @@
 #include <sys/types.h>
 #endif
 #ifdef HAVE_LOCALE_H
-#include <locale.h>
+#include <clocale>
 #endif
+
+#ifdef USE_CONSOLE
+#define DONCOFF 0
+#else
+#define DONCOFF 1
+#endif
+
+#include "game/C4Application.h"
 
 void C4ConfigGeneral::CompileFunc(StdCompiler *pComp)
 {
@@ -55,6 +60,9 @@ void C4ConfigGeneral::CompileFunc(StdCompiler *pComp)
 	pComp->Value(mkNamingAdapt(s(ConfigUserPath),   "UserDataPath",       "", false, true));
 	// assimilate old data
 	pComp->Value(mkNamingAdapt(s(Adopt.PlayerPath), "PlayerPath",       ""));
+
+	// temporary path only set during updates
+	pComp->Value(mkNamingAdapt(s(TempUpdatePath),   "TempUpdatePath",     ""));
 
 	pComp->Value(mkNamingAdapt(s(MissionAccess),    "MissionAccess",      "", false, true));
 	pComp->Value(mkNamingAdapt(FPS,                 "FPS",                0              ));
@@ -75,8 +83,30 @@ void C4ConfigGeneral::CompileFunc(StdCompiler *pComp)
 
 void C4ConfigDeveloper::CompileFunc(StdCompiler *pComp)
 {
-	pComp->Value(mkNamingAdapt(AutoFileReload,      "AutoFileReload",     1              ,false, true));
-	pComp->Value(mkNamingAdapt(ExtraWarnings,      "ExtraWarnings",     0              ,false, true));
+	pComp->Value(mkNamingAdapt(AutoFileReload,      "AutoFileReload",     1                    , false, true));
+	pComp->Value(mkNamingAdapt(s(TodoFilename),     "TodoFilename",       "{SCENARIO}/TODO.txt", false, true));
+	pComp->Value(mkNamingAdapt(s(AltTodoFilename),  "AltTodoFilename2",   "{USERPATH}/TODO.txt", false, true));
+	pComp->Value(mkNamingAdapt(MaxScriptMRU,        "MaxScriptMRU",       30                   , false, false));
+	pComp->Value(mkNamingAdapt(DebugShapeTextures,  "DebugShapeTextures", 0                    , false, true));
+	pComp->Value(mkNamingAdapt(ShowHelp,            "ShowHelp",           true                 , false, false));
+	for (int32_t i = 0; i < CFG_MaxEditorMRU; ++i)
+		pComp->Value(mkNamingAdapt(s(RecentlyEditedSzenarios[i]), FormatString("EditorMRU%02d", (int)i).getData(), "", false, false));
+}
+
+void C4ConfigDeveloper::AddRecentlyEditedScenario(const char *fn)
+{
+	if (!fn || !*fn) return;
+	// Put given scenario first in list by moving all other scenarios down
+	// Check how many scenarios to move down the list. Stop moving down when the given scenario is in the list
+	int32_t move_down_num;
+	for (move_down_num = 0; move_down_num < CFG_MaxEditorMRU - 1; ++move_down_num)
+		if (!strncmp(fn, RecentlyEditedSzenarios[move_down_num], CFG_MaxString))
+			break;
+	// Move them down
+	for (int32_t i = move_down_num; i > 0; --i)
+		strcpy(RecentlyEditedSzenarios[i], RecentlyEditedSzenarios[i - 1]);
+	// Put current scenario in
+	strncpy(RecentlyEditedSzenarios[0], fn, CFG_MaxString);
 }
 
 void C4ConfigGraphics::CompileFunc(StdCompiler *pComp)
@@ -88,43 +118,32 @@ void C4ConfigGraphics::CompileFunc(StdCompiler *pComp)
 	pComp->Value(mkNamingAdapt(RefreshRate,           "RefreshRate",          0             ));
 	pComp->Value(mkNamingAdapt(SplitscreenDividers,   "SplitscreenDividers",  1             ));
 	pComp->Value(mkNamingAdapt(ShowStartupMessages,   "ShowStartupMessages",  1             ,false, true));
-	pComp->Value(mkNamingAdapt(ColorAnimation,        "ColorAnimation",       0             ,false, true));
-	pComp->Value(mkNamingAdapt(HighResLandscape,      "HighResLandscape",     1             ,false, true));
 	pComp->Value(mkNamingAdapt(VerboseObjectLoading,  "VerboseObjectLoading", 0             ));
-	pComp->Value(mkNamingAdapt(VideoModule,           "VideoModule",          0             ,false, true));
 	pComp->Value(mkNamingAdapt(MenuTransparency,      "MenuTransparency",     1             ,false, true));
 	pComp->Value(mkNamingAdapt(UpperBoard,            "UpperBoard",           1             ,false, true));
 	pComp->Value(mkNamingAdapt(ShowClock,             "ShowClock",            0             ,false, true));
 	pComp->Value(mkNamingAdapt(ShowCrewNames,         "ShowCrewNames",        1             ,false, true));
-	pComp->Value(mkNamingAdapt(ShowCrewCNames,        "ShowCrewCNames",       1             ,false, true));
-	pComp->Value(mkNamingAdapt(BitDepth,              "BitDepth",             32            ,false, true));
+	pComp->Value(mkNamingAdapt(ShowCrewCNames,        "ShowCrewCNames",       0             ,false, true));
 	pComp->Value(mkNamingAdapt(Windowed,              "Windowed",             0             ,false, true));
 	pComp->Value(mkNamingAdapt(PXSGfx,                "PXSGfx"  ,             1             ));
-	pComp->Value(mkNamingAdapt(Gamma1,                "Gamma1"  ,             0             ));
-	pComp->Value(mkNamingAdapt(Gamma2,                "Gamma2"  ,             0x808080      ));
-	pComp->Value(mkNamingAdapt(Gamma3,                "Gamma3"  ,             0xffffff      ));
+	pComp->Value(mkNamingAdapt(Gamma,                 "Gamma"  ,              100           ));
 	pComp->Value(mkNamingAdapt(Currency,              "Currency"  ,           0             ));
-	pComp->Value(mkNamingAdapt(RenderInactiveEM,      "RenderInactiveEM",     1             ));
-	pComp->Value(mkNamingAdapt(DisableGamma,          "DisableGamma",         0             ,false, true));
 	pComp->Value(mkNamingAdapt(Monitor,               "Monitor",              0             )); // 0 = D3DADAPTER_DEFAULT
-	pComp->Value(mkNamingAdapt(FireParticles,         "FireParticles",        1         ));
 	pComp->Value(mkNamingAdapt(MaxRefreshDelay,       "MaxRefreshDelay",      30            ));
-	pComp->Value(mkNamingAdapt(EnableShaders,         "Shader",               0             ,false, true));
 	pComp->Value(mkNamingAdapt(NoOffscreenBlits,      "NoOffscreenBlits",     1             ));
-	pComp->Value(mkNamingAdapt(ClipManuallyE,         "ClipManuallyE",        1             ));
 	pComp->Value(mkNamingAdapt(MultiSampling,         "MultiSampling",        4             ));
 	pComp->Value(mkNamingAdapt(AutoFrameSkip,         "AutoFrameSkip",        1          ));
+	pComp->Value(mkNamingAdapt(MouseCursorSize,       "MouseCursorSize",      50            ));
 }
 
 void C4ConfigSound::CompileFunc(StdCompiler *pComp)
 {
-	pComp->Value(mkNamingAdapt(RXSound,               "Sound",                1             ,false, true));
-	pComp->Value(mkNamingAdapt(RXMusic,               "Music",                1             ,false, true));
-	pComp->Value(mkNamingAdapt(FEMusic,               "MenuMusic",            1             ,false, true));
-	pComp->Value(mkNamingAdapt(FESamples,             "MenuSound",            1             ,false, true));
-	pComp->Value(mkNamingAdapt(FMMode,                "FMMode",               1             ));
+	pComp->Value(mkNamingAdapt(RXSound,               "Sound",                DONCOFF       ,false, true));
+	pComp->Value(mkNamingAdapt(RXMusic,               "Music",                DONCOFF       ,false, true));
+	pComp->Value(mkNamingAdapt(FEMusic,               "MenuMusic",            DONCOFF       ,false, true));
+	pComp->Value(mkNamingAdapt(FESamples,             "MenuSound",            DONCOFF       ,false, true));
 	pComp->Value(mkNamingAdapt(Verbose,               "Verbose",              0             ));
-	pComp->Value(mkNamingAdapt(MusicVolume,           "MusicVolume",          100           ,false, true));
+	pComp->Value(mkNamingAdapt(MusicVolume,           "MusicVolume2",         40            ,false, true));
 	pComp->Value(mkNamingAdapt(SoundVolume,           "SoundVolume",          100           ,false, true));
 }
 
@@ -140,6 +159,7 @@ void C4ConfigNetwork::CompileFunc(StdCompiler *pComp)
 	pComp->Value(mkNamingAdapt(Comment,                 "Comment",              ""            ,false, true));
 	pComp->Value(mkNamingAdapt(PortTCP,                 "PortTCP",              C4NetStdPortTCP       ,false, true));
 	pComp->Value(mkNamingAdapt(PortUDP,                 "PortUDP",              C4NetStdPortUDP       ,false, true));
+	pComp->Value(mkNamingAdapt(EnableUPnP,              "EnableUPnP",           1             , false, true));
 	pComp->Value(mkNamingAdapt(PortDiscovery,           "PortDiscovery",        C4NetStdPortDiscovery ,false, true));
 	pComp->Value(mkNamingAdapt(PortRefServer,           "PortRefServer",        C4NetStdPortRefServer ,false, true));
 	pComp->Value(mkNamingAdapt(ControlMode,             "ControlMode",          0             ));
@@ -152,16 +172,18 @@ void C4ConfigNetwork::CompileFunc(StdCompiler *pComp)
 	pComp->Value(mkNamingAdapt(MasterReferencePeriod,   "MasterReferencePeriod",120           ));
 	pComp->Value(mkNamingAdapt(LeagueServerSignUp,      "LeagueServerSignUp",   0             ));
 	pComp->Value(mkNamingAdapt(UseAlternateServer,      "UseAlternateServer",   0             ));
-	pComp->Value(mkNamingAdapt(s(AlternateServerAddress),"AlternateServerAddress", "boom.openclonk.org:80/server/"));
+	pComp->Value(mkNamingAdapt(s(AlternateServerAddress),"AlternateServerAddress", "league.openclonk.org:80/league.php"));
 	pComp->Value(mkNamingAdapt(s(LastPassword),         "LastPassword",         "Wipf"        ));
 #ifdef WITH_AUTOMATIC_UPDATE
-	pComp->Value(mkNamingAdapt(s(UpdateServerAddress),  "UpdateServerAddress",     "boom.openclonk.org:80/server/"));
+	pComp->Value(mkNamingAdapt(s(UpdateServerAddress),  "UpdateServerAddress",     "www.openclonk.org:80/update/"));
 	pComp->Value(mkNamingAdapt(AutomaticUpdate,         "AutomaticUpdate",      0             ,false, true));
 	pComp->Value(mkNamingAdapt(LastUpdateTime,          "LastUpdateTime",       0             ));
 #endif
 	pComp->Value(mkNamingAdapt(AsyncMaxWait,            "AsyncMaxWait",         2             ));
+	pComp->Value(mkNamingAdapt(PacketLogging,           "PacketLogging",        0             ));
+	
 
-	pComp->Value(mkNamingAdapt(s(PuncherAddress),       "PuncherAddress",       "clonk.de:11115")); // maybe store default for this one?
+	pComp->Value(mkNamingAdapt(s(PuncherAddress),       "PuncherAddress",       "netpuncher.openclonk.org:11115"));
 	pComp->Value(mkNamingAdapt(mkParAdapt(LastLeagueServer, StdCompiler::RCT_All),     "LastLeagueServer",     ""            ));
 	pComp->Value(mkNamingAdapt(mkParAdapt(LastLeaguePlayerName, StdCompiler::RCT_All), "LastLeaguePlayerName", ""            ));
 	pComp->Value(mkNamingAdapt(mkParAdapt(LastLeagueAccount, StdCompiler::RCT_All),    "LastLeagueAccount",    ""            ));
@@ -176,7 +198,7 @@ void C4ConfigLobby::CompileFunc(StdCompiler *pComp)
 
 void C4ConfigIRC::CompileFunc(StdCompiler *pComp)
 {
-	pComp->Value(mkNamingAdapt(s(Server),               "Server",               "irc.ham.de.euirc.net", false, true));
+	pComp->Value(mkNamingAdapt(s(Server),               "Server",               "irc.euirc.net", false, true));
 	pComp->Value(mkNamingAdapt(s(Nick),                 "Nick",                 ""                    , false, true));
 	pComp->Value(mkNamingAdapt(s(RealName),             "RealName",             ""                    , false, true));
 	pComp->Value(mkNamingAdapt(s(Channel),              "Channel",              "#openclonk"    , false, true));
@@ -187,7 +209,7 @@ void C4ConfigSecurity::CompileFunc(StdCompiler *pComp)
 {
 	pComp->Value(mkNamingAdapt(WasRegistered,           "WasRegistered",        0                   ));
 #ifdef _WIN32
-	pComp->Value(mkNamingAdapt(s(KeyPath),              "KeyPath",              "%APPDATA%\\" C4ENGINENAME, false, true));
+	pComp->Value(mkNamingAdapt(s(KeyPath),              "KeyPath",              R"(%APPDATA%\)" C4ENGINENAME, false, true));
 #elif defined(__linux__)
 	pComp->Value(mkNamingAdapt(s(KeyPath),              "KeyPath",              "$HOME/.clonk/" C4ENGINENICK, false, true));
 #elif defined(__APPLE__)
@@ -236,8 +258,14 @@ void C4ConfigGamepad::Reset()
 void C4ConfigControls::CompileFunc(StdCompiler *pComp)
 {
 #ifndef USE_CONSOLE
+	if (pComp->isSerializer())
+	{
+		// The registry compiler is broken with arrays. It doesn't delete extra items if the config got shorter
+		// Solve it by defaulting the array before writing to it.
+		pComp->Default("UserSets");
+	}
 	pComp->Value(mkNamingAdapt(UserSets, "UserSets",    C4PlayerControlAssignmentSets()));
-	pComp->Value(mkNamingAdapt(MouseAScroll,      "MouseAutoScroll",      0));
+	pComp->Value(mkNamingAdapt(MouseAutoScroll,      "MouseAutoScroll",      0 /* change default 33 to enable */ ));
 	pComp->Value(mkNamingAdapt(GamepadGuiControl, "GamepadGuiControl",    0,     false, true));
 #endif
 }
@@ -349,11 +377,6 @@ bool C4Config::Load(const char *szConfigFile)
 	if (fWinSock) WSACleanup();
 #endif
 	General.DefaultLanguage();
-	// bit depth sanity check (might be corrupted by resolution check bug in old version)
-	if (Graphics.BitDepth < 16)
-	{
-		Graphics.BitDepth = 32;
-	}
 	// Warning against invalid ports
 	if (Config.Network.PortTCP>0 && Config.Network.PortTCP == Config.Network.PortRefServer)
 	{
@@ -369,8 +392,6 @@ bool C4Config::Load(const char *szConfigFile)
 	}
 	// Empty nick already defaults to GetRegistrationData("Nick") or
 	// Network.LocalName at relevant places.
-	/*if (!Network.Nick.getLength())
-	  Network.Nick.Copy(Network.LocalName); // assuming that LocalName will always contain some useful value*/
 	fConfigLoaded = true;
 	if (szConfigFile) ConfigFilename.Copy(szConfigFile); else ConfigFilename.Clear();
 	return true;
@@ -391,7 +412,7 @@ bool C4Config::Save()
 #endif
 		{
 			StdStrBuf filename;
-			GetConfigFileName(filename, ConfigFilename.getLength() ? ConfigFilename.getData() : NULL);
+			GetConfigFileName(filename, ConfigFilename.getLength() ? ConfigFilename.getData() : nullptr);
 			StdCompilerINIWrite IniWrite;
 			IniWrite.Decompile(*this);
 			IniWrite.getOutput().SaveToFile(filename.getData());
@@ -411,7 +432,7 @@ void C4ConfigGeneral::DeterminePaths()
 #ifdef _WIN32
 	// Exe path
 	wchar_t apath[CFG_MaxString];
-	if (GetModuleFileNameW(NULL,apath,CFG_MaxString))
+	if (GetModuleFileNameW(nullptr,apath,CFG_MaxString))
 	{
 		ExePath = StdStrBuf(apath);
 		TruncatePath(ExePath.getMData());
@@ -422,9 +443,9 @@ void C4ConfigGeneral::DeterminePaths()
 	GetTempPathW(CFG_MaxString,apath);
 	TempPath = StdStrBuf(apath);
 	if (TempPath[0]) TempPath.AppendBackslash();
-#elif defined(__linux__)
+#elif defined(PROC_SELF_EXE)
 	ExePath.SetLength(1024);
-	ssize_t l = readlink("/proc/self/exe", ExePath.getMData(), 1024);
+	ssize_t l = readlink(PROC_SELF_EXE, ExePath.getMData(), 1024);
 	if (l < -1)
 	{
 		ExePath.Ref(".");
@@ -455,7 +476,7 @@ void C4ConfigGeneral::DeterminePaths()
 	// Use ExePath: on windows, everything is installed to one directory
 	SCopy(ExePath.getMData(),SystemDataPath);
 #elif defined(__APPLE__)
-	SCopy(::Application.GetGameDataPath().getData(),SystemDataPath);
+	SCopy(::Application.GetGameDataPath().c_str(),SystemDataPath);
 #elif defined(WITH_AUTOMATIC_UPDATE)
 	// WITH_AUTOMATIC_UPDATE builds are our tarball releases and
 	// development snapshots, i.e. where the game data is at the
@@ -473,7 +494,7 @@ void C4ConfigGeneral::DeterminePaths()
 		SCopy(ConfigUserPath, UserDataPath);
 	else
 #if defined(_WIN32)
-		SCopy("%APPDATA%\\" C4ENGINENAME, UserDataPath);
+		SCopy(R"(%APPDATA%\)" C4ENGINENAME, UserDataPath);
 #elif defined(__APPLE__)
 		SCopy("$HOME/Library/Application Support/" C4ENGINENAME, UserDataPath);
 #else
@@ -573,7 +594,7 @@ const char* C4ConfigNetwork::GetLeagueServerAddress()
 		return AlternateServerAddress;
 	// Standard (hardcoded) official league server
 	else
-		return "boom.openclonk.org:80/server/";
+		return "league.openclonk.org:80/league.php";
 }
 
 void C4ConfigNetwork::CheckPortsForCollisions()
@@ -693,7 +714,7 @@ const char* C4Config::GetSubkeyPath(const char *strSubkey)
 {
 	static char key[1024 + 1];
 #ifdef _WIN32
-	sprintf(key, "Software\\%s\\%s\\%s", C4CFG_Company, C4ENGINENAME, strSubkey);
+	sprintf(key, R"(Software\%s\%s\%s)", C4CFG_Company, C4ENGINENAME, strSubkey);
 #else
 	sprintf(key, "%s", strSubkey);
 #endif
@@ -778,6 +799,35 @@ void C4Config::ExpandEnvironmentVariables(char *strPath, size_t iMaxLen)
 		strncpy(rest - SLen("$HOME"), home.getData(), home.getLength());
 	}
 #endif
+}
+
+void C4Config::CleanupTempUpdateFolder()
+{
+	// Get rid of update path present from before update
+	if (*General.TempUpdatePath)
+	{
+		EraseItem(General.TempUpdatePath);
+		*General.TempUpdatePath = '\0';
+	}
+}
+
+const char *C4Config::MakeTempUpdateFolder()
+{
+	// just pick a temp name
+	StdStrBuf sTempName;
+	sTempName.Copy(AtTempPath("update"));
+	MakeTempFilename(&sTempName);
+	SCopy(sTempName.getData(), General.TempUpdatePath);
+	CreatePath(General.TempUpdatePath);
+	return General.TempUpdatePath;
+}
+
+const char *C4Config::AtTempUpdatePath(const char *szFilename)
+{
+	SCopy(General.TempUpdatePath,AtPathFilename,_MAX_PATH-1);
+	AppendBackslash(AtPathFilename);
+	SAppend(szFilename,AtPathFilename,_MAX_PATH);
+	return AtPathFilename;
 }
 
 C4Config Config;

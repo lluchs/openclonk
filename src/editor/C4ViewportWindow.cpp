@@ -3,7 +3,7 @@
  *
  * Copyright (c) 1998-2000, Matthes Bender
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -17,29 +17,39 @@
 
 /* A viewport to each player */
 
-#include <C4Include.h>
-#include <C4ViewportWindow.h>
+#include "C4Include.h"
+#include "editor/C4ViewportWindow.h"
 
-#include <C4Viewport.h>
-#include <C4Console.h>
-#include <C4MouseControl.h>
-#include <C4GraphicsSystem.h>
-#include <C4Landscape.h>
-#include <C4PlayerList.h>
-#include <StdRegistry.h>
+#include "game/C4Viewport.h"
+#include "editor/C4Console.h"
+#include "landscape/C4Landscape.h"
+#include "player/C4PlayerList.h"
 
-#ifdef USE_X11
-#ifdef WITH_DEVELOPER_MODE
-#include <gtk/gtk.h>
-#endif
+
+#ifdef WITH_QT_EDITOR
+#include "editor/C4ConsoleQtViewport.h"
 #endif
 
-#ifdef USE_WIN32_WINDOWS
+#ifdef WITH_QT_EDITOR
+bool C4Viewport::ScrollBarsByViewPosition()
+{
+	if (PlayerLock) return false;
+	scrollarea->ScrollBarsByViewPosition();
+	return true;
+}
+
+bool C4Viewport::TogglePlayerLock()
+{
+	PlayerLock = !PlayerLock;
+	scrollarea->setScrollBarVisibility(!PlayerLock);
+	ScrollBarsByViewPosition();
+	return true;
+}
+
+#elif defined(USE_WIN32_WINDOWS)
 
 void UpdateWindowLayout(HWND hwnd)
 {
-	bool fMinimized = !!IsIconic(hwnd);
-	bool fMaximized = !!IsZoomed(hwnd);
 	RECT rect;
 	GetWindowRect(hwnd,&rect);
 	MoveWindow(hwnd,rect.left,rect.top,rect.right-rect.left-1,rect.bottom-rect.top,true);
@@ -74,11 +84,11 @@ bool C4Viewport::ViewPositionByScrollBars()
 	// Vertical
 	scroll.fMask=SIF_POS;
 	GetScrollInfo(pWindow->hWindow,SB_VERT,&scroll);
-	ViewY=float(scroll.nPos);
+	SetViewY(float(scroll.nPos));
 	// Horizontal
 	scroll.fMask=SIF_POS;
 	GetScrollInfo(pWindow->hWindow,SB_HORZ,&scroll);
-	ViewX=float(scroll.nPos);
+	SetViewX(float(scroll.nPos));
 	return true;
 }
 
@@ -90,92 +100,34 @@ bool C4Viewport::ScrollBarsByViewPosition()
 	// Vertical
 	scroll.fMask=SIF_ALL;
 	scroll.nMin=0;
-	scroll.nMax=GBackHgt;
+	scroll.nMax = ::Landscape.GetHeight() * Zoom;
 	scroll.nPage=ViewHgt;
-	scroll.nPos=int(ViewY);
+	scroll.nPos=int(GetViewY() * Zoom);
 	SetScrollInfo(pWindow->hWindow,SB_VERT,&scroll,true);
 	// Horizontal
 	scroll.fMask=SIF_ALL;
 	scroll.nMin=0;
-	scroll.nMax=GBackWdt;
+	scroll.nMax=::Landscape.GetWidth() * Zoom;
 	scroll.nPage=ViewWdt;
-	scroll.nPos=int(ViewX);
+	scroll.nPos = int(GetViewX() * Zoom);
 	SetScrollInfo(pWindow->hWindow,SB_HORZ,&scroll,true);
 	return true;
 }
 
-#elif defined(WITH_DEVELOPER_MODE)
-bool C4Viewport::TogglePlayerLock()
-{
-	if (PlayerLock)
-	{
-		PlayerLock = false;
-		gtk_widget_show(pWindow->h_scrollbar);
-		gtk_widget_show(pWindow->v_scrollbar);
-		ScrollBarsByViewPosition();
-	}
-	else
-	{
-		PlayerLock = true;
-		gtk_widget_hide(pWindow->h_scrollbar);
-		gtk_widget_hide(pWindow->v_scrollbar);
-	}
-
-	return true;
-}
-
-bool C4Viewport::ScrollBarsByViewPosition()
-{
-	if (PlayerLock) return false;
-	
-	GtkAllocation allocation;
-	gtk_widget_get_allocation(GTK_WIDGET(pWindow->render_widget), &allocation);
-
-	GtkAdjustment* adjustment = gtk_range_get_adjustment(GTK_RANGE(pWindow->h_scrollbar));
-
-	gtk_adjustment_configure(adjustment,
-	                         ViewX, // value
-	                         0, // lower
-	                         GBackWdt, // upper
-	                         ViewportScrollSpeed, // step_increment
-	                         allocation.width / Zoom, // page_increment
-	                         allocation.width / Zoom // page_size
-	                         );
-
-	adjustment = gtk_range_get_adjustment(GTK_RANGE(pWindow->v_scrollbar));
-	gtk_adjustment_configure(adjustment,
-	                         ViewY, // value
-	                         0, // lower
-	                         GBackHgt, // upper
-	                         ViewportScrollSpeed, // step_increment
-	                         allocation.height / Zoom, // page_increment
-	                         allocation.height / Zoom // page_size
-	                         );
-	return true;
-}
-
-bool C4Viewport::ViewPositionByScrollBars()
-{
-	if (PlayerLock) return false;
-
-	GtkAdjustment* adjustment = gtk_range_get_adjustment(GTK_RANGE(pWindow->h_scrollbar));
-	ViewX = static_cast<int32_t>(gtk_adjustment_get_value(adjustment));
-
-	adjustment = gtk_range_get_adjustment(GTK_RANGE(pWindow->v_scrollbar));
-	ViewY = static_cast<int32_t>(gtk_adjustment_get_value(adjustment));
-
-	return true;
-}
-
-#endif // WITH_DEVELOPER_MODE
+#endif
 
 void C4ViewportWindow::PerformUpdate()
 {
+#ifdef WITH_QT_EDITOR
+	if (viewport_widget)
+		viewport_widget->update();
+#else
 	if (cvp)
 	{
 		cvp->UpdateOutputSize();
 		cvp->Execute();
 	}
+#endif
 }
 
 C4Window * C4ViewportWindow::Init(int32_t Player)
@@ -188,8 +140,10 @@ C4Window * C4ViewportWindow::Init(int32_t Player)
 	if (!result) return result;
 
 	pSurface = new C4Surface(&Application, this);
+#ifndef WITH_QT_EDITOR
 	// Position and size
 	RestorePosition(FormatString("Viewport%i", Player+1).getData(), Config.GetSubkeyPath("Console"));
+#endif
 	return result;
 }
 
@@ -199,5 +153,5 @@ void C4ViewportWindow::Close()
 }
 void C4ViewportWindow::EditCursorMove(int X, int Y, uint32_t state)
 {
-	Console.EditCursor.Move(cvp->ViewX + X / cvp->Zoom, cvp->ViewY + Y / cvp->Zoom, state);
+	Console.EditCursor.Move(cvp->WindowToGameX(X), cvp->WindowToGameY(Y), cvp->GetZoom(), state);
 }

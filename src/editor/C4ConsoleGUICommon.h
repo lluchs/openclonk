@@ -2,7 +2,7 @@
  * OpenClonk, http://www.openclonk.org
  *
  * Copyright (c) 2005, Günther Brammer
- * Copyright (c) 2010-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2010-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -47,11 +47,14 @@ void C4ToolsDlg::Clear()
 
 void C4ToolsDlg::Default()
 {
-	state->Default();
 	Active = false;
 	Tool = SelectedTool = C4TLS_Brush;
 	Grade = C4TLS_GradeDefault;
 	ModeIFT = true;
 	SCopy("Earth",Material);
 	SCopy("earth",Texture);
+	ModeBack = false;
+	SCopy("Tunnel", BackMaterial);
+	SCopy("tunnel", BackTexture);
+	state->Default();
 }

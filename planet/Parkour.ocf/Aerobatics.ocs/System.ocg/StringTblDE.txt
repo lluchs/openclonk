@@ -1,0 +1,5 @@
+# Intro sequence messages
+MsgLetAerobaticsBegin=Liebe TeilnehmerInnen, in diesem Wettkampf werden Sie einige Risikos eingehen, um zu gewinnen. Graben, klettern, springen oder sich von Insel zu Insel sprengen - seien Sie der / die Erste, welche/n ich am Ziel treffe. Möge die Aerobatik beginnen!
+
+# Wind bag description
+MsgWindBagUsageCount=In dieser Runde können mit dem Windbeutel nur eine begrenzte Anzahl an Windstößen abgegeben werden.

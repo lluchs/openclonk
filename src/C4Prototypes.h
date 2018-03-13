@@ -3,7 +3,7 @@
  *
  * Copyright (c) 1998-2000, Matthes Bender
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2010-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2010-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -23,14 +23,17 @@
 // class declarations
 class C4AbstractApp;
 class C4Action;
-struct C4AulContext;
+class C4AulBCC;
 class C4AulDefFunc;
+class C4AulExec;
 class C4AulFunc;
 struct C4AulParSet;
-class C4AulScript;
+struct C4AulScriptContext;
 class C4AulScriptEngine;
 class C4AulScriptFunc;
 class C4BltTransform;
+class C4Client;
+class C4ClientCore;
 class C4ClientList;
 class C4ClientPlayerInfos;
 class C4Command;
@@ -67,6 +70,7 @@ class C4League;
 class C4LoaderScreen;
 class C4LSector;
 class C4LSectors;
+class C4MainMenu;
 class C4MapCreatorS2;
 class C4Markup;
 class C4MassMover;
@@ -76,12 +80,13 @@ class C4MaterialList;
 class C4MaterialMap;
 class C4Menu;
 class C4MenuItem;
+class C4MeshDenumerator;
 class C4MouseControl;
 class C4NameList;
-class C4Network;
-class C4NetworkClient;
-class C4NetworkClientList;
+class C4Network2Client;
+class C4Network2IOConnection;
 class C4Network2IRCClient;
+class C4Network2RefClient;
 class C4Network2Reference;
 class C4Network2ResDlg;
 class C4Network2Stats;
@@ -90,7 +95,7 @@ class C4ObjectInfo;
 class C4ObjectInfoCore;
 class C4ObjectLink;
 class C4ObjectList;
-class C4Packet;
+class C4PacketJoinData;
 class C4PathFinder;
 class C4Pattern;
 class C4Playback;
@@ -101,6 +106,7 @@ class C4PlayerInfoList;
 class C4PlayerInfoListBox;
 class C4PlayerList;
 class C4PropList;
+class C4PropListStatic;
 class C4PXS;
 class C4PXSSystem;
 class C4RankSystem;
@@ -124,6 +130,8 @@ class C4TexMapEntry;
 class C4TexMgr;
 class C4TexRef;
 class C4TextureMap;
+class C4TransferZone;
+class C4TransferZones;
 class C4Value;
 class C4ValueArray;
 class C4ValueNumbers;
@@ -139,17 +147,29 @@ class CStdVectorFont;
 class CSurface8;
 class StdCompiler;
 class StdMesh;
+class StdMeshAnimation;
+class StdMeshAnimationUpdate;
 class StdMeshBone;
 class StdMeshInstance;
+class StdMeshInstanceAnimationNode;
 class StdMeshMaterial;
+class StdMeshMaterialUpdate;
 class StdMeshMatManager;
 class StdMeshMatrix;
 class StdMeshSkeletonLoader;
+class StdMeshUpdate;
+class StdStrBuf;
 
+namespace C4GameLobby
+{
+	class Countdown;
+	class MainDlg;
+}
 namespace C4GUI
 {
 	class ComboBox_FillCB;
 	class Dialog;
+	class FrameDecoration;
 	class Screen;
 }
 typedef C4GUI::Screen C4GUIScreen;

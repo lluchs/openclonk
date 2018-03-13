@@ -1,43 +1,41 @@
 /*
  * OpenClonk, http://www.openclonk.org
  *
- * Portions might be copyrighted by other authors who have contributed
- * to OpenClonk.
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
- * Permission to use, copy, modify, and/or distribute this software for any
- * purpose with or without fee is hereby granted, provided that the above
- * copyright notice and this permission notice appear in all copies.
- * See isc_license.txt for full license and disclaimer.
+ * Distributed under the terms of the ISC license; see accompanying file
+ * "COPYING" for details.
  *
- * "Clonk" is a registered trademark of Matthes Bender.
- * See clonk_trademark_license.txt for full license.
+ * "Clonk" is a registered trademark of Matthes Bender, used with permission.
+ * See accompanying file "TRADEMARK" for details.
+ *
+ * To redistribute this file separately, substitute the full license texts
+ * for the above references.
  */
 
 #include <GL/glew.h>
 
-#include <C4Include.h>
-#include <C4Console.h>
-#include <C4Application.h>
+#include "C4Include.h"
+#include "editor/C4Console.h"
 
-#include <C4GameSave.h>
-#include <C4Game.h>
-#include <C4MessageInput.h>
-#include <C4Version.h>
-#include <C4Language.h>
-#include <C4Player.h>
-#include <C4Landscape.h>
-#include <C4GraphicsSystem.h>
-#include <C4PlayerList.h>
-#include <C4GameControl.h>
-#include <C4Texture.h>
+#include "game/C4Application.h"
+#include "control/C4GameSave.h"
+#include "gui/C4MessageInput.h"
+#include "C4Version.h"
+#include "player/C4Player.h"
+#include "landscape/C4Landscape.h"
+#include "landscape/C4Sky.h"
+#include "game/C4GraphicsSystem.h"
+#include "player/C4PlayerList.h"
+#include "control/C4GameControl.h"
+#include "landscape/C4Texture.h"
 
-#include <StdFile.h>
-#include <StdRegistry.h>
+#include "platform/StdRegistry.h"
 
 #import <Cocoa/Cocoa.h>
-#import "C4AppDelegate.h"
-#import "C4EditorWindowController.h"
-#import "C4DrawGLMac.h"
+#import "platform/C4AppDelegate.h"
+#import "editor/C4EditorWindowController.h"
+#import "graphics/C4DrawGLMac.h"
 
 // implementation of C4Console GUI for Mac OS X
 
@@ -62,14 +60,18 @@ public:
 	void Clear() {}
 };
 
-C4Window* C4ConsoleGUI::CreateConsoleWindow(C4AbstractApp *application)
+bool C4ConsoleGUI::CreateConsoleWindow(C4AbstractApp *application)
 {
 	C4WindowController* controller = [C4EditorWindowController new];
 	setObjectiveCObject(controller);
 	[NSBundle loadNibNamed:@"Editor" owner:controller];
 	[controller setStdWindow:this];
 	this->Active = true;
-	return this;
+	return true;
+}
+
+void C4ConsoleGUI::DeleteConsoleWindow()
+{
 }
 
 void C4ConsoleGUI::Out(const char* message)
@@ -171,7 +173,7 @@ void C4ConsoleGUI::PropertyDlgClose()
 	[ctrler(this).objectsPanel orderOut:nil];
 }
 
-void C4ConsoleGUI::PropertyDlgUpdate(C4ObjectList &rSelection)
+void C4ConsoleGUI::PropertyDlgUpdate(C4EditCursorSelection &rSelection, bool force_function_update)
 {	
 	if (![ctrler(this).objectsPanel isVisible])
 		return;
@@ -221,7 +223,7 @@ void C4ToolsDlg::UpdateTextures()
 	[texturesPopup removeAllItems];
 	// bottom-most: any invalid textures
 	bool fAnyEntry = false; int32_t cnt; const char *szTexture;
-	if (::Landscape.Mode!=C4LSC_Exact)
+	if (::Landscape.GetMode()!=LandscapeMode::Exact)
 		for (cnt=0; (szTexture=::TextureMap.GetTexture(cnt)); cnt++)
 		{
 			if (!::TextureMap.GetIndex(Material, szTexture, false))
@@ -240,18 +242,13 @@ void C4ToolsDlg::UpdateTextures()
 	for (cnt=0; (szTexture=::TextureMap.GetTexture(cnt)); cnt++)
 	{
 		// Current material-texture valid? Always valid for exact mode
-		if (::TextureMap.GetIndex(Material,szTexture,false) || ::Landscape.Mode==C4LSC_Exact)
+		if (::TextureMap.GetIndex(Material,szTexture,false) || ::Landscape.GetMode()==LandscapeMode::Exact)
 		{
 			[texturesPopup insertItemWithTitle:[NSString stringWithUTF8String:szTexture] atIndex:0];
 		}
 	}
 	// reselect current
 	[texturesPopup selectItemWithTitle:[NSString stringWithUTF8String:Texture]];
-}
-
-void C4ConsoleGUI::ToolsDlgSetTexture(class C4ToolsDlg *dlg, const char *texture)
-{
-	[ctrler(this).texturesPopup selectItemWithTitle:[NSString stringWithUTF8String:texture]];
 }
 
 void C4ToolsDlg::NeedPreviewUpdate()
@@ -292,7 +289,7 @@ CGImageRef C4ToolsDlg::State::CreatePreviewImage()
 	iPrvWdt = [ctrler(&Console).previewView frame].size.width;
 	iPrvHgt = [ctrler(&Console).previewView frame].size.height;
 
-	if (!(sfcPreview=new C4Surface(iPrvWdt,iPrvHgt))) return NULL;
+	if (!(sfcPreview=new C4Surface(iPrvWdt,iPrvHgt,0))) return NULL;
 
 	// fill bg
 	BYTE bCol = 0;
@@ -300,7 +297,7 @@ CGImageRef C4ToolsDlg::State::CreatePreviewImage()
 	// Sky material: sky as pattern only
 	if (SEqual(GetOwner()->Material,C4TLS_MatSky))
 	{
-		Pattern.Set(::Landscape.Sky.Surface, 0);
+		Pattern.Set(::Landscape.GetSky().Surface, 0);
 	}
 	// Material-Texture
 	else
@@ -342,11 +339,6 @@ CGImageRef C4ToolsDlg::State::CreatePreviewImage()
 	return image;
 }
 
-void C4ConsoleGUI::ToolsDlgSetMaterial(class C4ToolsDlg *dlg, const char *material)
-{
-	[ctrler(this).texturesPopup selectItemWithTitle:[NSString stringWithUTF8String:material]];
-}
-
 void C4ToolsDlg::InitGradeCtrl()
 {
 }
@@ -370,6 +362,16 @@ void C4ConsoleGUI::ToolsDlgSelectTexture(C4ToolsDlg *dlg, const char *texture)
 void C4ConsoleGUI::ToolsDlgSelectMaterial(C4ToolsDlg *dlg, const char *material)
 {
 	[ctrler(this).materialsPopup selectItemWithTitle:[NSString stringWithUTF8String:material]];
+}
+
+void C4ConsoleGUI::ToolsDlgSelectBackTexture(C4ToolsDlg *dlg, const char *texture)
+{
+	// TODO
+}
+
+void C4ConsoleGUI::ToolsDlgSelectBackMaterial(C4ToolsDlg *dlg, const char *material)
+{
+	// TODO
 }
 
 void C4ToolsDlg::UpdateIFTControls()
@@ -410,16 +412,11 @@ void C4ToolsDlg::EnableControls()
 	NeedPreviewUpdate();
 }
 
-void C4ConsoleGUI::ClearInput()
-{
-	[ctrler(this).consoleCombo setStringValue:[NSString string]];
-}
-
 void C4ConsoleGUI::ClearPlayerMenu()
 {
 }
 
-void C4ConsoleGUI::AddNetMenuItemForPlayer(int32_t index, StdStrBuf &text)
+void C4ConsoleGUI::AddNetMenuItemForPlayer(int32_t index, StdStrBuf &text, C4ConsoleGUI::ClientOperation op)
 {
 	NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:[NSString stringWithCString:text.getData() encoding:NSUTF8StringEncoding] action:@selector(kickPlayer:) keyEquivalent:[NSString string]];
 	[item setTarget:ctrler(this)];
@@ -428,6 +425,7 @@ void C4ConsoleGUI::AddNetMenuItemForPlayer(int32_t index, StdStrBuf &text)
 
 void C4ConsoleGUI::SetInputFunctions(std::list<const char*> &functions)
 {
+	[ctrler(this).consoleCombo setStringValue:[NSString string]];
 	[ctrler(this) setInputFunctions:functions];
 }
 
@@ -457,4 +455,4 @@ bool C4ConsoleGUI::UpdateModeCtrls(int iMode)
 }
 
 #define CONSOLEGUICOMMONINCLUDE
-#include "C4ConsoleGUICommon.h"
+#include "editor/C4ConsoleGUICommon.h"

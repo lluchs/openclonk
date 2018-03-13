@@ -2,7 +2,7 @@
  * OpenClonk, http://www.openclonk.org
  *
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -16,25 +16,21 @@
 /* Update package support */
 
 #ifndef INC_C4GroupEx
-
 #define INC_C4GroupEx
 
-#include "C4Group.h"
-#include "C4InputValidation.h"
+#include "lib/C4InputValidation.h"
 
 const int C4UP_MaxUpGrpCnt = 50;
 
 class C4UpdatePackageCore
 {
 public:
-	C4UpdatePackageCore();  // ctor
-public:
-	int32_t RequireVersion[4];
-	char Name[C4MaxName+1];
-	char DestPath[_MAX_PATH+1];
-	int32_t GrpUpdate;
-	int32_t UpGrpCnt; // number of file versions that can be updated by this package
-	uint32_t GrpChks1[C4UP_MaxUpGrpCnt], GrpChks2;
+	int32_t RequireVersion[4] = { 0, 0, 0, 0 };
+	char Name[C4MaxName + 1] = { 0 };
+	char DestPath[_MAX_PATH + 1] = { 0 };
+	int32_t GrpUpdate = 0;
+	int32_t UpGrpCnt = 0; // number of file versions that can be updated by this package
+	uint32_t GrpChks1[C4UP_MaxUpGrpCnt] = { 0 }, GrpChks2 = 0;
 public:
 	void CompileFunc(StdCompiler *pComp);
 	bool Load(C4Group &hGroup);
@@ -55,7 +51,7 @@ public:
 	bool Execute(C4Group *pGroup);
 	static bool Optimize(C4Group *pGrpFrom, const char *strTarget);
 	int  Check(C4Group *pGroup);
-	bool MakeUpdate(const char *strFile1, const char *strFile2, const char *strUpdateFile, const char *strName = NULL);
+	bool MakeUpdate(const char *strFile1, const char *strFile2, const char *strUpdateFile, const char *strName = nullptr);
 
 protected:
 	bool DoUpdate(C4Group *pGrpFrom, class C4GroupEx *pGrpTo, const char *strFileName);

@@ -1,0 +1,2 @@
+Name=Boiling acid
+Description=Causes acid on the map to boil.

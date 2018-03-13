@@ -23,6 +23,8 @@
 
 */
 
+local Plane = 300;
+
 local toSpawn;
 
 static ItemSpark_particle;
@@ -81,11 +83,11 @@ global func FxGlobalItemSparksTimer(_, effect, time)
 		}
 		count=2;
 		
-		var s=CreateObject(ItemSpark, LandscapeWidth()-x, 1, NO_OWNER);
+		var s=CreateObjectAbove(ItemSpark, LandscapeWidth()-x, 1, NO_OWNER);
 		s.toSpawn=what;
 	}
 	
-	var s=CreateObject(ItemSpark, x, 1, NO_OWNER);
+	var s=CreateObjectAbove(ItemSpark, x, 1, NO_OWNER);
 	s.toSpawn=what;
 }
 
@@ -184,7 +186,7 @@ func DoSpawn()
 {
 	if(toSpawn == nil)
 		toSpawn=GameCall("GetSparkItem", GetX(), GetY());
-	var item = CreateObject(toSpawn, 0, 0, NO_OWNER);
+	var item = CreateObjectAbove(toSpawn, 0, 0, NO_OWNER);
 	
 	if (item)
 	{

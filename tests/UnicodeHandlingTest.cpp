@@ -1,19 +1,21 @@
 /*
  * OpenClonk, http://www.openclonk.org
  *
- * Copyright (c) 2011  Nicolas Hake
+ * Copyright (c) 2011, The OpenClonk Team and contributors
  *
- * Permission to use, copy, modify, and/or distribute this software for any
- * purpose with or without fee is hereby granted, provided that the above
- * copyright notice and this permission notice appear in all copies.
- * See isc_license.txt for full license and disclaimer.
+ * Distributed under the terms of the ISC license; see accompanying file
+ * "COPYING" for details.
  *
- * "Clonk" is a registered trademark of Matthes Bender.
- * See clonk_trademark_license.txt for full license.
+ * "Clonk" is a registered trademark of Matthes Bender, used with permission.
+ * See accompanying file "TRADEMARK" for details.
+ *
+ * To redistribute this file separately, substitute the full license texts
+ * for the above references.
  */
 
 /* Verify correct behavior of UTF-8 handling code. */
 
+#include "C4Include.h"
 #include "lib/Standard.h"
 #include <gtest/gtest.h>
 
@@ -191,37 +193,34 @@ TEST(UnicodeHandlingTest, RejectsInvalidMultiByteUtf8)
 #ifdef _WIN32
 TEST(UnicodeHandlingTest, WideStringConversion)
 {
-	wchar_t *wide_strings[] = {
+	const wchar_t *wide_strings[] = {
 		L"\xD835\xDD07\xD835\xDD22\xD835\xDD2F",
 		L"\xD835\xDD0E\xD835\xDD29\xD835\xDD1E\xD835\xDD32\xD835\xDD30",
-		NULL
 	};
-	for (wchar_t **wide_string = wide_strings; *wide_string; ++wide_string)
+	for (const auto wide_string : wide_strings)
 	{
-		StdStrBuf wide_string_buf(*wide_string);
-		EXPECT_STREQ(*wide_string, wide_string_buf.GetWideChar()) << "Conversion wchar_t*=>StdStrBuf=>wchar_t* isn't lossless";
+		StdStrBuf wide_string_buf(wide_string);
+		EXPECT_STREQ(wide_string, wide_string_buf.GetWideChar()) << "Conversion wchar_t*=>StdStrBuf=>wchar_t* isn't lossless";
 	}
 }
 #endif
 
 #ifdef _WIN32
 #include "platform/StdRegistry.h"
-char StdCompiler::SeparatorToChar(enum StdCompiler::Sep) { return ' '; }
 TEST(UnicodeHandlingTest, RegistryAccess)
 {
-	wchar_t *wide_strings[] = {
+	const wchar_t *wide_strings[] = {
 		L"\xD835\xDD07\xD835\xDD22\xD835\xDD2F",
 		L"\xD835\xDD0E\xD835\xDD29\xD835\xDD1E\xD835\xDD32\xD835\xDD30",
-		NULL
 	};
 
 	const char *key = "SOFTWARE\\OpenClonk Project\\OpenClonk\\Testing";
-	for (wchar_t **wide_string = wide_strings; *wide_string; ++wide_string)
+	for (const auto wide_string : wide_strings)
 	{
-		ASSERT_TRUE(SetRegistryString(key, "WideCharTest", StdStrBuf(*wide_string).getData()));
+		ASSERT_TRUE(SetRegistryString(key, "WideCharTest", StdStrBuf(wide_string).getData()));
 		StdCopyStrBuf buffer;
 		ASSERT_TRUE(!(buffer = GetRegistryString(key, "WideCharTest")).isNull());
-		EXPECT_STREQ(*wide_string, StdStrBuf(buffer).GetWideChar()) << "Registry read-back returned wrong value";
+		EXPECT_STREQ(wide_string, StdStrBuf(buffer).GetWideChar()) << "Registry read-back returned wrong value";
 	}
 }
 #endif

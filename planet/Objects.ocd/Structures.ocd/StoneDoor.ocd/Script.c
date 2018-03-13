@@ -5,6 +5,8 @@
 	@authors Ringwaul, Maikel	
 */
 
+#include Library_SwitchTarget
+
 protected func Initialize()
 {
 	SetAction("Door");
@@ -16,15 +18,17 @@ protected func Initialize()
 
 public func OpenDoor()
 {
+	ForceDigFree();
 	SetComDir(COMD_Up);
-	Sound("GateMove");
+	Sound("Structures::StoneGate::GateMove");
 	return;
 }
 
 public func CloseDoor()
 {
+	ForceDigFree();
 	SetComDir(COMD_Down);
-	Sound("GateMove");
+	Sound("Structures::StoneGate::GateMove");
 	return;
 }
 
@@ -44,8 +48,33 @@ private func IsClosed()
 
 protected func Hit()
 {
-	Sound("GateHit");
+	Sound("Structures::StoneGate::GateHit");
 	return;
+}
+
+// Digs away earth behind the door. Needs to temporarily disable the solid mask, though.
+private func ForceDigFree()
+{
+	SetSolidMask();
+	DigFreeRect(GetX() - 4, GetY() - 20, 8, 40, true);
+	SetSolidMask(0, 0, 8, 40);
+}
+
+/*-- Switch control --*/
+
+// Reaction to operation by a switch: if open_door is true the door opens, otherwise it closes
+public func OnSetInputSignal(object operator, object switch, bool open_door)
+{
+	if (open_door)
+	{
+		OpenDoor();
+	}
+	else
+	{
+		CloseDoor();
+	}
+
+	_inherited(operator, switch, open_door, ...);
 }
 
 /*-- Automatic movement --*/
@@ -106,6 +135,17 @@ protected func Damage()
 	// Destroy if damage above strength.
 	if (GetDamage() > GetStrength())
 	{
+		var particles = 
+		{
+			Size = PV_KeyFrames(0, 0, 0, 100, PV_Random(3, 5), 1000, 3),
+			R = PV_Random(230, 250),
+			G = PV_Random(210, 230),
+			B = PV_Random(190, 210),
+			Alpha = PV_Linear(255, 0),
+			ForceY = PV_Gravity(100),
+			CollisionVertex = 0
+		};
+		CreateParticle("SmokeDirty", PV_Random(-4, 4), PV_Random(-18, 18), PV_Random(-10, 10), PV_Random(-10, 10), PV_Random(10, 60), particles, 300);
 		CastObjects(Rock, 5, 20);
 		return RemoveObject();
 	}
@@ -128,6 +168,46 @@ private func DoGraphics()
 	return;
 }
 
+public func GetFloorOffset()
+{
+	// Searches downwards from the lowest vertex to the floor
+	var y_off;
+	for (y_off=0; !GBackSolid(0, 20+y_off); ++y_off)
+		if (y_off > 20) break; // max range
+	return y_off;
+}
+
+
+/* Editor */
+
+local EditorActions = {
+	OpenDoor = { Name = "$DoorUp$", Command = "OpenDoor()" },
+	CloseDoor = { Name = "$DoorDown$", Command = "CloseDoor()" }
+};
+
+public func Definition(def, ...)
+{
+	UserAction->AddEvaluator("Action", "Structure", "$DoorUp$", "$DoorUpDesc$", "open_door", [def, def.EvalAct_OpenDoor], { }, UserAction->GetObjectEvaluator("IsDoor", "$Door$", "$DoorTargetHelp$"), "Door");
+	UserAction->AddEvaluator("Action", "Structure", "$DoorDown$", "$DoorDownDesc$", "close_door", [def, def.EvalAct_CloseDoor], { }, UserAction->GetObjectEvaluator("IsDoor", "$Door$", "$DoorTargetHelp$"), "Door");
+	return _inherited(def, ...);
+}
+
+private func EvalAct_OpenDoor(props, context)
+{
+	var door = UserAction->EvaluateValue("Object", props.Door, context);
+	if (door) door->~OpenDoor();
+}
+
+private func EvalAct_CloseDoor(props, context)
+{
+	var door = UserAction->EvaluateValue("Object", props.Door, context);
+	if (door) door->~CloseDoor();
+}
+
+/* Properties */
+
+public func IsDoor() { return true; }
+
 local ActMap = {
 	Door = {
 		Prototype = Action,
@@ -145,4 +225,9 @@ local ActMap = {
 		NextAction = "Door",
 	},
 };
+
 local Name = "$Name$";
+local Plane = 200;
+local Components = {Rock = 6};
+
+

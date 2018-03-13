@@ -1,45 +1,27 @@
-/*--
-		Controls.c
-		Authors: boni
+/**
+	Controls.c
+	Helper functions to find out if a Control fits into a certain category. (Throwing, using, interacting,...).
 		
-		Helper functions to find out if a Control fits into a certain category. (Throwing, using, interacting,...)
---*/
+	@author boni
+*/
 
-/** Control tells the clonk to move */
+// Control tells the clonk to move.
 global func IsMovementControl(int ctrl)
 {
-	// up, up, down, down, left, right, left, right, B, A
-	if(ctrl == CON_Up
-	|| ctrl == CON_Down
-	|| ctrl == CON_Left
-	|| ctrl == CON_Right)
-		return true;
-	
-	return false;
+	return ctrl == CON_Up || ctrl == CON_Down || ctrl == CON_Left || ctrl == CON_Right;
 }
 
-/** Control throws selected item */
+// Control throws selected item.
 global func IsThrowControl(int ctrl)
 {
-	// left mouse button
-	if(ctrl == CON_Throw
-	|| ctrl == CON_ForcedThrow
-	|| ctrl == CON_ThrowDelayed
-	// right mouse button
-	|| ctrl == CON_ThrowAlt
-	|| ctrl == CON_ForcedThrowAlt
-	|| ctrl == CON_ThrowAltDelayed)
-		return true;
-	
-	return false;
+	return ctrl == CON_Throw;
 }
 
-/** Control drops items from inventory (hotkey or selected items) */
+// Control drops items from inventory (hotkey or selected items).
 global func IsDropControl(int ctrl)
 {
 	// selected items
-	if(ctrl == CON_Drop
-	|| ctrl == CON_DropAlt
+	if (ctrl == CON_Drop
 	// hotkeys
 	|| ctrl == CON_DropHotkey0
 	|| ctrl == CON_DropHotkey1
@@ -56,18 +38,11 @@ global func IsDropControl(int ctrl)
 	return false;
 }
 
-/** Control has the goal of interacting with some other object (Interaction, Grabbing, Entering,...) */
+// Control has the goal of interacting with some other object (Interaction, Grabbing, Entering,...).
 global func IsInteractionControl(int ctrl)
 {
 	// Interaction itself
-	if(ctrl == CON_Interact
-	// other interactions
-	|| ctrl == CON_Grab
-	|| ctrl == CON_Ungrab
-	|| ctrl == CON_GrabNext
-	|| ctrl == CON_Enter
-	|| ctrl == CON_Exit
-	|| ctrl == CON_PushEnter
+	if (ctrl == CON_Interact
 	// hotkeys
 	|| ctrl == CON_InteractionHotkey0
 	|| ctrl == CON_InteractionHotkey1
@@ -84,11 +59,11 @@ global func IsInteractionControl(int ctrl)
 	return false;
 }
 
-/** Control has the goal of switching the currently selected crewmember */
+// Control has the goal of switching the currently selected crewmember.
 global func IsCrewControl(int ctrl)
 {
 	// next/previous
-	if(ctrl == CON_NextCrew
+	if (ctrl == CON_NextCrew
 	|| ctrl == CON_PreviousCrew
 	// hotkeys
 	|| ctrl == CON_PlayerHotkey0
@@ -107,12 +82,8 @@ global func IsCrewControl(int ctrl)
 	return false;
 }
 
-/** Control uses selected item */
+// Control uses selected item.
 global func IsUseControl(int ctrl)
 {
-	if(ctrl == CON_Use
-	|| ctrl == CON_UseAlt)
-		return true;
-	
-	return false;
+	return ctrl == CON_Use || ctrl == CON_UseAlt;
 }

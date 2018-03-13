@@ -34,9 +34,15 @@ public func FindTeam(int find_team)
 
 protected func Initialize()
 {
-	PlayAnimation("Wave", 1, Anim_Linear(0, 0, GetAnimationLength("Wave"), 78, ANIM_Loop), Anim_Const(1000));
+	PlayAnimation("Wave", 1, Anim_Linear(0, 0, GetAnimationLength("Wave"), 78, ANIM_Loop));
 	AddEffect("FlagAutoPickup", this, 100, 2, this);
 	return;
+}
+
+public func DisablePickup()
+{
+	// Disable pickup search in case flag is used outside the regular CTF goal
+	return RemoveEffect("FlagAutoPickup", this);
 }
 
 // Handles automatic picking up of the flag.
@@ -82,7 +88,7 @@ protected func FxFlagCarriedStart(object target, effect, int temp)
 	
 	effect.x=target->GetX();
 	effect.y=target->GetY();
-	var trans = Trans_Mul(Trans_Translate(0, -17000, 0), Trans_Rotate(-90, 0, 1, 0));
+	var trans = Trans_Mul(Trans_Translate(-17000, 0, 0), Trans_Rotate(90, 1, 0, 0));
 	effect.mesh_id = target->AttachMesh(this, "pos_back1", "main", trans);
 	this.Visibility = VIS_None;
 	
@@ -223,6 +229,7 @@ func StartAttachBase()
 }
 
 local Name = "$Name$";
+local Plane = 310;
 local ActMap = {
 	AttachCarrier = {
 		Prototype = Action,

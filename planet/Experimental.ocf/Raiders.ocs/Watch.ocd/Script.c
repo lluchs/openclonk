@@ -18,12 +18,12 @@ public func GetCarryTransform(clonk, sec, back)
 
 protected func Construction()
 {
-	watch_anim = PlayAnimation("time", 5, Anim_Const(1), Anim_Const(1000));
+	watch_anim = PlayAnimation("time", 5, Anim_Const(1));
 }
 
 public func WatchUpdate()
 {
-	var time = FindObject(Find_ID(Environment_Time));
+	var time = FindObject(Find_ID(Time));
 
 	if(time)
 	{

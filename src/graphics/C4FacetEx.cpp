@@ -3,7 +3,7 @@
  *
  * Copyright (c) 1998-2000, Matthes Bender
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -17,41 +17,35 @@
 
 /* A facet that can hold its own surface and also target coordinates */
 
-#include <C4Include.h>
-#include <C4FacetEx.h>
+#include "C4Include.h"
+#include "graphics/C4FacetEx.h"
+#include "graphics/C4Draw.h"
 
-#include <C4Random.h>
-#include <C4Rect.h>
-#include <C4Group.h>
-
+#include "lib/C4Rect.h"
+#include "c4group/C4Group.h"
 
 void C4TargetFacet::Set(C4Surface * nsfc, float nx, float ny, float nwdt, float nhgt, float ntx, float nty, float Zoom)
 {
+	Set(nsfc, nx, ny, nwdt, nhgt, ntx, nty, Zoom, ntx, nty);
+}
+
+void C4TargetFacet::Set(C4Surface * nsfc, float nx, float ny, float nwdt, float nhgt, float ntx, float nty, float Zoom, float prx, float pry)
+{
 	C4Facet::Set(nsfc, nx, ny, nwdt, nhgt);
 	TargetX = ntx; TargetY = nty; this->Zoom = Zoom;
+	ParRefX = prx; ParRefY = pry;
 }
 
 void C4TargetFacet::Set(C4Surface * nsfc, const C4Rect & r, float ntx, float nty, float Zoom)
 {
 	Set(nsfc, r.x, r.y, r.Wdt, r.Hgt, ntx, nty, Zoom);
 }
+
 void C4TargetFacet::SetRect(C4TargetRect &rSrc)
 {
-	X=rSrc.x; Y=rSrc.y; Wdt=rSrc.Wdt; Hgt=rSrc.Hgt; TargetX=rSrc.tx; TargetY=rSrc.ty;
-}
-
-void C4TargetFacet::DrawLineDw(int iX1, int iY1, int iX2, int iY2, uint32_t col1, uint32_t col2)
-{
-	if (!pDraw || !Surface || !Wdt || !Hgt) return;
-	// Scroll position
-	float gX1 = float(iX1)-TargetX;
-	float gY1 = float(iY1)-TargetY;
-	float gX2 = float(iX2)-TargetX;
-	float gY2 = float(iY2)-TargetY;
-	// No clipping is done here, because clipping will be done by gfx wrapper anyway
-	// Draw line
-	pDraw->DrawLineDw(Surface,gX1+X,gY1+Y,gX2+X,gY2+Y,col1);
-	pDraw->DrawPix(Surface,gX1+X,gY1+Y,col2);
+	X=rSrc.x; Y=rSrc.y; Wdt=rSrc.Wdt; Hgt=rSrc.Hgt;
+	TargetX=rSrc.tx; TargetY=rSrc.ty;
+	ParRefX=rSrc.tx; TargetY=rSrc.ty;
 }
 
 // ------------------------
@@ -81,54 +75,7 @@ bool C4FacetSurface::CreateClrByOwner(C4Surface *pBySurface)
 	return true;
 }
 
-bool C4FacetSurface::EnsureSize(int iMinWdt, int iMinHgt)
-{
-	// safety
-	if (!Surface) return false;
-	// check size
-	int iWdt=Face.Wdt,iHgt=Face.Hgt;
-	if (iWdt>=iMinWdt && iHgt>=iMinHgt) return true;
-	// create temp surface
-	C4Surface *sfcDup=new C4Surface(iWdt,iHgt);
-	if (!sfcDup) return false;
-	if (!pDraw->BlitSurface(&Face,sfcDup,0,0,false))
-		{ delete sfcDup; return false; }
-	// calc needed size
-	int iDstWdt=Surface->Wdt,iDstHgt=iHgt;
-	while (iDstWdt<iMinWdt) iDstWdt+=iWdt;
-	while (iDstHgt<iMinHgt) iDstHgt+=iHgt;
-	// recreate this one
-	if (!Face.Create(iDstWdt, iDstHgt)) { delete sfcDup; Clear(); return false; }
-	// blit tiled into it
-	bool fSuccess=pDraw->BlitSurfaceTile(sfcDup, &Face, 0, 0, iDstWdt, iDstHgt, 0, 0, false);
-	// del temp surface
-	delete sfcDup;
-	// done
-	return fSuccess;
-}
-
-/*bool C4FacetSurface::Save(C4Group &hGroup, const char *szName)
-  {
-  // Empty
-  if (!Wdt || !Hgt) return false;
-  // Full surface
-  if ((Wdt==Face.Wdt) && (Hgt==Face.Hgt))
-    {
-    if (!Face.Save(hGroup,szName)) return false;
-    }
-  // Surface section
-  else
-    {
-    C4Surface sfcFacet;
-    if (!sfcFacet.Create(Wdt,Hgt)) return false;
-    Draw(&sfcFacet,0,0);
-    if (!sfcFacet.Save(hGroup,szName)) return false;
-    }
-  // Success
-  return true;
-  }*/
-
-bool C4FacetSurface::Load(C4Group &hGroup, const char *szName, int iWdt, int iHgt, bool fOwnPal, bool fNoErrIfNotFound)
+bool C4FacetSurface::Load(C4Group &hGroup, const char *szName, int iWdt, int iHgt, bool fNoErrIfNotFound, int iFlags)
 {
 	Clear();
 	// Entry name
@@ -138,7 +85,7 @@ bool C4FacetSurface::Load(C4Group &hGroup, const char *szName, int iWdt, int iHg
 	if (!*szExt)
 	{
 		// no extension: Default to extension that is found as file in group
-		const char * const extensions[] = { "png", "bmp", "jpeg", "jpg", NULL };
+		const char * const extensions[] = { "png", "bmp", "jpeg", "jpg", nullptr };
 		int i = 0; const char *szExt;
 		while ((szExt = extensions[i++]))
 		{
@@ -147,7 +94,7 @@ bool C4FacetSurface::Load(C4Group &hGroup, const char *szName, int iWdt, int iHg
 		}
 	}
 	// Load surface
-	if (!Face.Load(hGroup,szFilename,fOwnPal,fNoErrIfNotFound)) return false;
+	if (!Face.Load(hGroup,szFilename,false,fNoErrIfNotFound, iFlags)) return false;
 	// Set facet
 	if (iWdt==C4FCT_Full) iWdt=Face.Wdt; if (iWdt==C4FCT_Height) iWdt=Face.Hgt; if (iWdt==C4FCT_Width) iWdt=Face.Wdt;
 	if (iHgt==C4FCT_Full) iHgt=Face.Hgt; if (iHgt==C4FCT_Height) iHgt=Face.Hgt; if (iHgt==C4FCT_Width) iHgt=Face.Wdt;

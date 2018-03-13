@@ -7,34 +7,31 @@
 
 #include Barrel
 
-private func Hit()
+func PlayBarrelHitSound()
 {
-	Sound("DullMetalHit?");
-	if (iVolume >= 1)
-	{
-		if (GBackLiquid(0, 7) && GetMaterial(0, 7) != szLiquid)
-			return 0;
-		EmptyBarrel(GetR());
-		Sound("Splash1");
-	}
+	Sound("Hits::Materials::Metal::DullMetalHit?");
 }
 
-private func AcceptMaterial(int material)
-{
-	// Accepts all fluids
-	return true;
-}
-
-public func IsBarrelForMaterial(string sznMaterial)
+public func IsLiquidContainerForMaterial(string liquid_name)
 {
 	// anything liquid
-	var density = GetMaterialVal("Density","Material",Material(sznMaterial));
-	return density < 50 && density >= 25;
+	var density = GetMaterialVal("Density", "Material", Material(liquid_name));
+	return _inherited(liquid_name, ...) || (density < 50 && density >= 25);
 }
 
-local Collectible = false;
-local Touchable = 2;
+
+
+local LiquidNames = {
+	Acid = "$MaterialAcid$",
+	DuroLava = "$MaterialDuroLava$",
+	Firefluid = "$MaterialFirefluid$",
+	Lava = "$MaterialLava$",
+	Oil = "$MaterialOil$",
+	Water = "$MaterialWater$",
+};
+
+
 local Name = "$Name$";
 local Description = "$Description$";
-local Rebuy = true;
 local ContactIncinerate = 0;
+local Components = {Metal = 2};

@@ -1,9 +1,12 @@
 [Head]
 Title=MoltenMonarch
-Version=5,2,0,1
+Version=8,0
 Icon=23
 MinPlayer=2
 Difficulty=70
+
+[Game]
+Mode=Melee
 
 [Definitions]
 Definition1=Objects.ocd

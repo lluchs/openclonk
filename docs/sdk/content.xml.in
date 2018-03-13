@@ -111,8 +111,16 @@
 		<li><emlink href="script/BreakContinue.html">Loop Control</emlink></li>
 		<li><emlink href="script/AppendTo.html">#appendto</emlink></li>
 		<li><emlink href="script/Effects.html">Effects</emlink></li>
+		<li><emlink href="script/GUI.html">Script GUIs</emlink></li>
 		<li><emlink href="script/GetXXVal.html">Querying Game Data</emlink></li>
 		<li><emlink href="script/ScriptPlayers.html">Script Players</emlink></li>
+		<li><emlink href="script/SoundModifiers.html">Sound Modifiers</emlink></li>
+		<li>Libraries
+			<ul>
+				<li><emlink href="script/Shape.html">Shape</emlink></li>
+				<li><emlink href="script/FuzzyLogic.html">Fuzzy Logic</emlink></li>
+			</ul>
+		</li>
 <!-- Insert Functions here -->
 	</ul>
 	</li>
@@ -123,14 +131,21 @@
 <![CDATA[
 (function() {
 	function navigate(url) {
+		var urlsplit = url.split("#");
 		var xhr = new XMLHttpRequest();
-		xhr.open('GET', url.split("#")[0]);
+		xhr.open('GET', urlsplit[0]);
 		xhr.onreadystatechange = function (e) {
 			if (xhr.readyState === 4) {
 				var d = parent.document;
 				var r = xhr.responseText;
 				d.getElementById("content").innerHTML = r.split('<div id="content">')[1];
 				d.title = r.slice(r.indexOf("<title>")+7, r.indexOf("</title>"));
+				if (urlsplit.length > 1) {
+					var scrolltarget = d.getElementById(urlsplit[1]);
+					if (scrolltarget) {
+						scrolltarget.scrollIntoView();
+					}
+				}
 			}
 		};
 		xhr.send();

@@ -1,0 +1,2 @@
+Name=Default
+Description=Ein Standardlistenmenü mit Beschreibung.

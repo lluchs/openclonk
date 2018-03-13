@@ -1,3 +1,7 @@
 Name=Flagpole
+NameNeutral=Respawn
 Description=Marks your reign, where you are able to buy items in buildings.
-MsgBuy=Buy stuff
+MsgBuy=Buy Stuff
+YourWealth=Your wealth
+Neutral=Neutral
+NeutralHelp=Neutral flags are respawn points for all players.

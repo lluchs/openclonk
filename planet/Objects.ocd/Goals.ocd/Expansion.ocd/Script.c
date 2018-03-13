@@ -45,7 +45,7 @@ public func SaveScenarioObject(props)
 
 /*-- Goal interface --*/
 
-// The goal is fulfilled if the expansio goal is covered by flags.
+// The goal is fulfilled if the expansion goal is covered by flags.
 public func IsFulfilled()
 {
 	// Check if goal is fulfilled.
@@ -73,40 +73,38 @@ private func GetExpansionArea()
 	return area / cnt;
 }
 
+private func FxIntAreaMonteCarloStart(object target, proplist effect, int temporary)
+{
+	if (temporary)
+		return 1;
+	// Control the amount of storing.
+	effect.store_index = 0;
+	effect.store_amount = 2000;
+}
+
 // Monte Carlo simulation to determine the area covered by flagpoles.
 // There is thin balance between the accuracy of the simulation, the 
 // number of simulations per frame and the refresh rate of the data,
 // or equivalently how long past data is stored. 
-private func FxIntAreaMonteCarloTimer()
+private func FxIntAreaMonteCarloTimer(object target, proplist effect, int time)
 {
 	// Perform simulations and store them.
-	var cnt = 40; // Perform 40 simulations per frame.
-	var store = 500; // Store last 500 events.
+	var cnt = 10; // Perform 10 simulations per frame.
 	var rate = 0;
 	for (var i = 0; i < cnt; i++)
 	{
 		var x = Random(LandscapeWidth());
 		var y = Random(LandscapeHeight());
-		if (CoveredByFlag(x, y))
+		if (GetFlagpoleForPosition(x, y))
 			rate++;	
 	}
 	var promille = 1000 * rate / cnt;
-	// Add new montecarlo data to the end the data list and remove old entry.
-	for (var i = 0; i < store - 1; i++)
-	{
-		mc_data[i] = mc_data[i+1];	
-	}
-	mc_data[store - 1] = promille;
-	return;
-}
-
-// Returns whether the point (x,y) is covered by a flagpole.
-private func CoveredByFlag(int x, int y)
-{
-	for (var flag in FindObjects(Find_Func("IsFlagpole"), Sort_Distance(x - GetX(), y - GetY())))
-		if (Distance(flag->GetX(), flag->GetY(), x, y) < flag->GetFlagRadius())
-			return true;
-	return false;
+	// Add new montecarlo data to the data list and remove old entry.
+	mc_data[effect.store_index] = promille;
+	effect.store_index++;
+	if (effect.store_index >= effect.store_amount)
+		effect.store_index = 0;
+	return 1;
 }
 
 // Return the description of this goal.

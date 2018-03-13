@@ -3,7 +3,7 @@
  *
  * Copyright (c) 1998-2000, Matthes Bender
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -17,14 +17,14 @@
 
 /* Object motion, collision, friction */
 
-#include <C4Include.h>
-#include <C4Object.h>
+#include "C4Include.h"
 
-#include <C4Effect.h>
-#include <C4Physics.h>
-#include <C4SolidMask.h>
-#include <C4Landscape.h>
-#include <C4Game.h>
+#include "game/C4Physics.h"
+#include "landscape/C4Landscape.h"
+#include "landscape/C4SolidMask.h"
+#include "object/C4Def.h"
+#include "object/C4Object.h"
+#include "script/C4Effect.h"
 
 /* Some physical constants */
 
@@ -44,7 +44,7 @@ const C4Real DefaultGravAccel=C4REAL100(20);
 void RedirectForce(C4Real &from, C4Real &to, int32_t tdir)
 {
 	C4Real fred;
-	fred=Min(Abs(from), FRedirect);
+	fred=std::min(Abs(from), FRedirect);
 	from-=fred*Sign(from);
 	to+=fred*tdir;
 }
@@ -113,7 +113,7 @@ const char *CNATName(int32_t cnat)
 
 bool C4Object::Contact(int32_t iCNAT)
 {
-	if (Def->ContactFunctionCalls)
+	if (GetPropertyInt(P_ContactCalls))
 	{
 		return !! Call(FormatString(PSF_Contact, CNATName(iCNAT)).getData());
 	}
@@ -126,36 +126,17 @@ void C4Object::DoMotion(int32_t mx, int32_t my)
 	fix_x += mx; fix_y += my;
 }
 
-static inline int32_t ForceLimits(C4Real &rVal, int32_t iLow, int32_t iHi)
+void C4Object::StopAndContact(C4Real & ctco, C4Real limit, C4Real & speed, int32_t cnat)
 {
-	if (rVal<iLow) { rVal=iLow; return -1; }
-	if (rVal>iHi)  { rVal=iHi;  return +1; }
-	return 0;
+	ctco = limit;
+	speed = 0;
+	Contact(cnat);
 }
 
-void C4Object::TargetBounds(C4Real &ctco, int32_t limit_low, int32_t limit_hi, int32_t cnat_low, int32_t cnat_hi)
-{
-	switch (ForceLimits(ctco,limit_low,limit_hi))
-	{
-	case -1:
-		// stop
-		if (cnat_low==CNAT_Left) xdir=0; else ydir=0;
-		// do calls
-		Contact(cnat_low);
-		break;
-	case +1:
-		// stop
-		if (cnat_hi==CNAT_Right) xdir=0; else ydir=0;
-		// do calls
-		Contact(cnat_hi);
-		break;
-	}
-}
-
-int32_t C4Object::ContactCheck(int32_t iAtX, int32_t iAtY, uint32_t *border_hack_contacts)
+int32_t C4Object::ContactCheck(int32_t iAtX, int32_t iAtY, uint32_t *border_hack_contacts, bool collide_halfvehic)
 {
 	// Check shape contact at given position
-	Shape.ContactCheck(iAtX,iAtY,border_hack_contacts);
+	Shape.ContactCheck(iAtX,iAtY,border_hack_contacts,collide_halfvehic);
 
 	// Store shape contact values in object t_contact
 	t_contact=Shape.ContactCNAT;
@@ -171,38 +152,51 @@ int32_t C4Object::ContactCheck(int32_t iAtX, int32_t iAtY, uint32_t *border_hack
 	return Shape.ContactCount;
 }
 
+// Stop the object and do contact calls if it collides with the border
 void C4Object::SideBounds(C4Real &ctcox)
 {
 	// layer bounds
-	if (Layer) if (Layer->Def->BorderBound & C4D_Border_Layer)
+	if (Layer && Layer->GetPropertyInt(P_BorderBound) & C4D_Border_Layer)
+	{
+		C4PropList* pActionDef = GetAction();
+		if (!pActionDef || pActionDef->GetPropertyP(P_Procedure) != DFA_ATTACH)
 		{
-			C4PropList* pActionDef = GetAction();
-			if (!pActionDef || pActionDef->GetPropertyP(P_Procedure) != DFA_ATTACH)
-			{
-				TargetBounds(ctcox, Layer->GetX() + Layer->Shape.GetX() - Shape.GetX(), Layer->GetX() + Layer->Shape.GetX() + Layer->Shape.Wdt + Shape.GetX(), CNAT_Left, CNAT_Right);
-			}
+			C4Real lbound = itofix(Layer->GetX() + Layer->Shape.GetX() - Shape.GetX()),
+			       rbound = itofix(Layer->GetX() + Layer->Shape.GetX() + Layer->Shape.Wdt - (Shape.GetX() + Shape.Wdt));
+			if (ctcox < lbound) StopAndContact(ctcox, lbound, xdir, CNAT_Left);
+			if (ctcox > rbound) StopAndContact(ctcox, rbound, xdir, CNAT_Right);
 		}
+	}
 	// landscape bounds
-	if (Def->BorderBound & C4D_Border_Sides)
-		TargetBounds(ctcox,0-Shape.GetX(),GBackWdt+Shape.GetX(),CNAT_Left,CNAT_Right);
+	C4Real lbound = itofix(0 - Shape.GetX()),
+	       rbound = itofix(::Landscape.GetWidth() - (Shape.GetX() + Shape.Wdt));
+	if (ctcox < lbound && GetPropertyInt(P_BorderBound) & C4D_Border_Sides)
+		StopAndContact(ctcox, lbound, xdir, CNAT_Left);
+	if (ctcox > rbound && GetPropertyInt(P_BorderBound) & C4D_Border_Sides)
+		StopAndContact(ctcox, rbound, xdir, CNAT_Right);
 }
 
 void C4Object::VerticalBounds(C4Real &ctcoy)
 {
 	// layer bounds
-	if (Layer) if (Layer->Def->BorderBound & C4D_Border_Layer)
+	if (Layer && Layer->GetPropertyInt(P_BorderBound) & C4D_Border_Layer)
+	{
+		C4PropList* pActionDef = GetAction();
+		if (!pActionDef || pActionDef->GetPropertyP(P_Procedure) != DFA_ATTACH)
 		{
-			C4PropList* pActionDef = GetAction();
-			if (!pActionDef || pActionDef->GetPropertyP(P_Procedure) != DFA_ATTACH)
-			{
-				TargetBounds(ctcoy, Layer->GetY() + Layer->Shape.GetY() - Shape.GetY(), Layer->GetY() + Layer->Shape.GetY() + Layer->Shape.Hgt + Shape.GetY(), CNAT_Top, CNAT_Bottom);
-			}
+			C4Real tbound = itofix(Layer->GetY() + Layer->Shape.GetY() - Shape.GetY()),
+			       bbound = itofix(Layer->GetY() + Layer->Shape.GetY() + Layer->Shape.Hgt - (Shape.GetY() + Shape.Hgt));
+			if (ctcoy < tbound) StopAndContact(ctcoy, tbound, ydir, CNAT_Top);
+			if (ctcoy > bbound) StopAndContact(ctcoy, bbound, ydir, CNAT_Bottom);
 		}
+	}
 	// landscape bounds
-	if (Def->BorderBound & C4D_Border_Top)
-		TargetBounds(ctcoy,0-Shape.GetY(),+1000000,CNAT_Top,CNAT_Bottom);
-	if (Def->BorderBound & C4D_Border_Bottom)
-		TargetBounds(ctcoy,-1000000,GBackHgt+Shape.GetY(),CNAT_Top,CNAT_Bottom);
+	C4Real tbound = itofix(0 - Shape.GetY()),
+	       bbound = itofix(::Landscape.GetHeight() - (Shape.GetY() + Shape.Hgt));
+	if (ctcoy < tbound && GetPropertyInt(P_BorderBound) & C4D_Border_Top)
+		StopAndContact(ctcoy, tbound, ydir, CNAT_Top);
+	if (ctcoy > bbound && GetPropertyInt(P_BorderBound) & C4D_Border_Bottom)
+		StopAndContact(ctcoy, bbound, ydir, CNAT_Bottom);
 }
 
 void C4Object::DoMovement()
@@ -281,7 +275,7 @@ void C4Object::DoMovement()
 		{
 			// Next step
 			int step = Sign(new_y - fix_y);
-			if ((iContact=ContactCheck(GetX(), GetY() + step)))
+			if ((iContact=ContactCheck(GetX(), GetY() + step, nullptr, ydir > 0)))
 			{
 				fAnyContact=true; iContacts |= t_contact;
 				new_y = fix_y;
@@ -441,16 +435,16 @@ void C4Object::DoMovement()
 	{
 		if (!InLiquid) // Enter liquid
 		{
-			if (OCF & OCF_HitSpeed2) if (Mass>3)
-					Splash(GetX(),GetY()+1,Min(Shape.Wdt*Shape.Hgt/10,20),this);
+			if (OCF & OCF_HitSpeed2)
+				if (Mass>3) Splash();
 			fNoAttach=false;
-			InLiquid=1;
+			InLiquid=true;
 		}
 	}
 	else // Out of liquid
 	{
 		if (InLiquid) // Leave liquid
-			InLiquid=0;
+			InLiquid=false;
 	}
 	// Contact Action
 	if (fAnyContact)
@@ -464,7 +458,7 @@ void C4Object::DoMovement()
 	// Movement Script Execution
 	if (fAnyContact)
 	{
-		C4AulParSet pars(C4VInt(fixtoi(oldxdir, 100)), C4VInt(fixtoi(oldydir, 100)));
+		C4AulParSet pars(fixtoi(oldxdir, 100), fixtoi(oldydir, 100));
 		if (old_ocf & OCF_HitSpeed1) Call(PSF_Hit, &pars);
 		if (old_ocf & OCF_HitSpeed2) Call(PSF_Hit2, &pars);
 		if (old_ocf & OCF_HitSpeed3) Call(PSF_Hit3, &pars);
@@ -563,7 +557,7 @@ bool C4Object::ExecMovement() // Every Tick1 by Execute
 		// Move object
 		DoMovement();
 		// Demobilization check
-		if ((xdir==0) && (ydir==0) && (rdir==0)) Mobile=0;
+		if ((xdir==0) && (ydir==0) && (rdir==0)) Mobile=false;
 		// Check for stabilization
 		if (rdir==0) Stabilize();
 	}
@@ -576,7 +570,7 @@ bool C4Object::ExecMovement() // Every Tick1 by Execute
 		{
 			// Gravity mobilization
 			xdir=ydir=rdir=0;
-			Mobile=1;
+			Mobile=true;
 		}
 	}
 
@@ -584,7 +578,8 @@ bool C4Object::ExecMovement() // Every Tick1 by Execute
 	if (!Def->Rotateable) fix_r=Fix0;
 
 	// Out of bounds check
-	if ((!Inside<int32_t>(GetX(),0,GBackWdt) && !(Def->BorderBound & C4D_Border_Sides)) || (GetY()>GBackHgt && !(Def->BorderBound & C4D_Border_Bottom)))
+	if ((!Inside<int32_t>(GetX() + Shape.GetX(), -Shape.Wdt, ::Landscape.GetWidth()) && !(GetPropertyInt(P_BorderBound) & C4D_Border_Sides))
+	    || ((GetY() + Shape.GetY() > ::Landscape.GetHeight()) && !(GetPropertyInt(P_BorderBound) & C4D_Border_Bottom)))
 	{
 		C4PropList* pActionDef = GetAction();
 		// Never remove attached objects: If they are truly outside landscape, their target will be removed,
@@ -598,9 +593,9 @@ bool C4Object::ExecMovement() // Every Tick1 by Execute
 				int parX, parY;
 				GetParallaxity(&parX, &parY);
 				fRemove = false;
-				if (GetX()>GBackWdt || GetY()>GBackHgt) fRemove = true; // except if they are really out of the viewport to the right...
+				if (GetX()>::Landscape.GetWidth() || GetY()>::Landscape.GetHeight()) fRemove = true; // except if they are really out of the viewport to the right...
 				else if (GetX()<0 && !!parX) fRemove = true; // ...or it's not HUD horizontally and it's out to the left
-				else if (!parX && GetX()<-GBackWdt) fRemove = true; // ...or it's HUD horizontally and it's out to the left
+				else if (!parX && GetX()<-::Landscape.GetWidth()) fRemove = true; // ...or it's HUD horizontally and it's out to the left
 			}
 			if (fRemove)
 			{
@@ -633,7 +628,7 @@ bool SimFlight(C4Real &x, C4Real &y, C4Real &xdir, C4Real &ydir, int32_t iDensit
 		// Movement to target
 		ctcox=fixtoi(x); ctcoy=fixtoi(y);
 		// Bounds
-		if (!Inside<int32_t>(ctcox,0,GBackWdt) || (ctcoy>=GBackHgt))
+		if (!Inside<int32_t>(ctcox,0,::Landscape.GetWidth()) || (ctcoy>=::Landscape.GetHeight()))
 			return false;
 		// Move to target
 		do

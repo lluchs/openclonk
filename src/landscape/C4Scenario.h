@@ -3,7 +3,7 @@
  *
  * Copyright (c) 1998-2000, Matthes Bender
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -20,8 +20,8 @@
 #ifndef INC_C4Scenario
 #define INC_C4Scenario
 
-#include <C4NameList.h>
-#include <C4IDList.h>
+#include "lib/C4NameList.h"
+#include "object/C4IDList.h"
 
 class C4SVal
 {
@@ -32,6 +32,7 @@ public:
 public:
 	void Default();
 	void Set(int32_t std=0, int32_t rnd=0, int32_t min=0, int32_t max=100);
+	void SetConstant(int32_t val);
 	int32_t Evaluate();
 	void CompileFunc(StdCompiler *pComp);
 public:
@@ -41,15 +42,13 @@ public:
 	}
 };
 
-#define C4SGFXMODE_NEWGFX 1
-#define C4SGFXMODE_OLDGFX 2
-
 #define C4S_SECTIONLOAD 1 /* parts of the C4S that are modifyable for different landcape sections */
 
 // flags for section reloading
 #define C4S_SAVE_LANDSCAPE 1
 #define C4S_SAVE_OBJECTS   2
 #define C4S_KEEP_EFFECTS   4
+#define C4S_REINIT_SCENARIO 8
 
 enum C4SFilmMode
 {
@@ -61,10 +60,10 @@ enum C4SFilmMode
 class C4SHead
 {
 public:
-	int32_t  C4XVer[3];
-	char Title[C4MaxTitle+1];
-	char Loader[C4MaxTitle+1];
-	char Font[C4MaxTitle+1]; // scenario specific font; may be 0
+	int32_t  C4XVer[2];
+	std::string Title;
+	std::string Loader;
+	std::string Font; // scenario specific font; may be 0
 	int32_t  Difficulty;
 	int32_t  Icon;
 	bool  NoInitialize;
@@ -72,10 +71,10 @@ public:
 	bool  SaveGame;
 	bool  Replay;
 	int32_t  Film;
-	int32_t  StartupPlayerCount; // set for Frame0-replay!
 	int32_t  RandomSeed;
-	char Engine[C4MaxTitle+1]; // Relative filename of engine to be used for this scenario
-	char MissionAccess[C4MaxTitle+1];
+	std::string Engine; // Relative filename of engine to be used for this scenario
+	std::string MissionAccess;
+	bool Secret; // if true, scenario is invisible if MissionAccess has not been granted
 	bool NetworkGame;
 	bool NetworkRuntimeJoin;
 	StdCopyStrBuf Origin; // original oath and filename to scenario (for records and savegames)
@@ -93,8 +92,9 @@ public:
 	bool LocalOnly;
 	bool AllowUserChange;
 	C4IDList SkipDefs;
-	void SetModules(const char *szList, const char *szRelativeToPath=NULL, const char *szRelativeToPath2=NULL);
+	void SetModules(const char *szList, const char *szRelativeToPath=nullptr, const char *szRelativeToPath2=nullptr);
 	bool GetModules(StdStrBuf *psOutModules) const;
+	std::list<const char *> GetModulesAsList() const; // get definitions as string pointers into this structure
 	void Default();
 	void CompileFunc(StdCompiler *pComp);
 
@@ -118,12 +118,15 @@ public:
 class C4SGame
 {
 public:
+	StdCopyStrBuf Mode; // Game mode used by league to determine correct evaluation
 	C4IDList Goals;
 	C4IDList Rules;
 
-	uint32_t FoWColor;    // color of FoW; may contain transparency
+	bool FoWEnabled;
 
 	C4SRealism Realism;
+
+	bool EvaluateOnAbort;
 
 public:
 	bool IsMelee();
@@ -166,8 +169,8 @@ public:
 	C4IDList InEarth;
 	int32_t BottomOpen,TopOpen;
 	int32_t LeftOpen,RightOpen;
-	bool AutoScanSideOpen;
-	char SkyDef[C4MaxDefString+1];
+	int32_t AutoScanSideOpen;
+	std::string SkyDef;
 	int32_t SkyDefFade[6];
 	bool NoScan;
 	C4SVal Gravity;
@@ -177,13 +180,13 @@ public:
 	C4SVal LiquidLevel;
 	int32_t MapPlayerExtend;
 	C4NameList Layers;
-	char Material[C4M_MaxDefName+1];
-	char Liquid[C4M_MaxDefName+1];
+	std::string Material;
+	std::string Liquid;
 	bool KeepMapCreator; // set if the mapcreator will be needed in the scenario (for DrawDefMap)
 	int32_t SkyScrollMode;  // sky scrolling mode for newgfx
-	int32_t FoWRes; // chunk size of FoGOfWar
 	int32_t MaterialZoom;
 	bool FlatChunkShapes; // if true, all material chunks are drawn flat
+	bool Secret; // hide map from observers (except in dev mode and the like)
 public:
 	void Default();
 	void GetMapSize(int32_t &rWdt, int32_t &rHgt, int32_t iPlayerNum);
@@ -238,7 +241,7 @@ public:
 	void SetExactLandscape();
 	void Clear();
 	void Default();
-	bool Load(C4Group &hGroup, bool fLoadSection=false);
+	bool Load(C4Group &hGroup, bool fLoadSection = false, bool suppress_errors = false);
 	bool Save(C4Group &hGroup, bool fSaveSection=false);
 	void CompileFunc(StdCompiler *pComp, bool fSection);
 	int32_t GetMinPlayer(); // will try to determine the minimum player count for this scenario
@@ -250,23 +253,24 @@ extern const char *C4ScenSect_Main;
 class C4ScenarioSection
 {
 public:
-	C4ScenarioSection(char *szName);  // ctor
+	C4ScenarioSection(const char *szName);  // ctor
 	~C4ScenarioSection(); // dtor
 
 public:
-	char *szName;         // section name
-	char *szTempFilename; // filename of data file if in temp dir
-	char *szFilename;     // filename of section in scenario file
+	StdCopyStrBuf name;          // section name
+	StdCopyStrBuf temp_filename; // filename of data file if in temp dir
+	StdCopyStrBuf filename;      // filename of section in scenario file
 	bool fModified;       // if set, the file is temp and contains runtime landscape and/or object data
 	class C4ScenarioObjectsScriptHost *pObjectScripts; // points to loaded script file for section Objects.c
 
 	C4ScenarioSection *pNext; // next member of linked list
 
 public:
-	bool ScenarioLoad(C4Group &rGrp, char *szFilename);  // called when scenario is loaded: extract to temp store
+	bool ScenarioLoad(const char *szFilename, bool is_temp_file);  // called when scenario is loaded: extract to temp store
 	C4Group *GetGroupfile(C4Group &rGrp); // get group at section file (returns temp group, scenario subgroup or scenario group itself)
 	bool EnsureTempStore(bool fExtractLandscape, bool fExtractObjects);               // make sure that a temp file is created, and nothing is modified within the main scenario file
 };
+
 
 
 #endif // INC_C4Scenario

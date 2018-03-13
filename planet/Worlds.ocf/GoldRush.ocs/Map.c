@@ -1,6 +1,6 @@
 /**
 	Gold Rush
-	Dynamic map a few layers of materials below a flat shaped earth surface.
+	Dynamic map with a few layers of materials below a flat shaped earth surface.
 	
 	@author Maikel
 */
@@ -8,19 +8,16 @@
 #include Library_Map
 
 
-// Scenario properties which can be set later by the lobby options.
-static const SCENOPT_MapSize = 1;
-
 // Called be the engine: draw the complete map here.
 protected func InitializeMap(proplist map)
 {
 	// Retrieve the settings according to the MapSize setting.
 	var map_size;
-	if (SCENOPT_MapSize == 1)
+	if (SCENPAR_MapSize == 1)
 		map_size = [100, 75]; 
-	if (SCENOPT_MapSize == 2)
+	if (SCENPAR_MapSize == 2)
 		map_size = [125, 90];
-	if (SCENOPT_MapSize == 3)
+	if (SCENPAR_MapSize == 3)
 		map_size = [150, 105];
 	
 	// Set the map size.
@@ -51,10 +48,10 @@ public func DrawMaterials(proplist rect, proplist surface)
 	// A bit of different types of earth all around the surface.
 	mask = {Algo = MAPALGO_Rect, X = x,  Y = y, Wdt = wdt, Hgt = hgt};
 	mask = {Algo = MAPALGO_And, Op = [surface, mask]};
-	DrawMaterial("Earth-earth_topsoil", mask, 4, 12);
-	DrawMaterial("Earth-earth_rough", mask, 2, 16);
-	DrawMaterial("Earth-earth_dry", mask, 2, 16);
-	DrawMaterial("Earth-earth_midsoil", mask, 4, 12);
+	DrawMaterial("Earth-earth", mask, 4, 12);
+	DrawMaterial("Earth-earth_root", mask, 2, 16);
+	DrawMaterial("Earth-earth_spongy", mask, 2, 16);
+	DrawMaterial("Earth-earth", mask, 4, 12);
 
 	// Coal and surface in the first layer.
 	mask = {Algo = MAPALGO_Rect, X = x,  Y = y, Wdt = wdt, Hgt = hgt / 4};
@@ -77,11 +74,11 @@ public func DrawMaterials(proplist rect, proplist surface)
 	mask = {Algo = MAPALGO_Rect, X = x,  Y = y + 2 * hgt / 4, Wdt = wdt, Hgt = hgt / 4};
 	mask = {Algo = MAPALGO_Turbulence, Iterations = 4, Op = mask};
 	mask = {Algo = MAPALGO_And, Op = [surface, mask]}; 
-	DrawMaterial("Ore", mask, 3, 10);	
-	DrawMaterial("Rock-rock_cracked", mask, 2, 8);
+	DrawMaterial("Ore", mask, 3, 10);
+	DrawMaterial("Rock", mask, 2, 8);
 	DrawMaterial("Granite", mask, 2, 8);
 	DrawMaterial("Rock", mask);
-	DrawMaterial("Ore", mask);	
+	DrawMaterial("Ore", mask);
 	
 	// Gold in the last layer.
 	mask = {Algo = MAPALGO_Rect, X = x,  Y = y + 3 * hgt / 4, Wdt = wdt, Hgt = hgt / 4};
@@ -98,23 +95,6 @@ public func DrawMaterials(proplist rect, proplist surface)
 	var rnd_checker = {Algo = MAPALGO_RndChecker, Ratio = 30, Wdt = 2, Hgt = 2};
 	var rnd_border = {Algo = MAPALGO_And, Op = [border, rnd_checker]};
 	Draw("Sand", rnd_border);
-	Draw("Earth-earth_topsoil", rnd_border);
-
-	return;
-} 
-
-// Draws some material inside an island.
-public func DrawMaterial(string mat, proplist onto_mask, int speck_size, int ratio)
-{
-	if (!speck_size)
-		speck_size = 4;
-	if (!ratio)
-		ratio = 15;
-	// Use random checker algorithm to draw patches of the material. 
-	var rnd_checker = {Algo = MAPALGO_RndChecker, Ratio = ratio, Wdt = speck_size, Hgt = speck_size};
-	rnd_checker = {Algo = MAPALGO_Turbulence, Iterations = 4, Op = rnd_checker};
-	var algo = {Algo = MAPALGO_And, Op = [onto_mask, rnd_checker]};
-	Draw(mat, algo);
-	
+	Draw("Earth-earth_root", rnd_border);
 	return;
 }

@@ -1,6 +1,6 @@
 [DefCore]
 id=IronBomb
-Version=4,10,0,0
+Version=8,0
 Category=C4D_Object
 Width=6
 Height=6
@@ -10,7 +10,6 @@ Vertices=3
 VertexX=0,3,-3
 VertexY=-2,2,2
 VertexFriction=20,20,20
-Value=3
-Mass=10
-Components=Metal=1;Firestone=1;
+Value=20
+Mass=8
 Rotate=1

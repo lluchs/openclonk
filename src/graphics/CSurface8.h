@@ -2,7 +2,7 @@
  * OpenClonk, http://www.openclonk.org
  *
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2013, The OpenClonk Team and contributors
+ * Copyright (c) 2013-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -17,8 +17,6 @@
 
 #ifndef INC_StdSurface8
 #define INC_StdSurface8
-
-#include <StdColors.h>
 
 class CSurface8
 {
@@ -48,12 +46,12 @@ public:
 		// set pix in local copy without bounds or surface checks
 		Bits[iY*Pitch+iX]=byCol;
 	}
-	BYTE GetPix(int iX, int iY) // get pixel
+	BYTE GetPix(int iX, int iY) const // get pixel
 	{
 		if (iX<0 || iY<0 || iX>=Wdt || iY>=Hgt) return 0;
 		return Bits ? Bits[iY*Pitch+iX] : 0;
 	}
-	inline BYTE _GetPix(int x, int y) // get pixel (bounds not checked)
+	inline BYTE _GetPix(int x, int y) const // get pixel (bounds not checked)
 	{
 		return Bits[y*Pitch+x];
 	}
@@ -63,8 +61,8 @@ public:
 	void Clip(int iX, int iY, int iX2, int iY2);
 	void NoClip();
 	bool Read(class CStdStream &hGroup);
-	bool Save(const char *szFilename, CStdPalette * = NULL);
-	void GetSurfaceSize(int &irX, int &irY); // get surface size
+	bool Save(const char *szFilename, CStdPalette * = nullptr);
+	void GetSurfaceSize(int &irX, int &irY) const; // get surface size
 	void AllowColor(BYTE iRngLo, BYTE iRngHi, bool fAllowZero=false);
 	void SetBuffer(BYTE *pbyToBuf, int Wdt, int Hgt, int Pitch);
 	void ReleaseBuffer();

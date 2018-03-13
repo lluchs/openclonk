@@ -3,62 +3,27 @@
 #include Library_Plant
 #include Library_Tree
 
-// Overloaded from the plant library to add the foreground parameter, foreground = true will roughly make every 3rd tree foreground (not the offspring though)
-func Place(int amount, proplist rectangle, proplist settings, bool foreground)
-{
-	// Default behaviour
-	var trees = inherited(amount, rectangle, settings);
-	if (GetLength(trees) < 1) return trees;
+local plant_seed_chance = 20;
+local plant_seed_area = 400;
+local plant_seed_amount = 10;
+local plant_seed_offset = 30;
 
-	for (var tree in trees)
-		if (!Random(3))
-			tree.Plane = 510;
-	return trees;
+local lib_tree_burned = Tree_Coniferous_Burned;
+
+public func GetTreetopPosition(pos)
+{
+	return Shape->Rectangle(-23,-11, 46,33)->GetRandomPoint(pos);
 }
 
-private func SeedChance() {	return 500; }
-private func SeedArea() { return 400; }
-private func SeedAmount() { return 10; }
-
-func Construction()
+public func Definition(def, ...)
 {
-	StartGrowth(5);
-	// set random rotation so trees don't look alike too much
-	SetProperty("MeshTransformation", Trans_Rotate(RandomX(0,359),0,1,0));
-	inherited(...);
-}
-
-public func ChopDown()
-{
-	// Use Special Vertex Mode 1 (see documentation) so the removed vertex won't come back when rotating the tree.
-	SetVertex(0, VTX_Y, 0, 1);
-	// Remove the bottom vertex
-	RemoveVertex(0);
-
-	_inherited(...);
-}
-
-func Damage()
-{
-	_inherited();
-
-	if (GetDamage() > MaxDamage() && OnFire())
-	{
-		var burned = CreateObject(Tree_Coniferous_Burned, 0, 0, GetOwner());
-		burned->SetCategory(GetCategory());
-		burned.Touchable = this.Touchable;
-		burned->SetCon(GetCon());
-		burned->SetR(GetR());
-		burned->Incinerate(OnFire());
-		burned->SetPosition(GetX(), GetY());
-		Sound("TreeCrack", false);
-		RemoveObject();
-		return;
-	}
+	SetProperty("PictureTransformation", Trans_Mul(Trans_Translate(-20000, -10000, 60000), Trans_Rotate(35,0,0,1)), def);
+	return _inherited(def, ...);
 }
 
 local Name = "$Name$";
 local Touchable = 0;
 local BlastIncinerate = 2;
 local ContactIncinerate = 6;
-local NoBurnDecay = 1;
+local NoBurnDecay = true;
+local Components = {Wood = 5};

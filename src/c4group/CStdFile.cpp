@@ -3,7 +3,7 @@
  *
  * Copyright (c) 1998-2000, Matthes Bender
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -18,29 +18,24 @@
 /* A handy wrapper class to gzio files */
 
 #include "C4Include.h"
+#include "c4group/CStdFile.h"
 #ifdef _WIN32
-#	include "platform/C4windowswrapper.h"
+#include "platform/C4windowswrapper.h"
 #endif
-#include <StdFile.h>
-#include <CStdFile.h>
-#include <SHA1.h>
+#include "lib/SHA1.h"
 
 #include <zlib.h>
-#include <zlib/gzio.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include "zlib/gzio.h"
 
 #include <sys/stat.h>
-#include <fcntl.h>
-#include <assert.h>
 
 CStdFile::CStdFile()
 {
 	thread_check.Set();
 	Status=false;
-	hFile=NULL;
-	hgzFile=NULL;
-	pMemory=NULL;
+	hFile=nullptr;
+	hgzFile=nullptr;
+	pMemory=nullptr;
 	ClearBuffer();
 	ModeWrite=false;
 	Name[0]=0;
@@ -53,7 +48,6 @@ CStdFile::~CStdFile()
 
 bool CStdFile::Create(const char *szFilename, bool fCompressed, bool fExecutable, bool fMemory)
 {
-	SCopy(szFilename,Name,_MAX_PATH);
 	thread_check.Set();
 	// Set modes
 	ModeWrite=true;
@@ -62,10 +56,15 @@ bool CStdFile::Create(const char *szFilename, bool fCompressed, bool fExecutable
 	{
 		if (!(pMemory = new StdBuf())) return false;
 		MemoryPtr = 0;
+
+		StdStrBuf buf;
+		buf.Format("<%p>", pMemory);
+		SCopy(buf.getData(), Name, _MAX_PATH);
 	}
 	// Open standard file
 	else
 	{
+		SCopy(szFilename,Name,_MAX_PATH);
 		int flags = _O_BINARY|O_CLOEXEC|O_CREAT|O_WRONLY|O_TRUNC;
 #ifdef _WIN32
 		int mode = _S_IREAD|_S_IWRITE;
@@ -115,7 +114,7 @@ bool CStdFile::Open(const char *szFilename, bool fCompressed)
 		if(c4_gzdirect(hgzFile))
 		{
 			c4_gzclose(hgzFile);
-			hgzFile = NULL;
+			hgzFile = nullptr;
 			return false;
 		}
 	}
@@ -130,7 +129,7 @@ bool CStdFile::Open(const char *szFilename, bool fCompressed)
 	return true;
 }
 
-bool CStdFile::Append(const char *szFilename)
+bool CStdFile::Append(const char *szFilename, bool text)
 {
 	SCopy(szFilename,Name,_MAX_PATH);
 	thread_check.Set();
@@ -138,9 +137,9 @@ bool CStdFile::Append(const char *szFilename)
 	ModeWrite=true;
 	// Open standard file
 #ifdef _WIN32
-	if (!(hFile=_wfopen(GetWideChar(Name),L"ab"))) return false;
+	if (!(hFile = _wfopen(GetWideChar(Name), text ? L"at" : L"ab"))) return false;
 #else
-	if (!(hFile=fopen(Name,"ab"))) return false;
+	if (!(hFile=fopen(Name,text ? "at" : "ab"))) return false;
 #endif
 	// Reset buffer
 	ClearBuffer();
@@ -163,12 +162,12 @@ bool CStdFile::Close(StdBuf **ppMemory)
 	if (pMemory)
 	{
 		if (ppMemory)
-			{ *ppMemory = pMemory; pMemory = NULL; }
+			{ *ppMemory = pMemory; pMemory = nullptr; }
 		else
 			delete pMemory;
 	}
 	MemoryPtr=0;
-	hgzFile=NULL; hFile=NULL;
+	hgzFile=nullptr; hFile=nullptr;
 	return !!rval;
 }
 
@@ -176,9 +175,9 @@ bool CStdFile::Default()
 {
 	Status=false;
 	Name[0]=0;
-	hgzFile=NULL;
-	hFile=NULL;
-	pMemory=NULL;
+	hgzFile=nullptr;
+	hFile=nullptr;
+	pMemory=nullptr;
 	MemoryPtr=0;
 	BufferLoad=BufferPtr=0;
 	thread_check.Set();
@@ -198,7 +197,7 @@ bool CStdFile::Read(void *pBuffer, size_t iSize, size_t *ipFSize)
 		// Valid data in the buffer: Transfer as much as possible
 		if (BufferLoad>BufferPtr)
 		{
-			transfer=Min<size_t>(BufferLoad-BufferPtr,iSize);
+			transfer=std::min<size_t>(BufferLoad-BufferPtr,iSize);
 			memmove(bypBuffer, Buffer+BufferPtr, transfer);
 			BufferPtr+=transfer;
 			bypBuffer+=transfer;
@@ -244,13 +243,13 @@ bool CStdFile::Write(const void *pBuffer, int iSize)
 	int transfer;
 	if (!pBuffer) return false;
 	if (!ModeWrite) return false;
-	BYTE *bypBuffer= (BYTE*) pBuffer;
+	const BYTE *bypBuffer= (const BYTE*) pBuffer;
 	while (iSize>0)
 	{
 		// Space in buffer: Transfer as much as possible
 		if (BufferLoad<CStdFileBufSize)
 		{
-			transfer=Min(CStdFileBufSize-BufferLoad,iSize);
+			transfer=std::min(CStdFileBufSize-BufferLoad,iSize);
 			memcpy(Buffer+BufferLoad,bypBuffer,transfer);
 			BufferLoad+=transfer;
 			bypBuffer+=transfer;
@@ -268,7 +267,7 @@ bool CStdFile::WriteString(const char *szStr)
 	BYTE nl[2]={0x0D,0x0A};
 	if (!szStr) return false;
 	int size=SLen(szStr);
-	if (!Write((void*)szStr,size)) return false;
+	if (!Write((const void*)szStr,size)) return false;
 	if (!Write(nl,2)) return false;
 	return true;
 }
@@ -292,7 +291,7 @@ bool CStdFile::Advance(int iOffset)
 		// Valid data in the buffer: Transfer as much as possible
 		if (BufferLoad > BufferPtr)
 		{
-			int transfer = Min(BufferLoad-BufferPtr,iOffset);
+			int transfer = std::min(BufferLoad-BufferPtr,iOffset);
 			BufferPtr += transfer;
 			iOffset -= transfer;
 		}
@@ -304,6 +303,20 @@ bool CStdFile::Advance(int iOffset)
 		}
 	}
 	return true;
+}
+
+int CStdFile::Seek(long int offset, int whence)
+{
+	// seek in file by offset and stdio-style SEEK_* constants. Only implemented for uncompressed files.
+	assert(!hgzFile);
+	return fseek(hFile, offset, whence);
+}
+
+long int CStdFile::Tell()
+{
+	// get current file pos. Only implemented for uncompressed files.
+	assert(!hgzFile);
+	return ftell(hFile);
 }
 
 int UncompressedFileSize(const char *szFilename)
@@ -331,7 +344,7 @@ int UncompressedFileSize(const char *szFilename)
 	return rval;
 }
 
-size_t CStdFile::AccessedEntrySize()
+size_t CStdFile::AccessedEntrySize() const
 {
 	if (hFile)
 		return FileSize(fileno(hFile));

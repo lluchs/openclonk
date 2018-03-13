@@ -3,7 +3,7 @@
  *
  * Copyright (c) 1998-2000, Matthes Bender
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -17,17 +17,18 @@
 
 /* At static list of C4IDs */
 
-#include <C4Include.h>
-#include <C4IDList.h>
+#include "C4Include.h"
+#include "object/C4IDList.h"
 
-#include <C4Def.h>
-#include <C4DefList.h>
-#include <C4GraphicsResource.h>
+#include "graphics/C4Draw.h"
+#include "graphics/C4GraphicsResource.h"
+#include "object/C4Def.h"
+#include "object/C4DefList.h"
 
 C4IDListChunk::C4IDListChunk()
 {
 	// prepare list
-	pNext=NULL;
+	pNext=nullptr;
 }
 
 C4IDListChunk::~C4IDListChunk()
@@ -42,10 +43,10 @@ void C4IDListChunk::Clear()
 	C4IDListChunk *pChunk=pNext,*pChunk2;
 	while (pChunk)
 	{
-		pChunk2=pChunk->pNext; pChunk->pNext=NULL;
+		pChunk2=pChunk->pNext; pChunk->pNext=nullptr;
 		delete pChunk; pChunk=pChunk2;
 	}
-	pNext=NULL;
+	pNext=nullptr;
 }
 
 C4IDList::C4IDList() : C4IDListChunk()
@@ -73,7 +74,7 @@ C4IDList &C4IDList::operator = (const C4IDList &rCopy)
 		pTo->pNext=pNew; pTo=pNew;
 	}
 	// finalize
-	pTo->pNext=NULL;
+	pTo->pNext=nullptr;
 	return *this;
 }
 
@@ -397,7 +398,7 @@ void C4IDList::Draw(C4Facet &cgo, int32_t iSelection,
 
 	int32_t sections = cgo.GetSectionCount();
 	int32_t idnum = GetNumberOfIDs(rDefs,dwCategory);
-	int32_t firstid = BoundBy<int32_t>(iSelection-sections/2,0,Max<int32_t>(idnum-sections,0));
+	int32_t firstid = Clamp<int32_t>(iSelection-sections/2,0,std::max<int32_t>(idnum-sections,0));
 	int32_t idcount;
 	C4ID c_id;
 	C4Facet cgo2;
@@ -458,8 +459,8 @@ bool C4IDList::operator==(const C4IDList& rhs) const
 	int32_t cnt=Count;
 	while (pChunk1 && pChunk2)
 	{
-		if (memcmp(pChunk1->id, pChunk2->id, sizeof(C4ID)*Min<int32_t>(cnt, C4IDListChunkSize)) ) return false;
-		if (memcmp(pChunk1->Count, pChunk2->Count, sizeof(int32_t)*Min<int32_t>(cnt, C4IDListChunkSize)) ) return false;
+		if (memcmp(pChunk1->id, pChunk2->id, sizeof(C4ID)*std::min<int32_t>(cnt, C4IDListChunkSize)) ) return false;
+		if (memcmp(pChunk1->Count, pChunk2->Count, sizeof(int32_t)*std::min<int32_t>(cnt, C4IDListChunkSize)) ) return false;
 		pChunk1=pChunk1->pNext; pChunk2=pChunk2->pNext;
 		cnt-=C4IDListChunkSize;
 	}
@@ -470,10 +471,10 @@ bool C4IDList::operator==(const C4IDList& rhs) const
 void C4IDList::CompileFunc(StdCompiler *pComp, bool fValues)
 {
 	// Get compiler characteristics
-	bool fCompiler = pComp->isCompiler();
+	bool deserializing = pComp->isDeserializer();
 	bool fNaming = pComp->hasNaming();
 	// Compiling: Clear existing data first
-	if (fCompiler) Clear();
+	if (deserializing) Clear();
 	// Start
 	C4IDListChunk *pChunk = this;
 	size_t iNr = 0, iCNr = 0;
@@ -485,7 +486,7 @@ void C4IDList::CompileFunc(StdCompiler *pComp, bool fValues)
 	for (;;)
 	{
 		// Prepare compiling of single mapping
-		if (!fCompiler)
+		if (!deserializing)
 		{
 			// End of list?
 			if (iNr >= Count) break;
@@ -521,11 +522,11 @@ void C4IDList::CompileFunc(StdCompiler *pComp, bool fValues)
 				// Count
 				pComp->Value(mkDefaultAdapt(pChunk->Count[iCNr], 0));
 		}
-		else if (fCompiler)
+		else if (deserializing)
 			pChunk->Count[iCNr] = 0;
 		// Goto next entry
 		iNr++; iCNr++;
 		// Save back count
-		if (fCompiler && fNaming) Count = iNr;
+		if (deserializing && fNaming) Count = iNr;
 	}
 }

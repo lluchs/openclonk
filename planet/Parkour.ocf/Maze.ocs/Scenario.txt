@@ -1,14 +1,16 @@
 [Head]
 Icon=34
 Title=Maze
-Version=5,2,0,1
+Version=8,0
 Difficulty=20
+
+[Game]
+Mode=Parkour
+Goals=Goal_RubyHunt=1;
 
 [Definitions]
 Definition1=Objects.ocd
-
-[Game]
-Goals=Goal_RubyHunt=1;
+Definition2=Decoration.ocd/Misc.ocd/SprayCan.ocd
 
 [Player1]
 Crew=Clonk=1
@@ -30,6 +32,7 @@ MapZoom=10
 TopOpen=0
 BottomOpen=0
 SkyScrollMode=2
+Secret=true
 
 [Weather]
 Climate=0,0,0,100

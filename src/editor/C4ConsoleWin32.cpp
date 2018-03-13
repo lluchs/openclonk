@@ -5,7 +5,7 @@
  * Copyright (c) 2004, Peter Wortmann
  * Copyright (c) 2005-2007, Günther Brammer
  * Copyright (c) 2005, 2007, Sven Eberhardt
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -17,24 +17,26 @@
  * for the above references.
  */
 
-#include <C4Include.h>
-#include <C4Console.h>
+#include "C4Include.h"
+#include "editor/C4Console.h"
 
-#include <C4AppWin32Impl.h>
-#include "C4ConsoleGUI.h"
-#include <C4DrawGL.h>
-#include <C4Landscape.h>
-#include <C4Object.h>
-#include <C4PlayerList.h>
-#include <C4Texture.h>
-#include <C4Version.h>
-#include "C4Viewport.h"
-#include <StdRegistry.h>
+#include "platform/C4AppWin32Impl.h"
+#include "editor/C4ConsoleGUI.h"
+#include "graphics/C4DrawGL.h"
+#include "landscape/C4Landscape.h"
+#include "object/C4Object.h"
+#include "player/C4PlayerList.h"
+#include "landscape/C4Texture.h"
+#include "C4Version.h"
+#include "game/C4Viewport.h"
+#include "platform/StdRegistry.h"
+#include "lib/StdColors.h"
+#include "landscape/C4Sky.h"
 
-#include <C4windowswrapper.h>
+#include "platform/C4windowswrapper.h"
 #include <mmsystem.h>
 #include <commdlg.h>
-#include "resource.h"
+#include "res/resource.h"
 #define GetWideLPARAM(c) reinterpret_cast<LPARAM>(static_cast<wchar_t*>(GetWideChar(c)))
 
 inline StdStrBuf::wchar_t_holder LoadResStrW(const char *id) { return GetWideChar(LoadResStr(id)); }
@@ -78,25 +80,46 @@ public:
 	int MenuIndexViewport;
 	int MenuIndexNet;
 	int MenuIndexHelp;
+	int property_dlg_inputarea_height;
+	int property_dlg_margin;
+	int property_dlg_okbutton_width;
+	HWND console_handle;
+	int console_default_width, console_default_height; // default (and minimum) console window size
+	int console_margin; // margins between controls and from window borders
+	int console_wide_margin; // larger margins around some console buttons
+	int console_button_height; // height of buttons and the three control rows in the console
+	int console_ok_button_width; // width of OK button to enter script commands (everyone just presses enter anyway...)
+	int console_status_width; // width of frame counter and time/FPS display status boxes
 
 	State(C4ConsoleGUI *console)
 	{
-		hbmMouse=NULL;
-		hbmMouse2=NULL;
-		hbmCursor=NULL;
-		hbmCursor2=NULL;
-		hbmBrush=NULL;
-		hbmBrush2=NULL;
-		hbmPlay=NULL;
-		hbmPlay2=NULL;
-		hbmHalt=NULL;
-		hbmHalt2=NULL;
-		hPropertyDlg=NULL;
+		hbmMouse=nullptr;
+		hbmMouse2=nullptr;
+		hbmCursor=nullptr;
+		hbmCursor2=nullptr;
+		hbmBrush=nullptr;
+		hbmBrush2=nullptr;
+		hbmPlay=nullptr;
+		hbmPlay2=nullptr;
+		hbmHalt=nullptr;
+		hbmHalt2=nullptr;
+		hPropertyDlg=nullptr;
 		MenuIndexFile       =  0;
 		MenuIndexPlayer     =  1;
 		MenuIndexViewport   =  2;
 		MenuIndexNet        = -1;
 		MenuIndexHelp       =  3;
+		property_dlg_inputarea_height = 0;
+		property_dlg_margin = 0;
+		property_dlg_okbutton_width = 0;
+		console_handle = nullptr;
+		console_default_width = 0;
+		console_default_height = 0;
+		console_margin = 0;
+		console_wide_margin = 0;
+		console_button_height = 0;
+		console_ok_button_width = 0;
+		console_status_width = 0;
 	}
 
 	~State()
@@ -155,6 +178,159 @@ public:
 		hSubMenu = GetSubMenu(hMenu,MenuIndexHelp);
 		SetMenuItemText(hSubMenu,IDM_HELP_ABOUT,LoadResStr("IDS_MENU_ABOUT"));
 	}
+
+	void PropertyDlgInitLayout()
+	{
+		// Find out desired sizes and margins of elements used in property dialogue.
+		// Just remember initial layout.
+		// This is easier than getting all values from Windows metrics definitions.
+		RECT client_rc = { 0,0,252,101 }, button_rc = { 207,182,254,202 };
+		::GetClientRect(hPropertyDlg, &client_rc);
+		HWND button = ::GetDlgItem(hPropertyDlg, IDOK);
+		::GetWindowRect(button, &button_rc);
+		property_dlg_inputarea_height = button_rc.bottom - button_rc.top;
+		property_dlg_margin = 1; // hardcoded. The elements are actually placed quite poorly in the .rc, cannot derive from it
+		property_dlg_okbutton_width = button_rc.right - button_rc.left;
+	}
+
+	void PropertyDlgUpdateSize()
+	{
+		// Positions unknown?
+		if (!property_dlg_inputarea_height) return;
+		// Reposition all child elements after size of property dialogue has changed
+		RECT rc = { 0,0,0,0 };
+		if (!::GetClientRect(hPropertyDlg, &rc)) return;
+		int y0 = rc.bottom - property_dlg_margin - property_dlg_inputarea_height;
+		// Output text box
+		::SetWindowPos(::GetDlgItem(hPropertyDlg, IDC_EDITOUTPUT), nullptr,
+			property_dlg_margin,
+			property_dlg_margin,
+			rc.right - 2* property_dlg_margin,
+			y0 - 2* property_dlg_margin,
+			SWP_NOOWNERZORDER | SWP_NOZORDER);
+		// Input ComboBox
+		::SetWindowPos(::GetDlgItem(hPropertyDlg, IDC_COMBOINPUT), nullptr,
+			property_dlg_margin,
+			y0,
+			rc.right - property_dlg_okbutton_width - 3*property_dlg_margin,
+			property_dlg_inputarea_height,
+			SWP_NOOWNERZORDER | SWP_NOZORDER);
+		// OK button
+		::SetWindowPos(::GetDlgItem(hPropertyDlg, IDOK), nullptr,
+			rc.right - property_dlg_margin - property_dlg_okbutton_width,
+			y0,
+			property_dlg_okbutton_width,
+			property_dlg_inputarea_height,
+			SWP_NOOWNERZORDER | SWP_NOZORDER);
+	}
+
+	void ConsoleInitLayout()
+	{
+		// Find out desired sizes and margins of elements used in console dialogue.
+		// Just remember initial layout.
+		// This is easier than getting all values from Windows metrics definitions.
+		RECT console_rc = { 0,0,356,252 };
+		::GetWindowRect(console_handle, &console_rc);
+		console_default_width = console_rc.right - console_rc.left;
+		console_default_height = console_rc.bottom - console_rc.top;
+		console_margin = 1; // hardcoded margins
+		console_wide_margin = 3;
+		RECT button_rc = { 288,180,350,200 };
+		::GetWindowRect(::GetDlgItem(console_handle, IDOK), &button_rc);
+		console_button_height = button_rc.bottom - button_rc.top;
+		console_ok_button_width = button_rc.right - button_rc.left;
+		RECT status_rc = { 222,205,350,223 };
+		::GetWindowRect(::GetDlgItem(console_handle, IDC_STATICTIME), &status_rc);
+		console_status_width = status_rc.right - status_rc.left;
+	}
+
+	void ConsoleUpdateSize()
+	{
+		// Positions unknown?
+		if (!console_default_width) return;
+		// Reposition all child elements after size of console dialogue has changed
+		RECT rc = { 0,0,0,0 };
+		if (!::GetClientRect(console_handle, &rc)) return;
+		int y0 = rc.bottom - console_margin * 3 - console_button_height * 3;
+		int y1 = rc.bottom - console_margin * 2 - console_button_height * 2;
+		int y2 = rc.bottom - console_margin * 1 - console_button_height * 1;
+		int x0 = rc.right - console_margin - console_button_height;
+		// Output text box
+		::SetWindowPos(::GetDlgItem(console_handle, IDC_EDITOUTPUT), nullptr,
+			console_margin,
+			0,
+			x0 - console_margin - console_wide_margin,
+			y0 - console_margin,
+			SWP_NOOWNERZORDER | SWP_NOZORDER);
+		// Input ComboBox
+		::SetWindowPos(::GetDlgItem(console_handle, IDC_COMBOINPUT), nullptr,
+			console_margin,
+			y0,
+			rc.right - console_ok_button_width - console_margin * 3,
+			console_button_height,
+			SWP_NOOWNERZORDER | SWP_NOZORDER);
+		// Input OK button
+		::SetWindowPos(::GetDlgItem(console_handle, IDOK), nullptr,
+			rc.right - console_margin - console_ok_button_width,
+			y0,
+			console_ok_button_width,
+			console_button_height,
+			SWP_NOOWNERZORDER | SWP_NOZORDER);
+		// Frame status bar
+		::SetWindowPos(::GetDlgItem(console_handle, IDC_STATICFRAME), nullptr,
+			console_margin,
+			y1,
+			console_status_width,
+			console_button_height,
+			SWP_NOOWNERZORDER | SWP_NOZORDER);
+		// Play button
+		::SetWindowPos(::GetDlgItem(console_handle, IDC_BUTTONPLAY), nullptr,
+			console_margin + console_status_width + console_wide_margin,
+			y1,
+			console_button_height,
+			console_button_height,
+			SWP_NOOWNERZORDER | SWP_NOZORDER);
+		// Halt button
+		::SetWindowPos(::GetDlgItem(console_handle, IDC_BUTTONHALT), nullptr,
+			console_margin + console_status_width + console_wide_margin * 2 + console_button_height,
+			y1,
+			console_button_height,
+			console_button_height,
+			SWP_NOOWNERZORDER | SWP_NOZORDER);
+		// Time/FPS status bar
+		::SetWindowPos(::GetDlgItem(console_handle, IDC_STATICTIME), nullptr,
+			rc.right - console_margin - console_status_width,
+			y1,
+			console_status_width,
+			console_button_height,
+			SWP_NOOWNERZORDER | SWP_NOZORDER);
+		// Main status bar
+		::SetWindowPos(::GetDlgItem(console_handle, IDC_STATICCURSOR), nullptr,
+			console_margin,
+			y2,
+			rc.right - 2* console_margin,
+			console_button_height,
+			SWP_NOOWNERZORDER | SWP_NOZORDER);
+		// Tool buttons
+		::SetWindowPos(::GetDlgItem(console_handle, IDC_BUTTONMODEPLAY), nullptr,
+			x0,
+			console_margin,
+			console_button_height,
+			console_button_height,
+			SWP_NOOWNERZORDER | SWP_NOZORDER);
+		::SetWindowPos(::GetDlgItem(console_handle, IDC_BUTTONMODEEDIT), nullptr,
+			x0,
+			console_margin * 2 + console_button_height,
+			console_button_height,
+			console_button_height,
+			SWP_NOOWNERZORDER | SWP_NOZORDER);
+		::SetWindowPos(::GetDlgItem(console_handle, IDC_BUTTONMODEDRAW), nullptr,
+			x0,
+			console_margin * 3 + console_button_height * 2,
+			console_button_height,
+			console_button_height,
+			SWP_NOOWNERZORDER | SWP_NOZORDER);
+	}
 };
 
 void C4ConsoleGUI::UpdateMenuText(HMENU hMenu) { state->UpdateMenuText(*this, hMenu); }
@@ -163,7 +339,7 @@ static void ClearDlg(HWND &handle)
 {
 	if (handle)
 		DestroyWindow(handle);
-	handle = NULL;
+	handle = nullptr;
 }
 
 INT_PTR CALLBACK ConsoleDlgProc(HWND hDlg, UINT Msg, WPARAM wParam, LPARAM lParam)
@@ -176,7 +352,7 @@ INT_PTR CALLBACK ConsoleDlgProc(HWND hDlg, UINT Msg, WPARAM wParam, LPARAM lPara
 		return true;
 		//------------------------------------------------------------------------------------------------------------
 	case WM_DESTROY:
-		StoreWindowPosition(hDlg, "Main", Config.GetSubkeyPath("Console"), false);
+		StoreWindowPosition(hDlg, "Main", Config.GetSubkeyPath("Console"), true);
 		Application.Quit();
 		return true;
 		//------------------------------------------------------------------------------------------------------------
@@ -191,7 +367,7 @@ INT_PTR CALLBACK ConsoleDlgProc(HWND hDlg, UINT Msg, WPARAM wParam, LPARAM lPara
 		//------------------------------------------------------------------------------------------------------------
 	case WM_INITDIALOG:
 		Console.Active = true;
-		SendMessage(hDlg,DM_SETDEFID,(WPARAM)IDOK,(LPARAM)0);
+		SendMessage(hDlg, DM_SETDEFID, (WPARAM)IDOK, (LPARAM)0);
 		Console.UpdateMenuText(GetMenu(hDlg));
 		return true;
 		//------------------------------------------------------------------------------------------------------------
@@ -203,9 +379,14 @@ INT_PTR CALLBACK ConsoleDlgProc(HWND hDlg, UINT Msg, WPARAM wParam, LPARAM lPara
 		case IDOK:
 			// IDC_COMBOINPUT to Console.In()
 			wchar_t buffer[16000];
-			GetDlgItemTextW(hDlg,IDC_COMBOINPUT,buffer,16000);
+			GetDlgItemTextW(hDlg, IDC_COMBOINPUT, buffer, 16000);
 			if (buffer[0])
-				Console.In(StdStrBuf(buffer).getData());
+			{
+				StdStrBuf in_char(buffer);
+				::Console.RegisterRecentInput(in_char.getData(), C4Console::MRU_Scenario);
+				::Console.In(in_char.getData());
+				::Console.UpdateInputCtrl();
+			}
 			return true;
 			// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 		case IDC_BUTTONHALT:
@@ -251,13 +432,13 @@ INT_PTR CALLBACK ConsoleDlgProc(HWND hDlg, UINT Msg, WPARAM wParam, LPARAM lPara
 		case IDM_VIEWPORT_NEW: Console.ViewportNew(); return true;
 		}
 		// New player viewport
-		if (Inside((int) LOWORD(wParam),IDM_VIEWPORT_NEW1,IDM_VIEWPORT_NEW2))
+		if (Inside((int)LOWORD(wParam), IDM_VIEWPORT_NEW1, IDM_VIEWPORT_NEW2))
 		{
-			::Viewports.CreateViewport(LOWORD(wParam)-IDM_VIEWPORT_NEW1);
+			::Viewports.CreateViewport(LOWORD(wParam) - IDM_VIEWPORT_NEW1);
 			return true;
 		}
 		// Remove player
-		if (Inside((int) LOWORD(wParam),IDM_PLAYER_QUIT1,IDM_PLAYER_QUIT2))
+		if (Inside((int)LOWORD(wParam), IDM_PLAYER_QUIT1, IDM_PLAYER_QUIT2))
 		{
 			C4Player *plr = ::Players.Get(LOWORD(wParam) - IDM_PLAYER_QUIT1);
 			if (!plr) return true;
@@ -265,10 +446,10 @@ INT_PTR CALLBACK ConsoleDlgProc(HWND hDlg, UINT Msg, WPARAM wParam, LPARAM lPara
 			return true;
 		}
 		// Remove client
-		if (Inside((int) LOWORD(wParam),IDM_NET_CLIENT1,IDM_NET_CLIENT2))
+		if (Inside((int)LOWORD(wParam), IDM_NET_CLIENT1, IDM_NET_CLIENT2))
 		{
 			if (!::Control.isCtrlHost()) return false;
-			Game.Clients.CtrlRemove(Game.Clients.getClientByID(LOWORD(wParam)-IDM_NET_CLIENT1), LoadResStr("IDS_MSG_KICKBYMENU"));
+			Game.Clients.CtrlRemove(Game.Clients.getClientByID(LOWORD(wParam) - IDM_NET_CLIENT1), LoadResStr("IDS_MSG_KICKBYMENU"));
 			return true;
 		}
 		return false;
@@ -281,7 +462,7 @@ INT_PTR CALLBACK ConsoleDlgProc(HWND hDlg, UINT Msg, WPARAM wParam, LPARAM lPara
 		return false;
 		//------------------------------------------------------------------------------------------------------------
 	case WM_COPYDATA:
-		{
+	{
 		COPYDATASTRUCT* pcds = reinterpret_cast<COPYDATASTRUCT *>(lParam);
 		if (pcds->dwData == WM_USER_RELOADFILE)
 		{
@@ -292,12 +473,30 @@ INT_PTR CALLBACK ConsoleDlgProc(HWND hDlg, UINT Msg, WPARAM wParam, LPARAM lPara
 			Game.ReloadFile(szPath);
 		}
 		return false;
-		}
-		//------------------------------------------------------------------------------------------------------------
+	}
+	//------------------------------------------------------------------------------------------------------------
 	case WM_INPUTLANGCHANGE:
 		::Application.OnKeyboardLayoutChanged();
+		break;
+	//------------------------------------------------------------------------------------------------------------
+	// Resizing
+	case WM_GETMINMAXINFO:
+		// Window may not become smaller than initial size
+		if (Console.state && Console.state->console_default_width)
+		{
+			MINMAXINFO *info = reinterpret_cast<MINMAXINFO *>(lParam);
+			info->ptMinTrackSize.x = Console.state->console_default_width;
+			info->ptMinTrackSize.y = Console.state->console_default_height;
+		}
+		return 0;
+	case WM_SIZING: Console.state->ConsoleUpdateSize(); break;
+	case WM_WINDOWPOSCHANGED:
+	{
+		const WINDOWPOS *data = reinterpret_cast<const WINDOWPOS *>(lParam);
+		if (data && !(data->flags & SWP_NOSIZE)) Console.state->ConsoleUpdateSize();
+		break;
 	}
-
+	}
 	return false;
 }
 
@@ -305,32 +504,28 @@ class C4ToolsDlg::State: public C4ConsoleGUI::InternalState<class C4ToolsDlg>
 {
 public:
 	HWND hDialog;
-	CStdGLCtx* pGLCtx;
+	C4Window *pPreviewWindow;
 	friend INT_PTR CALLBACK ToolsDlgProc(HWND hDlg, UINT Msg, WPARAM wParam, LPARAM lParam);
 	HBITMAP hbmBrush,hbmBrush2;
 	HBITMAP hbmLine,hbmLine2;
 	HBITMAP hbmRect,hbmRect2;
 	HBITMAP hbmFill,hbmFill2;
 	HBITMAP hbmPicker,hbmPicker2;
-	HBITMAP hbmIFT;
-	HBITMAP hbmNoIFT;
 	HBITMAP hbmDynamic;
 	HBITMAP hbmStatic;
 	HBITMAP hbmExact;
 	
-	State(C4ToolsDlg *toolsDlg): C4ConsoleGUI::InternalState<class C4ToolsDlg>(toolsDlg), hDialog(0),
-		hbmBrush(0), hbmBrush2(0),
-		hbmLine(0), hbmLine2(0),
-		hbmRect(0), hbmRect2(0),
-		hbmFill(0), hbmFill2(0),
-		hbmPicker(0), hbmPicker2(0),
-		hbmIFT(0),
-		hbmNoIFT(0),
-		hbmDynamic(0),
-		hbmStatic(0),
-		hbmExact(0)
+	State(C4ToolsDlg *toolsDlg): C4ConsoleGUI::InternalState<class C4ToolsDlg>(toolsDlg), hDialog(nullptr),
+		hbmBrush(nullptr), hbmBrush2(nullptr),
+		hbmLine(nullptr), hbmLine2(nullptr),
+		hbmRect(nullptr), hbmRect2(nullptr),
+		hbmFill(nullptr), hbmFill2(nullptr),
+		hbmPicker(nullptr), hbmPicker2(nullptr),
+		hbmDynamic(nullptr),
+		hbmStatic(nullptr),
+		hbmExact(nullptr)
 	{
-		pGLCtx = NULL;
+		pPreviewWindow = nullptr;
 	}
 	
 	void LoadBitmaps(HINSTANCE instance)
@@ -345,8 +540,6 @@ public:
 		if (!hbmRect2) hbmRect2=(HBITMAP)LoadBitmapW(instance,MAKEINTRESOURCEW(IDB_RECT2));
 		if (!hbmFill2) hbmFill2=(HBITMAP)LoadBitmapW(instance,MAKEINTRESOURCEW(IDB_FILL2));
 		if (!hbmPicker2) hbmPicker2=(HBITMAP)LoadBitmapW(instance,MAKEINTRESOURCEW(IDB_PICKER2));
-		if (!hbmIFT) hbmIFT=(HBITMAP)LoadBitmapW(instance,MAKEINTRESOURCEW(IDB_IFT));
-		if (!hbmNoIFT) hbmNoIFT=(HBITMAP)LoadBitmapW(instance,MAKEINTRESOURCEW(IDB_NOIFT));
 		if (!hbmDynamic) hbmDynamic=(HBITMAP)LoadBitmapW(instance,MAKEINTRESOURCEW(IDB_DYNAMIC));
 		if (!hbmStatic) hbmStatic=(HBITMAP)LoadBitmapW(instance,MAKEINTRESOURCEW(IDB_STATIC));
 		if (!hbmExact) hbmExact=(HBITMAP)LoadBitmapW(instance,MAKEINTRESOURCEW(IDB_EXACT));
@@ -360,22 +553,30 @@ public:
 	void Clear()
 	{
 		// Unload bitmaps
-		if (hbmBrush) DeleteObject(hbmBrush);
-		if (hbmLine) DeleteObject(hbmLine);
-		if (hbmRect) DeleteObject(hbmRect);
-		if (hbmFill) DeleteObject(hbmFill);
-		if (hbmIFT) DeleteObject(hbmIFT);
-		if (hbmNoIFT) DeleteObject(hbmNoIFT);
-		if (pGLCtx)
+		if (hbmBrush) { DeleteObject(hbmBrush); hbmBrush = nullptr; }
+		if (hbmLine) { DeleteObject(hbmLine); hbmLine = nullptr; }
+		if (hbmRect) { DeleteObject(hbmRect); hbmRect = nullptr; }
+		if (hbmFill) { DeleteObject(hbmFill); hbmFill = nullptr; }
+		if (hbmPicker) { DeleteObject(hbmPicker); hbmPicker = nullptr; }
+		if (hbmBrush2) { DeleteObject(hbmBrush2); hbmBrush2 = nullptr; }
+		if (hbmLine2) { DeleteObject(hbmLine2); hbmLine2 = nullptr; }
+		if (hbmRect2) { DeleteObject(hbmRect2); hbmRect2 = nullptr; }
+		if (hbmFill2) { DeleteObject(hbmFill2); hbmFill2 = nullptr; }
+		if (hbmPicker2) { DeleteObject(hbmPicker2); hbmPicker2 = nullptr; }
+		if (hbmDynamic) { DeleteObject(hbmDynamic); hbmDynamic = nullptr; }
+		if (hbmStatic) { DeleteObject(hbmStatic); hbmStatic = nullptr; }
+		if (hbmExact) { DeleteObject(hbmExact); hbmExact = nullptr; }
+		if (pPreviewWindow)
 		{
-			delete pGLCtx;
-			pGLCtx = NULL;
+			delete pPreviewWindow;
+			pPreviewWindow = nullptr;
 		}
-		if (hDialog) DestroyWindow(hDialog); hDialog=NULL;
+		if (hDialog) DestroyWindow(hDialog); hDialog=nullptr;
 	}
 
 	void Default()
 	{
+		GetOwner()->ModeBack = true;
 	}
 
 };
@@ -392,7 +593,7 @@ INT_PTR CALLBACK ToolsDlgProc(HWND hDlg, UINT Msg, WPARAM wParam, LPARAM lParam)
 		break;
 		//----------------------------------------------------------------------------------------------
 	case WM_DESTROY:
-		StoreWindowPosition(hDlg, "Property", Config.GetSubkeyPath("Console"), false);
+		StoreWindowPosition(hDlg, "Tools", Config.GetSubkeyPath("Console"), false);
 		break;
 		//----------------------------------------------------------------------------------------------
 	case WM_INITDIALOG:
@@ -430,15 +631,15 @@ INT_PTR CALLBACK ToolsDlgProc(HWND hDlg, UINT Msg, WPARAM wParam, LPARAM lParam)
 			return true;
 			// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 		case IDC_BUTTONMODEDYNAMIC:
-			Console.ToolsDlg.SetLandscapeMode(C4LSC_Dynamic);
+			Console.ToolsDlg.SetLandscapeMode(LandscapeMode::Dynamic, false);
 			return true;
 			// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 		case IDC_BUTTONMODESTATIC:
-			Console.ToolsDlg.SetLandscapeMode(C4LSC_Static);
+			Console.ToolsDlg.SetLandscapeMode(LandscapeMode::Static, false);
 			return true;
 			// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 		case IDC_BUTTONMODEEXACT:
-			Console.ToolsDlg.SetLandscapeMode(C4LSC_Exact);
+			Console.ToolsDlg.SetLandscapeMode(LandscapeMode::Exact, false);
 			return true;
 			// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 		case IDC_BUTTONBRUSH:
@@ -461,42 +662,32 @@ INT_PTR CALLBACK ToolsDlgProc(HWND hDlg, UINT Msg, WPARAM wParam, LPARAM lParam)
 			Console.ToolsDlg.SetTool(C4TLS_Picker, false);
 			return true;
 			// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-		case IDC_BUTTONIFT:
-			Console.ToolsDlg.SetIFT(true);
-			return true;
-			// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-		case IDC_BUTTONNOIFT:
-			Console.ToolsDlg.SetIFT(false);
-			return true;
-			// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-		case IDC_COMBOMATERIAL:
+		case IDC_COMBOFGMATERIAL: case IDC_COMBOBGMATERIAL:
+		case IDC_COMBOFGTEXTURE: case IDC_COMBOBGTEXTURE:
 			switch (HIWORD(wParam))
 			{
 			case CBN_SELCHANGE:
 			{
+				// New material or texture selected. Get selection string
 				wchar_t str[100];
-				int32_t cursel = SendDlgItemMessage(hDlg,IDC_COMBOMATERIAL,CB_GETCURSEL,0,0);
-				SendDlgItemMessage(hDlg,IDC_COMBOMATERIAL,CB_GETLBTEXT,cursel,(LPARAM)str);
-				Console.ToolsDlg.SetMaterial(StdStrBuf(str).getData());
-				break;
-			}
+				WORD idCombo = LOWORD(wParam);
+				int32_t cursel = SendDlgItemMessage(hDlg, idCombo, CB_GETCURSEL, 0, 0);
+				SendDlgItemMessage(hDlg, idCombo, CB_GETLBTEXT, cursel, (LPARAM)str);
+				// Convert to ascii
+				StdStrBuf str_buf(str);
+				const char *astr = str_buf.getData();
+				// Update appropriate setting in drawing tool
+				switch (idCombo)
+				{
+				case IDC_COMBOFGMATERIAL: Console.ToolsDlg.SetMaterial(astr); break;
+				case IDC_COMBOFGTEXTURE: Console.ToolsDlg.SetTexture(astr); break;
+				case IDC_COMBOBGMATERIAL: Console.ToolsDlg.SetBackMaterial(astr); break;
+				case IDC_COMBOBGTEXTURE: Console.ToolsDlg.SetBackTexture(astr); break;
+				}
 			}
 			return true;
 			// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-		case IDC_COMBOTEXTURE:
-			switch (HIWORD(wParam))
-			{
-			case CBN_SELCHANGE:
-			{
-				wchar_t str[100];
-				int32_t cursel = SendDlgItemMessage(hDlg,IDC_COMBOTEXTURE,CB_GETCURSEL,0,0);
-				SendDlgItemMessage(hDlg,IDC_COMBOTEXTURE,CB_GETLBTEXT,cursel,(LPARAM)str);
-				Console.ToolsDlg.SetTexture(StdStrBuf(str).getData());
-				break;
-			}
-			}
-			return true;
-			// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+		}
 		}
 		return false;
 		//----------------------------------------------------------------------------------------
@@ -514,13 +705,22 @@ INT_PTR CALLBACK PropertyDlgProc(HWND hDlg, UINT Msg, WPARAM wParam, LPARAM lPar
 		break;
 		//------------------------------------------------------------------------------------------------
 	case WM_DESTROY:
-		StoreWindowPosition(hDlg, "Property", Config.GetSubkeyPath("Console"), false);
+		StoreWindowPosition(hDlg, "Property", Config.GetSubkeyPath("Console"), true);
 		break;
 		//------------------------------------------------------------------------------------------------
 	case WM_INITDIALOG:
 		SendMessage(hDlg,DM_SETDEFID,(WPARAM)IDOK,(LPARAM)0);
 		return true;
-		//------------------------------------------------------------------------------------------------
+	//------------------------------------------------------------------------------------------------
+	// Callbacks during/after window resizing
+	case WM_SIZING: Console.state->PropertyDlgUpdateSize(); break;
+	case WM_WINDOWPOSCHANGED:
+	{
+		const WINDOWPOS *data = reinterpret_cast<const WINDOWPOS *>(lParam);
+		if (data && !(data->flags & SWP_NOSIZE)) Console.state->PropertyDlgUpdateSize();
+		break;
+	}
+	//------------------------------------------------------------------------------------------------
 	case WM_COMMAND:
 		// Evaluate command
 		switch (LOWORD(wParam))
@@ -566,7 +766,7 @@ bool C4ConsoleGUI::Win32DialogMessageHandling(MSG *msg)
 
 void C4ConsoleGUI::SetCursor(Cursor cursor)
 {
-	::SetCursor(LoadCursor(0,IDC_WAIT));
+	::SetCursor(LoadCursor(nullptr,IDC_WAIT));
 }
 
 bool C4ConsoleGUI::UpdateModeCtrls(int iMode)
@@ -583,9 +783,9 @@ bool C4ConsoleGUI::UpdateModeCtrls(int iMode)
 	return true;
 }
 
-C4Window* C4ConsoleGUI::CreateConsoleWindow(C4AbstractApp *application)
+bool C4ConsoleGUI::CreateConsoleWindow(C4AbstractApp *application)
 {
-	hWindow = CreateDialog(application->GetInstance(), MAKEINTRESOURCE(IDD_CONSOLE), NULL, ConsoleDlgProc);
+	hWindow = CreateDialog(application->GetInstance(), MAKEINTRESOURCE(IDD_CONSOLE), nullptr, ConsoleDlgProc);
 	if (!hWindow)
 	{
 		wchar_t * lpMsgBuf;
@@ -593,17 +793,20 @@ C4Window* C4ConsoleGUI::CreateConsoleWindow(C4AbstractApp *application)
 		  FORMAT_MESSAGE_ALLOCATE_BUFFER |
 		  FORMAT_MESSAGE_FROM_SYSTEM |
 		  FORMAT_MESSAGE_IGNORE_INSERTS,
-		  NULL,
+		  nullptr,
 		  GetLastError(),
 		  0,
 		  (wchar_t *)&lpMsgBuf, // really.
 		  0,
-		  NULL);
+		  nullptr);
 		Log(FormatString("Error creating dialog window: %s", StdStrBuf(lpMsgBuf).getData()).getData());
 		// Free the buffer.
 		LocalFree(lpMsgBuf);
-		return NULL;
+		return false;
 	}
+	// Remember metrics
+	state->console_handle = hWindow;
+	state->ConsoleInitLayout();
 	// Restore window position
 	RestoreWindowPosition(hWindow, "Main", Config.GetSubkeyPath("Console"));
 	// Set icon
@@ -622,9 +825,13 @@ C4Window* C4ConsoleGUI::CreateConsoleWindow(C4AbstractApp *application)
 	UpdateWindow(hWindow);
 	SetFocus(hWindow);
 	ShowCursor(true);
-	hRenderWindow = hWindow;
+	renderwnd = hWindow;
 	// Success
-	return this;
+	return true;
+}
+
+void C4ConsoleGUI::DeleteConsoleWindow()
+{
 }
 
 void C4ConsoleGUI::DoEnableControls(bool fEnable)
@@ -682,7 +889,7 @@ void C4ConsoleGUI::Out(const char* message)
 	int len,len2,lines; wchar_t *buffer, *buffer2;
 	len = 65000;//SendDlgItemMessage(hWindow,IDC_EDITOUTPUT,EM_LINELENGTH,(WPARAM)0,(LPARAM)0);
 	StdBuf messageW = GetWideCharBuf(message);
-	len2 = len+Min<int32_t>(messageW.getSize()/sizeof(wchar_t)+2, 5000);
+	len2 = len+std::min<int32_t>(messageW.getSize()/sizeof(wchar_t)+2, 5000);
 	buffer = new wchar_t [len2];
 	buffer[0]=0;
 	GetDlgItemTextW(hWindow,IDC_EDITOUTPUT,buffer,len);
@@ -726,6 +933,7 @@ void C4ConsoleGUI::DisplayInfoText(C4ConsoleGUI::InfoTextType type, StdStrBuf& t
 		break;
 	default:
 		assert(false);
+		return;
 	}
 	SetDlgItemTextW(hWindow,dialog_item,text.GetWideChar());
 	UpdateWindow(GetDlgItem(hWindow,dialog_item));
@@ -744,7 +952,7 @@ void C4ConsoleGUI::RecordingEnabled()
 void C4ConsoleGUI::ShowAboutWithCopyright(StdStrBuf &copyright)
 {
 	StdStrBuf strMessage; strMessage.Format("%s %s\n\n%s", C4ENGINECAPTION, C4VERSION, copyright.getData());
-	MessageBoxW(NULL, strMessage.GetWideChar(), ADDL(C4ENGINECAPTION), MB_ICONINFORMATION | MB_TASKMODAL);
+	MessageBoxW(nullptr, strMessage.GetWideChar(), ADDL(C4ENGINECAPTION), MB_ICONINFORMATION | MB_TASKMODAL);
 }
 
 bool C4ConsoleGUI::FileSelect(StdStrBuf *sFilename, const char * szFilter, DWORD dwFlags, bool fSave)
@@ -762,7 +970,7 @@ bool C4ConsoleGUI::FileSelect(StdStrBuf *sFilename, const char * szFilter, DWORD
 	while (*s) s = s + strlen(s) + 1;
 	s++;
 	int n = s - szFilter;
-	int len = MultiByteToWideChar(CP_UTF8, 0, szFilter, n, NULL, 0);
+	int len = MultiByteToWideChar(CP_UTF8, 0, szFilter, n, nullptr, 0);
 	StdBuf filt;
 	filt.SetSize(len * sizeof(wchar_t));
 	MultiByteToWideChar(CP_UTF8, 0, szFilter, n, getMBufPtr<wchar_t>(filt), len );
@@ -772,8 +980,8 @@ bool C4ConsoleGUI::FileSelect(StdStrBuf *sFilename, const char * szFilter, DWORD
 	ofn.Flags=dwFlags;
 
 	bool fResult;
-	size_t l = GetCurrentDirectoryW(0,0);
-	wchar_t *wd = new wchar_t[l];
+	size_t l = GetCurrentDirectoryW(0,nullptr);
+	auto *wd = new wchar_t[l];
 	GetCurrentDirectoryW(l,wd);
 	if (fSave)
 		fResult = !!GetSaveFileNameW(&ofn);
@@ -782,9 +990,9 @@ bool C4ConsoleGUI::FileSelect(StdStrBuf *sFilename, const char * szFilter, DWORD
 	// Reset working directory to exe path as Windows file dialog might have changed it
 	SetCurrentDirectoryW(wd);
 	delete[] wd;
-	len = WideCharToMultiByte(CP_UTF8, 0, buffer, ArbitraryMaximumLength, NULL, 0, 0, 0);
+	len = WideCharToMultiByte(CP_UTF8, 0, buffer, ArbitraryMaximumLength, nullptr, 0, nullptr, nullptr);
 	sFilename->SetLength(len - 1);
-	WideCharToMultiByte(CP_UTF8, 0, buffer, ArbitraryMaximumLength, sFilename->getMData(), sFilename->getSize(), 0, 0);
+	WideCharToMultiByte(CP_UTF8, 0, buffer, ArbitraryMaximumLength, sFilename->getMData(), sFilename->getSize(), nullptr, nullptr);
 	return fResult;
 }
 
@@ -815,9 +1023,9 @@ void C4ConsoleGUI::ClearNetMenu()
 	DrawMenuBar(hWindow);
 }
 
-void C4ConsoleGUI::AddNetMenuItemForPlayer(int32_t index, StdStrBuf &text)
+void C4ConsoleGUI::AddNetMenuItemForPlayer(int32_t client_id, const char *text, C4ConsoleGUI::ClientOperation op)
 {
-	AddMenuItem(this, GetSubMenu(GetMenu(hWindow),state->MenuIndexNet), IDM_NET_CLIENT1+Game.Clients.getLocalID(), text.getData(), true);
+	AddMenuItem(this, GetSubMenu(GetMenu(hWindow),state->MenuIndexNet), IDM_NET_CLIENT1+Game.Clients.getLocalID(), text, true);
 }
 
 void C4ConsoleGUI::ClearViewportMenu()
@@ -828,17 +1036,8 @@ void C4ConsoleGUI::ClearViewportMenu()
 
 void C4ConsoleGUI::ToolsDlgClose()
 {
-	::ClearDlg(Console.ToolsDlg.state->hDialog);
-}
-
-void C4ConsoleGUI::ToolsDlgSetTexture(class C4ToolsDlg *dlg, const char *texture)
-{
-	SendDlgItemMessage(dlg->state->hDialog,IDC_COMBOTEXTURE,CB_SELECTSTRING,0,GetWideLPARAM(texture));
-}
-
-void C4ConsoleGUI::ToolsDlgSetMaterial(class C4ToolsDlg *dlg, const char *material)
-{
-	SendDlgItemMessage(dlg->state->hDialog,IDC_COMBOMATERIAL,CB_SELECTSTRING,0,GetWideLPARAM(material));
+	if (Console.ToolsDlg.state)
+		Console.ToolsDlg.state->Clear();
 }
 
 bool C4ConsoleGUI::PropertyDlgOpen()
@@ -850,6 +1049,8 @@ bool C4ConsoleGUI::PropertyDlgOpen()
 	                       PropertyDlgProc);
 	if (!hDialog) return false;
 	state->hPropertyDlg = hDialog;
+	// Remember initial layout
+	state->PropertyDlgInitLayout();
 	// Set text
 	SetWindowTextW(hDialog,LoadResStrW("IDS_DLG_PROPERTIES"));
 	// Enable controls
@@ -870,16 +1071,16 @@ void C4ConsoleGUI::PropertyDlgClose()
 
 static void SetComboItems(HWND hCombo, std::list<const char*> &items)
 {
-	for (std::list<const char*>::iterator it = items.begin(); it != items.end(); it++)
+	for (auto & item : items)
 	{
-		if (!*it)
-			SendMessage(hCombo,CB_INSERTSTRING,0,(LPARAM)L"----------");
+		if (!item)
+			SendMessage(hCombo, CB_ADDSTRING, 0, (LPARAM)L"----------");
 		else
-			SendMessage(hCombo,CB_ADDSTRING,0,GetWideLPARAM(*it));
+			SendMessage(hCombo,CB_ADDSTRING,0,GetWideLPARAM(item));
 	}
 }
 
-void C4ConsoleGUI::PropertyDlgUpdate(C4ObjectList &rSelection)
+void C4ConsoleGUI::PropertyDlgUpdate(C4EditCursorSelection &rSelection, bool force_function_update)
 {
 	HWND hDialog = state->hPropertyDlg;
 	if (!hDialog) return;
@@ -888,10 +1089,11 @@ void C4ConsoleGUI::PropertyDlgUpdate(C4ObjectList &rSelection)
 	SendDlgItemMessage(hDialog,IDC_EDITOUTPUT,EM_LINESCROLL,(WPARAM)0,(LPARAM)iLine);
 	UpdateWindow(GetDlgItem(hDialog,IDC_EDITOUTPUT));
 
-	if (PropertyDlgObject == rSelection.GetObject()) return;
+	if (PropertyDlgObject == rSelection.GetObject() && !force_function_update) return;
 	PropertyDlgObject = rSelection.GetObject();
 	
-	std::list<const char *> functions = ::ScriptEngine.GetFunctionNames(PropertyDlgObject);
+	std::list<const char *> functions = ::Console.GetScriptSuggestions(PropertyDlgObject, C4Console::MRU_Object);
+
 	HWND hCombo = GetDlgItem(state->hPropertyDlg, IDC_COMBOINPUT);
 	wchar_t szLastText[500+1];
 	// Remember old window text
@@ -907,7 +1109,9 @@ void C4ConsoleGUI::PropertyDlgUpdate(C4ObjectList &rSelection)
 
 void C4ConsoleGUI::SetInputFunctions(std::list<const char*> &functions)
 {
-	SetComboItems(GetDlgItem(hWindow,IDC_COMBOINPUT), functions);
+	HWND hCombo = GetDlgItem(hWindow, IDC_COMBOINPUT);
+	SendMessage(hCombo, CB_RESETCONTENT, 0, 0);
+	SetComboItems(hCombo, functions);
 }
 
 void C4ConsoleGUI::ClearPlayerMenu()
@@ -917,19 +1121,31 @@ void C4ConsoleGUI::ClearPlayerMenu()
 	while (DeleteMenu(hMenu,1,MF_BYPOSITION));
 }
 
-void C4ConsoleGUI::ClearInput()
-{
-	HWND hCombo = GetDlgItem(hWindow,IDC_COMBOINPUT);
-	// Clear
-	SendMessage(hCombo,CB_RESETCONTENT,0,0);
-}
-
 /*
 void C4ConsoleGUI::ClearPropertyDlg(C4PropertyDlg *dlg)
 {
-	if (dlg->state->hDialog) DestroyWindow(PropertyDlg.hDialog); PropertyDlg.hDialog=NULL;
+	if (dlg->state->hDialog) DestroyWindow(PropertyDlg.hDialog); PropertyDlg.hDialog=nullptr;
 }
 */
+
+// Wrapper window around preview control: Used to create GL context and target surface
+class C4ConsoleGUIPreviewWindow : public C4Window
+{
+public:
+	C4ConsoleGUIPreviewWindow(HWND hwndControl)
+	{
+		Init(C4Window::WindowKind::W_Control, &Application, nullptr, nullptr);
+		this->hWindow = this->renderwnd = hwndControl;
+		pSurface = new C4Surface(&Application, this);
+	}
+
+	~C4ConsoleGUIPreviewWindow() override
+	{
+		delete pSurface;
+	}
+
+	void Close() override {}
+};
 
 bool C4ConsoleGUI::ToolsDlgOpen(C4ToolsDlg *dlg)
 {
@@ -943,13 +1159,17 @@ bool C4ConsoleGUI::ToolsDlgOpen(C4ToolsDlg *dlg)
 	SetWindowTextW(dlg->state->hDialog,LoadResStrW("IDS_DLG_TOOLS"));
 	SetDlgItemTextW(dlg->state->hDialog,IDC_STATICMATERIAL,LoadResStrW("IDS_CTL_MATERIAL"));
 	SetDlgItemTextW(dlg->state->hDialog,IDC_STATICTEXTURE,LoadResStrW("IDS_CTL_TEXTURE"));
+	SetDlgItemTextW(dlg->state->hDialog, IDC_STATICFOREGROUND, LoadResStrW("IDS_CTL_FOREGROUND"));
+	SetDlgItemTextW(dlg->state->hDialog, IDC_STATICBACKGROUND, LoadResStrW("IDS_CTL_BACKGROUND"));
 	// Load bitmaps if necessary
 	dlg->state->LoadBitmaps(Application.GetInstance());
 	// create target ctx for OpenGL rendering
-	if (pDraw && !dlg->state->pGLCtx)
-		dlg->state->pGLCtx = pDraw->CreateContext(GetDlgItem(dlg->state->hDialog,IDC_PREVIEW), &Application);
+	if (pDraw && !dlg->state->pPreviewWindow)
+	{
+		dlg->state->pPreviewWindow = new C4ConsoleGUIPreviewWindow(GetDlgItem(dlg->state->hDialog, IDC_PREVIEW));
+	}
 	// Show window
-	RestoreWindowPosition(dlg->state->hDialog, "Property", Config.GetSubkeyPath("Console"));
+	RestoreWindowPosition(dlg->state->hDialog, "Tools", Config.GetSubkeyPath("Console"));
 	SetWindowPos(dlg->state->hDialog,Console.hWindow,0,0,0,0,SWP_NOSIZE | SWP_NOMOVE);
 	ShowWindow(dlg->state->hDialog,SW_SHOWNOACTIVATE);
 	return true;
@@ -957,10 +1177,32 @@ bool C4ConsoleGUI::ToolsDlgOpen(C4ToolsDlg *dlg)
 
 void C4ConsoleGUI::ToolsDlgInitMaterialCtrls(class C4ToolsDlg *dlg)
 {
-	SendDlgItemMessage(dlg->state->hDialog,IDC_COMBOMATERIAL,CB_ADDSTRING,0,GetWideLPARAM(C4TLS_MatSky));
-	for (int32_t cnt=0; cnt< ::MaterialMap.Num; cnt++)
-		SendDlgItemMessage(dlg->state->hDialog,IDC_COMBOMATERIAL,CB_ADDSTRING,0,GetWideLPARAM(::MaterialMap.Map[cnt].Name));
-	SendDlgItemMessage(dlg->state->hDialog,IDC_COMBOMATERIAL,CB_SELECTSTRING,0,GetWideLPARAM(dlg->Material));
+	// All foreground materials
+	SendDlgItemMessage(dlg->state->hDialog, IDC_COMBOFGMATERIAL,CB_ADDSTRING,0,GetWideLPARAM(C4TLS_MatSky));
+	for (int32_t cnt = 0; cnt < ::MaterialMap.Num; cnt++)
+	{
+		SendDlgItemMessage(dlg->state->hDialog, IDC_COMBOFGMATERIAL, CB_ADDSTRING, 0, GetWideLPARAM(::MaterialMap.Map[cnt].Name));
+	}
+	// Background materials: True background materials first; then the "funny" stuff
+	SendDlgItemMessage(dlg->state->hDialog, IDC_COMBOBGMATERIAL, CB_ADDSTRING, 0, GetWideLPARAM(C4TLS_MatSky));
+	for (int32_t cnt = 0; cnt < ::MaterialMap.Num; cnt++)
+	{
+		if (::MaterialMap.Map[cnt].Density == C4M_Background)
+		{
+			SendDlgItemMessage(dlg->state->hDialog, IDC_COMBOBGMATERIAL, CB_ADDSTRING, 0, GetWideLPARAM(::MaterialMap.Map[cnt].Name));
+		}
+	}
+	SendDlgItemMessage(dlg->state->hDialog, IDC_COMBOBGMATERIAL, CB_ADDSTRING, 0, (LPARAM)L"----------");
+	for (int32_t cnt = 0; cnt < ::MaterialMap.Num; cnt++)
+	{
+		if (::MaterialMap.Map[cnt].Density != C4M_Background)
+		{
+			SendDlgItemMessage(dlg->state->hDialog, IDC_COMBOBGMATERIAL, CB_ADDSTRING, 0, GetWideLPARAM(::MaterialMap.Map[cnt].Name));
+		}
+	}
+	// Select current materials
+	SendDlgItemMessage(dlg->state->hDialog,IDC_COMBOFGMATERIAL,CB_SELECTSTRING,0,GetWideLPARAM(dlg->Material));
+	SendDlgItemMessage(dlg->state->hDialog, IDC_COMBOBGMATERIAL, CB_SELECTSTRING, 0, GetWideLPARAM(dlg->BackMaterial));
 }
 
 void C4ToolsDlg::UpdateToolCtrls()
@@ -981,53 +1223,80 @@ void C4ToolsDlg::UpdateToolCtrls()
 
 void C4ConsoleGUI::ToolsDlgSelectTexture(C4ToolsDlg *dlg, const char *texture)
 {
-	SendDlgItemMessage(dlg->state->hDialog,IDC_COMBOTEXTURE,CB_SELECTSTRING,0,GetWideLPARAM(texture));
+	SendDlgItemMessage(dlg->state->hDialog,IDC_COMBOFGTEXTURE,CB_SELECTSTRING,0,GetWideLPARAM(texture));
 }
 
 void C4ConsoleGUI::ToolsDlgSelectMaterial(C4ToolsDlg *dlg, const char *material)
 {
-	SendDlgItemMessage(dlg->state->hDialog,IDC_COMBOMATERIAL,CB_SELECTSTRING,0,GetWideLPARAM(material));
+	SendDlgItemMessage(dlg->state->hDialog,IDC_COMBOFGMATERIAL,CB_SELECTSTRING,0,GetWideLPARAM(material));
+}
+
+void C4ConsoleGUI::ToolsDlgSelectBackTexture(C4ToolsDlg *dlg, const char *texture)
+{
+	SendDlgItemMessage(dlg->state->hDialog, IDC_COMBOBGTEXTURE, CB_SELECTSTRING, 0, GetWideLPARAM(texture));
+}
+
+void C4ConsoleGUI::ToolsDlgSelectBackMaterial(C4ToolsDlg *dlg, const char *material)
+{
+	SendDlgItemMessage(dlg->state->hDialog, IDC_COMBOBGMATERIAL, CB_SELECTSTRING, 0, GetWideLPARAM(material));
 }
 
 void C4ToolsDlg::UpdateTextures()
 {
-	// Refill dlg
-	SendDlgItemMessage(state->hDialog,IDC_COMBOTEXTURE,CB_RESETCONTENT,0,(LPARAM)0);
-	// bottom-most: any invalid textures
-	bool fAnyEntry = false; int32_t cnt; const char *szTexture;
-	if (::Landscape.Mode!=C4LSC_Exact)
-		for (cnt=0; (szTexture=::TextureMap.GetTexture(cnt)); cnt++)
-		{
-			if (!::TextureMap.GetIndex(Material, szTexture, false))
+	// Refill foreground and background combo boxes in dlg
+	WORD boxes[2] = { IDC_COMBOFGTEXTURE, IDC_COMBOBGTEXTURE };
+	const char *materials[2] = { Material, BackMaterial };
+	const char *textures[2] = { Texture, BackTexture };
+	for (int i = 0; i < 2; ++i)
+	{
+		WORD box = boxes[i];
+		const char *material = materials[i];
+		const char *texture = textures[i];
+		// clear previous
+		SendDlgItemMessage(state->hDialog, box, CB_RESETCONTENT, 0, (LPARAM)0);
+		// bottom-most: any invalid textures
+		bool fAnyEntry = false; int32_t cnt; const char *szTexture;
+		if (::Landscape.GetMode() != LandscapeMode::Exact)
+			for (cnt = 0; (szTexture = ::TextureMap.GetTexture(cnt)); cnt++)
 			{
-				fAnyEntry = true;
-				SendDlgItemMessage(state->hDialog,IDC_COMBOTEXTURE,CB_INSERTSTRING,0,GetWideLPARAM(szTexture));
+				if (!::TextureMap.GetIndex(material, szTexture, false))
+				{
+					// hide normal maps from texture selection
+					// theoretically, they could be used for drawing but they clutter the list and they don't look good
+					if (!WildcardMatch("*_NRM", szTexture))
+					{
+						fAnyEntry = true;
+						SendDlgItemMessage(state->hDialog, box, CB_INSERTSTRING, 0, GetWideLPARAM(szTexture));
+					}
+				}
+			}
+		// separator
+		if (fAnyEntry)
+		{
+			SendDlgItemMessage(state->hDialog, box, CB_INSERTSTRING, 0, (LPARAM)L"-------");
+		}
+
+		// atop: valid textures
+		for (cnt = 0; (szTexture = ::TextureMap.GetTexture(cnt)); cnt++)
+		{
+			// Current material-texture valid? Always valid for exact mode
+			if (::TextureMap.GetIndex(material, szTexture, false) || ::Landscape.GetMode() == LandscapeMode::Exact)
+			{
+				SendDlgItemMessage(state->hDialog, box, CB_INSERTSTRING, 0, GetWideLPARAM(szTexture));
 			}
 		}
-	// separator
-	if (fAnyEntry)
-	{
-		SendDlgItemMessage(state->hDialog,IDC_COMBOTEXTURE,CB_INSERTSTRING,0,(LPARAM)L"-------");
+		// reselect current
+		SendDlgItemMessage(state->hDialog, box, CB_SELECTSTRING, -1, GetWideLPARAM(texture));
 	}
-
-	// atop: valid textures
-	for (cnt=0; (szTexture=::TextureMap.GetTexture(cnt)); cnt++)
-	{
-		// Current material-texture valid? Always valid for exact mode
-		if (::TextureMap.GetIndex(Material,szTexture,false) || ::Landscape.Mode==C4LSC_Exact)
-		{
-			SendDlgItemMessage(state->hDialog,IDC_COMBOTEXTURE,CB_INSERTSTRING,0,GetWideLPARAM(szTexture));
-		}
-	}
-	// reselect current
-	SendDlgItemMessage(state->hDialog,IDC_COMBOTEXTURE,CB_SELECTSTRING,0,GetWideLPARAM(Texture));
 }
 
 void C4ToolsDlg::NeedPreviewUpdate()
 {
-	if (!state->hDialog) return;
+	if (!state->hDialog || !state->pPreviewWindow) return;
 
-	C4Surface * sfcPreview;
+	C4Surface * sfcPreview = state->pPreviewWindow->pSurface;
+	if (!sfcPreview) return;
+
 	int32_t iPrvWdt,iPrvHgt;
 	RECT rect;
 
@@ -1036,16 +1305,18 @@ void C4ToolsDlg::NeedPreviewUpdate()
 	iPrvWdt=rect.right-rect.left;
 	iPrvHgt=rect.bottom-rect.top;
 
-	if (!(sfcPreview=new C4Surface(iPrvWdt,iPrvHgt))) return;
+	if (!sfcPreview->UpdateSize(iPrvWdt, iPrvHgt)) return;
+	sfcPreview->NoClip();
+	if (!pDraw->PrepareRendering(sfcPreview)) return;
 
 	// fill bg
-	pDraw->DrawBoxDw(sfcPreview,0,0,iPrvWdt-1,iPrvHgt-1,C4RGB(0x80,0x80,0x80));
+	pDraw->DrawBoxDw(sfcPreview,0,0,iPrvWdt-1,iPrvHgt-1,C4RGB(0xa0,0xa0,0xa0));
 	BYTE bCol = 0;
 	C4Pattern Pattern;
 	// Sky material: sky as pattern only
 	if (SEqual(Material,C4TLS_MatSky))
 	{
-		Pattern.Set(::Landscape.Sky.Surface, 0);
+		Pattern.Set(::Landscape.GetSky().Surface, 0);
 	}
 	// Material-Texture
 	else
@@ -1071,16 +1342,7 @@ void C4ToolsDlg::NeedPreviewUpdate()
 		                              Grade,
 		                              bCol, Pattern, *::Landscape.GetPal());
 
-	//Application.DDraw->AttachPrimaryPalette(sfcPreview);
-
-	// FIXME: This activates the wrong GL context. To avoid breaking the main window display,
-	// FIXME: it has been disabled for the moment
-    //if (pGLCtx->Select())
-	//{
-	//	pGL->Blit(sfcPreview, 0,0,(float)iPrvWdt,(float)iPrvHgt, Application.pWindow->pSurface, rect.left,rect.top, iPrvWdt,iPrvHgt);
-	//	Application.pWindow->pSurface->PageFlip();
-	//}
-	delete sfcPreview;
+	sfcPreview->PageFlip();
 }
 
 void C4ToolsDlg::InitGradeCtrl()
@@ -1098,79 +1360,74 @@ void C4ToolsDlg::InitGradeCtrl()
 bool C4ToolsDlg::PopMaterial()
 {
 	if (!state->hDialog) return false;
-	SetFocus(GetDlgItem(state->hDialog,IDC_COMBOMATERIAL));
-	SendDlgItemMessage(state->hDialog,IDC_COMBOMATERIAL,CB_SHOWDROPDOWN,true,0);
+	SetFocus(GetDlgItem(state->hDialog,IDC_COMBOFGMATERIAL));
+	SendDlgItemMessage(state->hDialog,IDC_COMBOFGMATERIAL,CB_SHOWDROPDOWN,true,0);
 	return true;
 }
 
 bool C4ToolsDlg::PopTextures()
 {
 	if (!state->hDialog) return false;
-	SetFocus(GetDlgItem(state->hDialog,IDC_COMBOTEXTURE));
-	SendDlgItemMessage(state->hDialog,IDC_COMBOTEXTURE,CB_SHOWDROPDOWN,true,0);
+	SetFocus(GetDlgItem(state->hDialog,IDC_COMBOFGTEXTURE));
+	SendDlgItemMessage(state->hDialog,IDC_COMBOFGTEXTURE,CB_SHOWDROPDOWN,true,0);
 	return true;
 }
 
 void C4ToolsDlg::UpdateIFTControls()
 {
-	if (!state->hDialog)
-		return;
-	SendDlgItemMessage(state->hDialog,IDC_BUTTONNOIFT,BM_SETSTATE,(ModeIFT==0),0);
-	UpdateWindow(GetDlgItem(state->hDialog,IDC_BUTTONNOIFT));
-	SendDlgItemMessage(state->hDialog,IDC_BUTTONIFT,BM_SETSTATE,(ModeIFT==1),0);
-	UpdateWindow(GetDlgItem(state->hDialog,IDC_BUTTONIFT));
+	// not using IFT
 }
 
 void C4ToolsDlg::UpdateLandscapeModeCtrls()
 {
-	int32_t iMode = ::Landscape.Mode;
+	LandscapeMode iMode = ::Landscape.GetMode();
 	// Dynamic: enable only if dynamic anyway
-	SendDlgItemMessage(state->hDialog,IDC_BUTTONMODEDYNAMIC,BM_SETSTATE,(iMode==C4LSC_Dynamic),0);
-	EnableWindow(GetDlgItem(state->hDialog,IDC_BUTTONMODEDYNAMIC),(iMode==C4LSC_Dynamic));
+	SendDlgItemMessage(state->hDialog,IDC_BUTTONMODEDYNAMIC,BM_SETSTATE,(iMode==LandscapeMode::Dynamic),0);
+	EnableWindow(GetDlgItem(state->hDialog,IDC_BUTTONMODEDYNAMIC),(iMode==LandscapeMode::Dynamic));
 	UpdateWindow(GetDlgItem(state->hDialog,IDC_BUTTONMODEDYNAMIC));
 	// Static: enable only if map available
-	SendDlgItemMessage(state->hDialog,IDC_BUTTONMODESTATIC,BM_SETSTATE,(iMode==C4LSC_Static),0);
-	EnableWindow(GetDlgItem(state->hDialog,IDC_BUTTONMODESTATIC),(::Landscape.Map!=NULL));
+	SendDlgItemMessage(state->hDialog,IDC_BUTTONMODESTATIC,BM_SETSTATE,(iMode==LandscapeMode::Static),0);
+	EnableWindow(GetDlgItem(state->hDialog,IDC_BUTTONMODESTATIC),(::Landscape.HasMap()));
 	UpdateWindow(GetDlgItem(state->hDialog,IDC_BUTTONMODESTATIC));
 	// Exact: enable always
-	SendDlgItemMessage(state->hDialog,IDC_BUTTONMODEEXACT,BM_SETSTATE,(iMode==C4LSC_Exact),0);
+	SendDlgItemMessage(state->hDialog,IDC_BUTTONMODEEXACT,BM_SETSTATE,(iMode==LandscapeMode::Exact),0);
 	UpdateWindow(GetDlgItem(state->hDialog,IDC_BUTTONMODEEXACT));
 	// Set dialog caption
-	SetWindowTextW(state->hDialog,LoadResStrW(iMode==C4LSC_Dynamic ? "IDS_DLG_DYNAMIC" : iMode==C4LSC_Static ? "IDS_DLG_STATIC" : "IDS_DLG_EXACT"));
+	SetWindowTextW(state->hDialog,LoadResStrW(iMode==LandscapeMode::Dynamic ? "IDS_DLG_DYNAMIC" : iMode==LandscapeMode::Static ? "IDS_DLG_STATIC" : "IDS_DLG_EXACT"));
 }
 
 
 void C4ToolsDlg::EnableControls()
 {
 	HWND hDialog = state->hDialog;
-	int32_t iLandscapeMode=::Landscape.Mode;
+	LandscapeMode iLandscapeMode = ::Landscape.GetMode();
 	// Set bitmap buttons
-	SendDlgItemMessage(hDialog,IDC_BUTTONBRUSH,BM_SETIMAGE,IMAGE_BITMAP,(LPARAM)((iLandscapeMode>=C4LSC_Static) ? state->hbmBrush : state->hbmBrush2));
-	SendDlgItemMessage(hDialog,IDC_BUTTONLINE,BM_SETIMAGE,IMAGE_BITMAP,(LPARAM)((iLandscapeMode>=C4LSC_Static) ? state->hbmLine : state->hbmLine2));
-	SendDlgItemMessage(hDialog,IDC_BUTTONRECT,BM_SETIMAGE,IMAGE_BITMAP,(LPARAM)((iLandscapeMode>=C4LSC_Static) ? state->hbmRect : state->hbmRect2));
-	SendDlgItemMessage(hDialog,IDC_BUTTONFILL,BM_SETIMAGE,IMAGE_BITMAP,(LPARAM)((iLandscapeMode>=C4LSC_Exact) ? state->hbmFill : state->hbmFill2));
-	SendDlgItemMessage(hDialog,IDC_BUTTONPICKER,BM_SETIMAGE,IMAGE_BITMAP,(LPARAM)((iLandscapeMode>=C4LSC_Static) ? state->hbmPicker : state->hbmPicker2));
-	SendDlgItemMessage(hDialog,IDC_BUTTONIFT,BM_SETIMAGE,IMAGE_BITMAP,(LPARAM)state->hbmIFT);
-	SendDlgItemMessage(hDialog,IDC_BUTTONNOIFT,BM_SETIMAGE,IMAGE_BITMAP,(LPARAM)state->hbmNoIFT);
+	SendDlgItemMessage(hDialog,IDC_BUTTONBRUSH,BM_SETIMAGE,IMAGE_BITMAP,(LPARAM)((iLandscapeMode>=LandscapeMode::Static) ? state->hbmBrush : state->hbmBrush2));
+	SendDlgItemMessage(hDialog,IDC_BUTTONLINE,BM_SETIMAGE,IMAGE_BITMAP,(LPARAM)((iLandscapeMode>=LandscapeMode::Static) ? state->hbmLine : state->hbmLine2));
+	SendDlgItemMessage(hDialog,IDC_BUTTONRECT,BM_SETIMAGE,IMAGE_BITMAP,(LPARAM)((iLandscapeMode>=LandscapeMode::Static) ? state->hbmRect : state->hbmRect2));
+	SendDlgItemMessage(hDialog,IDC_BUTTONFILL,BM_SETIMAGE,IMAGE_BITMAP,(LPARAM)((iLandscapeMode>=LandscapeMode::Exact) ? state->hbmFill : state->hbmFill2));
+	SendDlgItemMessage(hDialog,IDC_BUTTONPICKER,BM_SETIMAGE,IMAGE_BITMAP,(LPARAM)((iLandscapeMode>=LandscapeMode::Static) ? state->hbmPicker : state->hbmPicker2));
 	SendDlgItemMessage(hDialog,IDC_BUTTONMODEDYNAMIC,BM_SETIMAGE,IMAGE_BITMAP,(LPARAM)state->hbmDynamic);
 	SendDlgItemMessage(hDialog,IDC_BUTTONMODESTATIC,BM_SETIMAGE,IMAGE_BITMAP,(LPARAM)state->hbmStatic);
 	SendDlgItemMessage(hDialog,IDC_BUTTONMODEEXACT,BM_SETIMAGE,IMAGE_BITMAP,(LPARAM)state->hbmExact);
 	// Enable drawing controls
-	EnableWindow(GetDlgItem(hDialog,IDC_BUTTONBRUSH),(iLandscapeMode>=C4LSC_Static));
-	EnableWindow(GetDlgItem(hDialog,IDC_BUTTONLINE),(iLandscapeMode>=C4LSC_Static));
-	EnableWindow(GetDlgItem(hDialog,IDC_BUTTONRECT),(iLandscapeMode>=C4LSC_Static));
-	EnableWindow(GetDlgItem(hDialog,IDC_BUTTONFILL),(iLandscapeMode>=C4LSC_Exact));
-	EnableWindow(GetDlgItem(hDialog,IDC_BUTTONPICKER),(iLandscapeMode>=C4LSC_Static));
-	EnableWindow(GetDlgItem(hDialog,IDC_BUTTONIFT),(iLandscapeMode>=C4LSC_Static));
-	EnableWindow(GetDlgItem(hDialog,IDC_BUTTONNOIFT),(iLandscapeMode>=C4LSC_Static));
-	EnableWindow(GetDlgItem(hDialog,IDC_COMBOMATERIAL),(iLandscapeMode>=C4LSC_Static));
-	EnableWindow(GetDlgItem(hDialog,IDC_COMBOTEXTURE),(iLandscapeMode>=C4LSC_Static) && !SEqual(Material,C4TLS_MatSky));
-	EnableWindow(GetDlgItem(hDialog,IDC_STATICMATERIAL),(iLandscapeMode>=C4LSC_Static));
-	EnableWindow(GetDlgItem(hDialog,IDC_STATICTEXTURE),(iLandscapeMode>=C4LSC_Static) && !SEqual(Material,C4TLS_MatSky));
-	EnableWindow(GetDlgItem(hDialog,IDC_SLIDERGRADE),(iLandscapeMode>=C4LSC_Static));
-	EnableWindow(GetDlgItem(hDialog,IDC_PREVIEW),(iLandscapeMode>=C4LSC_Static));
+	EnableWindow(GetDlgItem(hDialog,IDC_BUTTONBRUSH),(iLandscapeMode>=LandscapeMode::Static));
+	EnableWindow(GetDlgItem(hDialog,IDC_BUTTONLINE),(iLandscapeMode>=LandscapeMode::Static));
+	EnableWindow(GetDlgItem(hDialog,IDC_BUTTONRECT),(iLandscapeMode>=LandscapeMode::Static));
+	EnableWindow(GetDlgItem(hDialog,IDC_BUTTONFILL),(iLandscapeMode>=LandscapeMode::Exact));
+	EnableWindow(GetDlgItem(hDialog,IDC_BUTTONPICKER),(iLandscapeMode>=LandscapeMode::Static));
+	EnableWindow(GetDlgItem(hDialog,IDC_COMBOFGMATERIAL),(iLandscapeMode>=LandscapeMode::Static));
+	EnableWindow(GetDlgItem(hDialog,IDC_COMBOFGTEXTURE),(iLandscapeMode>=LandscapeMode::Static) && !SEqual(Material,C4TLS_MatSky));
+	EnableWindow(GetDlgItem(hDialog,IDC_COMBOBGMATERIAL), (iLandscapeMode >= LandscapeMode::Static) && !SEqual(Material, C4TLS_MatSky));
+	EnableWindow(GetDlgItem(hDialog, IDC_COMBOBGTEXTURE), (iLandscapeMode >= LandscapeMode::Static) && !SEqual(Material, C4TLS_MatSky) && !SEqual(BackMaterial, C4TLS_MatSky));
+	EnableWindow(GetDlgItem(hDialog,IDC_STATICMATERIAL),(iLandscapeMode>=LandscapeMode::Static));
+	EnableWindow(GetDlgItem(hDialog,IDC_STATICTEXTURE),(iLandscapeMode>=LandscapeMode::Static) && !SEqual(Material,C4TLS_MatSky));
+	EnableWindow(GetDlgItem(hDialog,IDC_STATICFOREGROUND), (iLandscapeMode >= LandscapeMode::Static));
+	EnableWindow(GetDlgItem(hDialog,IDC_STATICBACKGROUND), (iLandscapeMode >= LandscapeMode::Static));
+	EnableWindow(GetDlgItem(hDialog,IDC_SLIDERGRADE),(iLandscapeMode>=LandscapeMode::Static));
+	EnableWindow(GetDlgItem(hDialog,IDC_PREVIEW),(iLandscapeMode>=LandscapeMode::Static));
 
 	NeedPreviewUpdate();
 }
 
-#include "C4ConsoleGUICommon.h"
+#include "editor/C4ConsoleGUICommon.h"

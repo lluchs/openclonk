@@ -21,7 +21,7 @@ protected func Initialize()
 	for (var i=0; i<10; ++i)
 	{
 		// Find a good cave
-		cave_loc = FindLocation(Loc_InRect(50,LandscapeHeight()/6,LandscapeWidth()-100,LandscapeHeight()*17/25), Loc_Material("Tunnel"), Loc_Space(20), Loc_Space(20,true));
+		cave_loc = FindLocation(Loc_InRect(50,LandscapeHeight()/6,LandscapeWidth()-100,LandscapeHeight()*17/25), Loc_Material("Tunnel"), Loc_Space(10));
 		if (cave_loc)
 		{
 			// No other check point nearby?
@@ -50,8 +50,13 @@ protected func Initialize()
 	PlaceBatches([Firestone], 5, 100, 15);
 	PlaceBatches([Dynamite, Dynamite, Dynamite, DynamiteBox], 3, 50, 6);
 	PlaceBatches([Rock, Loam, Loam], 10, 200, 10);
+	// Some dead trees.
+	Tree_Coniferous_Burned->Place(4);	
+	Tree_Coniferous2_Burned->Place(2);	
+	Tree_Coniferous3_Burned->Place(2);	
+	Tree_Coniferous4_Burned->Place(2);
 	// Starting chest
-	var start_chest = CreateObject(Chest, LandscapeWidth()*2/5, LandscapeHeight()*97/100);
+	var start_chest = CreateObjectAbove(Chest, LandscapeWidth()*2/5, LandscapeHeight()*97/100);
 	if (start_chest)
 	{
 		start_chest->CreateContents(Loam,4);
@@ -59,8 +64,6 @@ protected func Initialize()
 		start_chest->CreateContents(Firestone,3);
 		start_chest->CreateContents(DynamiteBox,2);
 	}
-	// Create Disasters.
-	//Earthquake->SetChance(2); - this is so random...not fair without relaunches
 	return;
 }
 
@@ -84,7 +87,7 @@ private func PlaceBatches(array item_ids, int n_per_batch, int batch_radius, int
 		if (loc = FindLocation(Loc_Material("Earth")))
 			for (var j=0; j<n_per_batch; ++j)
 				if (loc2 = FindLocation(Loc_InRect(loc.x-batch_radius,loc.y-batch_radius,batch_radius*2,batch_radius*2), Loc_Material("Earth")))
-					if (obj=CreateObject(item_ids[Random(n_item_ids)],loc2.x,loc2.y))
+					if (obj=CreateObjectAbove(item_ids[Random(n_item_ids)],loc2.x,loc2.y))
 					{
 						obj->SetPosition(loc2.x,loc2.y);
 						++n_created;

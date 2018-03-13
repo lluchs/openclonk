@@ -1,4 +1,7 @@
-Name=Schatzsuche
-MsgSideGoal=Sekund舐ziel: %d von %d Goldbarren gefunden.
-MsgGoalFulfilled=Schatz gefunden und verkauft :-)
-MsgGoalUnFulfilled=Schatz noch nicht gefunden und verkauft :-(
+Name=ﾃ僕suche
+Name2=Schatzsuche
+MsgSideGoal=Sekundﾃ､rziel: %d von %d Goldbarren gefunden.
+MsgGoalFulfilled=Spielziel erfﾃｼllt.
+MsgGoalUnFulfilled=Finde den Schatz und bringe ihn zu Dagobert, um ﾃ僕 fﾃｼr das Flugzeug zu erhalten!
+MsgGoalOil=Finde ein neues ﾃ僕fass.
+MsgGotOil=Bringe das ﾃ僕fass zum Flugzeug.

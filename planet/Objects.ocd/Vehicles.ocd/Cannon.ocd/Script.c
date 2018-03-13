@@ -7,6 +7,8 @@
 
 
 #include Library_HasExtraSlot
+#include Library_ElevatorControl
+#include Library_Destructible
 
 local animAim;
 local animTurn;
@@ -21,8 +23,8 @@ protected func Initialize()
 {
 	turnDir = 1;
 	SetAction("Roll");
-	animAim = PlayAnimation("Aim", 1,  Anim_Const(0),Anim_Const(1000));
-	animTurn = PlayAnimation("TurnRight", 5, Anim_Const(0), Anim_Const(1000));
+	animAim = PlayAnimation("Aim", 1,  Anim_Const(0));
+	animTurn = PlayAnimation("TurnRight", 5, Anim_Const(0));
 }
 
 //some left-overs from Lorry script. Not sure of it's purpose...
@@ -36,22 +38,21 @@ protected func ContactRight()
 	if(Stuck() && !Random(5)) SetRDir(RandomX(-7, +7));
 }
 
-//Only one object fits in barrel
-private func MaxContentsCount() { return 1; }
+protected func RejectCollect(id def, object obj)
+{
+	// Only accept powder kegs.
+	if (def != PowderKeg)
+		return true;
+	// Only one powder keg at a time.
+	if (ContentsCount() >= 1)
+		return true;
+	return false;
+}
+
 
 /*-- Control --*/
 
 public func ControlUseStart(object clonk, int ix, int iy)
-{
-	return UseAnyStart(clonk,ix,iy,0);
-}
-
-public func ControlUseAltStart(object clonk, int ix, int iy)
-{
-	return UseAnyStart(clonk,ix,iy,1);
-}
-
-private func UseAnyStart(object clonk, int ix, int iy, int item)
 {
 	var result = CheckForKeg(clonk);
 	if (!result)
@@ -60,7 +61,7 @@ private func UseAnyStart(object clonk, int ix, int iy, int item)
 		return true;
 	}
 		
-	if (!clonk->GetHandItem(item))
+	if (!clonk->GetHandItem(0))
 	{
 		PlayerMessage(clonk->GetOwner(),"$TxtNeedsAmmo$");
 		clonk->CancelUse();
@@ -86,7 +87,7 @@ private func CheckForKeg(object clonk)
 		{
 			keg->Exit();
 			keg->Enter(this);
-			Sound("WoodHit?");
+			Sound("Hits::Materials::Wood::WoodHit?");
 		}
 		else // No keg, stop using cannon.
 		{
@@ -99,29 +100,27 @@ private func CheckForKeg(object clonk)
 
 public func HoldingEnabled() { return true; }
 
-public func ControlUseAltHolding(object clonk, int ix, int iy)
-{
-	return ControlUseHolding(clonk, ix, iy);
-}
-
 local angPrec = 1000;
 
 public func ControlUseHolding(object clonk, int ix, int iy)
 {
-	if (!clonk)
-	{
-		clonk->CancelUse();
-		return true;
-	}
+	if (!clonk) return true;
+	
 	var r = ConvertAngle(Angle(0,0,ix,iy,angPrec));
 
 	var iColor = RGB(255,255,255);
 	if (!Contents(0) || GetEffect("IntCooldown",this))
 		iColor = RGB(255,0,0);
-	AddTrajectory(this, GetX() + 5, GetY() + 2, Cos(r - 90 * angPrec, Fire_Velocity,angPrec), Sin(r - 90 * angPrec, Fire_Velocity,angPrec), iColor, 20);
+	Trajectory->Create(this, GetX() + 5, GetY() + 2, Cos(r - 90 * angPrec, Fire_Velocity,angPrec), Sin(r - 90 * angPrec, Fire_Velocity,angPrec));
 
-	SetAnimationPosition(animAim, Anim_Const(AnimAngle(r/angPrec)*3954444/100000));
+	SetCannonAngle(r);
+	
 	return true;
+}
+
+public func SetCannonAngle(int r)
+{
+	return SetAnimationPosition(animAim, Anim_Const(AnimAngle(r/angPrec)*3954444/100000));
 }
 
 private func AnimAngle(int angle)
@@ -138,7 +137,7 @@ private func AnimAngle(int angle)
 private func ConvertAngle(int angle)
 {
 	var nR = BoundBy(Normalize(angle,-180 * angPrec,angPrec), (-90 * angPrec) + (GetR() * angPrec), (90 * angPrec) + (GetR() * angPrec));
-	var r2 = nR - GetR() * angPrec;
+	//var r2 = nR - GetR() * angPrec;
 	//debug messages
 	//Message(Format("nR = %d|rL = %d",nR,r2));
 	
@@ -152,24 +151,12 @@ private func ConvertAngle(int angle)
 
 public func ControlUseStop(object clonk, int ix, int iy)
 {
-	return UseAnyStop(clonk,ix,iy,0);
-}
+	Trajectory->Remove(this);
 
-public func ControlUseAltStop(object clonk, int ix, int iy)
-{
-	return UseAnyStop(clonk,ix,iy,1);
-}
-
-private func UseAnyStop(object clonk, int ix, int iy, int item)
-{
-
-	RemoveTrajectory(this);
-	
-	var result = CheckForKeg(clonk);
-	if (!result)
+	if (!CheckForKeg(clonk))
 		return true;
 
-	var projectile = clonk->GetHandItem(item);
+	var projectile = clonk->GetHandItem(0);
 	if (!projectile) // Needs a projectile
 	{
 		PlayerMessage(clonk->GetOwner(),"$TxtNeedsAmmo$");
@@ -182,19 +169,19 @@ private func UseAnyStop(object clonk, int ix, int iy, int item)
 	if (projectile)
 	{
 		DoFire(projectile, clonk, Angle(0,0,ix,iy,angPrec));
-		var powder = Contents(0)->PowderCount();
+		var powder = Contents(0)->GetPowderCount();
 		if(powder >= 1 || projectile->~IsSelfPropellent())
 		{
 			var powderkeg = Contents(0);
 			//If there is a powder keg, take powder from it
-			powderkeg->SetPowderCount(powderkeg->PowderCount() -1);
+			powderkeg->DoPowderCount(-1);
 			
 			DoFire(projectile, clonk, Angle(0,0,ix,iy, angPrec));
 			AddEffect("IntCooldown",this,1,1,this);
-			if(powderkeg->PowderCount() == 0)
+			if(powderkeg->GetPowderCount() == 0)
 			{
 				powderkeg->RemoveObject();
-				CreateObject(Barrel);
+				CreateObjectAbove(Barrel);
 			}
 		}
 	}
@@ -203,13 +190,8 @@ private func UseAnyStop(object clonk, int ix, int iy, int item)
 
 public func ControlUseCancel()
 {
-	RemoveTrajectory(this);
+	Trajectory->Remove(this);
 	return true;
-}
-
-public func ControlUseAltCancel()
-{
-	return ControlUseCancel();
 }
 
 //Stops the player from shooting for the defined amount of frames
@@ -233,15 +215,25 @@ func ControlRight(object clonk)
 	}
 }
 
-func TurnCannon(int dir)
+public func TurnCannon(int dir, bool instant)
 {
 	turnDir = dir;
 	//Remove any old effect
 	if(GetEffect("IntTurnCannon", this)) RemoveEffect("IntTurnCannon", this);
-	//Add a new one
-	return AddEffect("IntTurnCannon", this, 1, 1, this);
+	// Instant turn?
+	if (instant)
+	{
+		// Simply set anim position to desired side
+		var target = 0;
+		if (dir == DIR_Left) target = GetAnimationLength("TurnRight");
+		SetAnimationPosition(animTurn, Anim_Const(target));
+	}
+	else
+	{
+		// Non-instant turn: Add timer to adjust animation (I wonder why it's not just using Anim_Linear?)
+		return AddEffect("IntTurnCannon", this, 1, 1, this);
+	}
 }
-	
 
 func FxIntTurnCannonTimer(object cannon, proplist effect, int timer)
 {
@@ -259,8 +251,6 @@ func FxIntTurnCannonTimer(object cannon, proplist effect, int timer)
 
 protected func DoFire(object iammo, object clonk, int angle)
 {
-	iammo->~Fuse();
-
 	//Don't excede possible trajectory
 	var r = Normalize(angle,-180 * angPrec, angPrec);
 	if(r > 90 * angPrec + GetR() * angPrec) r = 90 * angPrec + GetR() * angPrec;
@@ -270,6 +260,9 @@ protected func DoFire(object iammo, object clonk, int angle)
 	iammo->SetR(r / angPrec);
 	iammo->SetRDir(-4 + Random(9));
 	iammo->LaunchProjectile(r, 17, Fire_Velocity, 0,0, angPrec);
+	if (clonk)
+		iammo->SetController(clonk->GetController());
+	iammo->~OnCannonShot(this);
 
 	//Particles
 	var dist = 25;
@@ -282,7 +275,7 @@ protected func DoFire(object iammo, object clonk, int angle)
 	CreateParticle("Smoke", px, py, PV_Random(x - 20, x + 20), PV_Random(y - 20, y + 20), PV_Random(40, 60), Particles_Smoke(), 20);
 	CreateMuzzleFlash(px, py, r / angPrec, 60);
 	//sound
-	Sound("Blast3");
+	Sound("Fire::Blast3");
 }
 
 local ActMap = {
@@ -305,4 +298,7 @@ Roll = {
 local Name = "$Name$";
 local Description = "$Description$";
 local Touchable = 1;
-local Rebuy = true;
+local BorderBound = C4D_Border_Sides;
+local ContactCalls = true;
+local Components = {Metal = 4, Wood = 2};
+local HitPoints = 150;

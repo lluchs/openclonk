@@ -2,7 +2,7 @@
  * OpenClonk, http://www.openclonk.org
  *
  * Copyright (c) 2007-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -18,9 +18,7 @@
 #ifndef INC_C4InputValidation
 #define INC_C4InputValidation
 
-#include "StdBuf.h"
-#include "StdFile.h"
-#include "StdAdaptors.h"
+#include "lib/StdAdaptors.h"
 
 const unsigned int C4MaxName = 30; // player names, etc.
 const unsigned int C4MaxLongName = 120; // scenario titles, etc. - may include markup
@@ -60,13 +58,12 @@ template <class T> struct C4StrValAdapt
 	inline void CompileFunc(StdCompiler *pComp)
 	{
 		pComp->Value(rValue);
-		if (pComp->isCompiler()) C4InVal::ValidateString(rValue.GetObj(), eValType); // works on Par adapt only :(
+		if (pComp->isDeserializer()) C4InVal::ValidateString(rValue.GetObj(), eValType); // works on Par adapt only :(
 	}
 	template <class D> inline bool operator == (const D &nValue) const { return rValue == nValue; }
 	template <class D> inline C4StrValAdapt<T> &operator = (const D &nValue) { rValue = nValue; return *this; }
-	ALLOW_TEMP_TO_REF(C4StrValAdapt)
 };
-template <class T> inline C4StrValAdapt<T> mkStrValAdapt(T RREF rValue, C4InVal::ValidationOption eValType) { return C4StrValAdapt<T>(rValue, eValType); }
+template <class T> inline C4StrValAdapt<T> mkStrValAdapt(T &&rValue, C4InVal::ValidationOption eValType) { return C4StrValAdapt<T>(rValue, eValType); }
 
 // StdStrBuf that validates on compilation
 struct ValidatedStdCopyStrBufBase : public StdCopyStrBuf
@@ -77,7 +74,7 @@ struct ValidatedStdCopyStrBufBase : public StdCopyStrBuf
 	inline void CompileFunc(StdCompiler *pComp, int iRawType = 0)
 	{
 		pComp->Value(mkParAdapt(static_cast<StdCopyStrBuf &>(*this), iRawType));
-		if (pComp->isCompiler()) Validate();
+		if (pComp->isDeserializer()) Validate();
 	}
 
 	virtual bool Validate() = 0;
@@ -93,7 +90,7 @@ struct ValidatedStdCopyStrBufBase : public StdCopyStrBuf
 		Validate();
 	}
 
-	virtual ~ValidatedStdCopyStrBufBase() { }
+	virtual ~ValidatedStdCopyStrBufBase() = default;
 };
 
 template <int V> struct ValidatedStdCopyStrBuf : public ValidatedStdCopyStrBufBase
@@ -101,7 +98,7 @@ template <int V> struct ValidatedStdCopyStrBuf : public ValidatedStdCopyStrBufBa
 	ValidatedStdCopyStrBuf(const char *szCopy) : ValidatedStdCopyStrBufBase(szCopy) {}
 	ValidatedStdCopyStrBuf() : ValidatedStdCopyStrBufBase() {}
 
-	virtual bool Validate()
+	bool Validate() override
 	{
 		return C4InVal::ValidateString(*this, (C4InVal::ValidationOption) V);
 	}

@@ -1,136 +1,184 @@
 /*--
 	Powder Keg
-	Author: Ringwaul
-
 	A barrel filled with black powder.
---*/
+	
+	@author Ringwaul
+*/
 
 #include Library_CarryHeavy
 
 local count;
-local oldcount;
+local TimeToExplode = 90; // Number of frames to pass until keg explodes
+local MaxContentsCount = 12;
 
 public func GetCarryTransform(clonk)
 {
 	if(GetCarrySpecial(clonk))
-		return Trans_Translate(0, 1000, -6500);
+		return Trans_Translate(1000, -6500, 0);
 		
-	return Trans_Mul(Trans_Translate(-1500,1500,0),Trans_Rotate(180,0,1,0));
+	return Trans_Mul(Trans_Translate(1500, 0, -1500),Trans_Rotate(180,1,0,0));
 }
 public func GetCarryPhase() { return 900; }
 
-protected func Initialize()
-{
-	UpdatePicture();
-}
-
 protected func Construction()
 {
-	oldcount = count;
-	count = 12;
-	AddEffect("Update",this,1,1,this);
+	SetPowderCount(MaxContentsCount);
 }
 
-protected func MaxContentsCount() {	return 12;	}
-
-func PowderCount()
+public func GetPowderCount()
 {
 	return count;
 }
 
-func SetPowderCount(int newcount)
+public func SetPowderCount(newcount)
 {
 	count = newcount;
+	this.Description = Format("%s||$RemainingPowder$: %d", this.Prototype.Description, this.count);
+	if (count == 0)
+		ScheduleCall(this, "CheckEmpty", 1, 0);
+	return;
 }
 
-public func FxUpdateTimer(object target, effect, int timer)
+public func DoPowderCount(int change)
 {
-	if(count != oldcount)
-		UpdatePicture();
-	if(count == 0)
+	if (count == nil)
+		return;
+	return SetPowderCount(GetPowderCount() + change);
+}
+
+private func CheckEmpty()
+{
+	if (count == 0)
 	{
 		ChangeDef(Barrel);
-		return -1;
+		this.Description = this.Prototype.Description;
+		this->~Initialize();
 	}
-	oldcount = count;
-	return 1;
 }
 
-private func UpdatePicture()
+// Do not put differently filled kegs on top of each other.
+public func CanBeStackedWith(object other)
 {
-	//modified script from Stackable.ocd
-	var one = count % 10;
-	var ten = (count / 10) % 10;
+	if (this.count != other.count) return false;
+	return inherited(other, ...);
+}
+
+// Display the powder as a bar over the keg icon.
+public func GetInventoryIconOverlay()
+{
+	if (this.count >= MaxContentsCount) return nil;
+
+	var percentage = 100 - 100 * this.count / this.MaxContentsCount;
 	
-	var s = 400;
-	var yoffs = 14000;
-	var xoffs = 22000;
-	var spacing = 14000;
-	
-	if (ten > 0)
+	// Overlay a usage bar.
+	var overlay = 
 	{
-		SetGraphics(Format("%d", ten), Icon_Number, 11, GFXOV_MODE_Picture);
-		SetObjDrawTransform(s, 0, xoffs - spacing, 0, s, yoffs, 11);
-	}
-	else
-		SetGraphics(nil, nil, 11);
-		
-	SetGraphics(Format("%d", one), Icon_Number, 12, GFXOV_MODE_Picture);
-	SetObjDrawTransform(s, 0, xoffs, 0, s, yoffs, 12);
+		Bottom = "0.75em", Margin = ["0.1em", "0.25em"],
+		BackgroundColor = RGB(0, 0, 0),
+		margin = 
+		{
+			Margin = "0.05em",
+			bar = 
+			{
+				BackgroundColor = RGB(150, 50, 50),
+				Right = Format("%d%%", percentage),
+			}
+		}
+	};
+	
+	return overlay;
 }
 
-public func Incineration()
+public func Incineration(int caused_by)
 {
-	AddEffect("Fuse",this,1,1,this);
+	SetController(caused_by);
+	AddEffect("Fuse", this, 1, 1, this);
 }
 
 public func FxFuseTimer(object target, effect, int timer)
 {
-	CreateParticle("Fire", 0, 0, PV_Random(-10, 10), PV_Random(-20, 10), PV_Random(10, 40), Particles_Glimmer(), 6);
-	if(timer > 90)
+	// Particle effect
+	var lifetime = PV_Random(10, 40);
+	var amount = 6;
+	if (Contained() && Contained()->~IsClonk())
 	{
-		//17-32 explosion radius
-		var radius = Sqrt(64 * (4 + count));
-		Explode(radius);
+		var prec = 10;
+		// Position, is always the same regardless of rotation
+		var x = 2, y = -6;
+		// Needs a loop for now, because CreateParticleAtBone seems to not use the PV_Random values in the dir array
+		for (var i = 0; i < amount; ++i)
+		{
+			// Positions for array: [-y, 0, -x]
+			Contained()->CreateParticleAtBone("Fire", "pos_tool1", [2 - y, 0, -1 - x], [prec * RandomX(-10, 20), 0, prec * RandomX(-10, 10)], lifetime, Particles_Glimmer(), 1);
+		}
+	}
+	else
+	{
+		var x, y;
+		
+		if (Contained())
+		{
+			// Display at the center if contained, because the fuse vertex might not be visible
+			x = 0; y = 0; 
+		}
+		else
+		{
+			// Display at a vertex, because this is easier than calculating the correct rotated position
+			var fuse_vertex = 1;
+			x = GetVertex(fuse_vertex, 0);
+			y = GetVertex(fuse_vertex, 1);
+		}
+		CreateParticle("Fire", x, y, PV_Random(-10, 10), PV_Random(-20, 10), lifetime, Particles_Glimmer(), amount);
+	}
+	// Explosion after timeout
+	if (timer > TimeToExplode)
+	{
+		Explode(GetExplosionStrength());
 	}
 }
 
-public func IsProjectileTarget(target,shooter)
+// Powderkeg explosion strength ranges from 17-32.
+public func GetExplosionStrength() { return Sqrt(64 * (4 + count)); }
+
+public func IsProjectileTarget()
 {
-	return 1;
+	return true;
 }
 
-public func Damage()
+public func Damage(int change, int cause, int by_player)
 {
-	Incinerate();
+	Incinerate(100, by_player);
 }
 
-public func OnProjectileHit()
+public func OnProjectileHit(object projectile)
 {
-	Incinerate();
+	Incinerate(100, projectile->GetController());
 }
 
 func Hit()
 {
-	Sound("DullWoodHit?");
+	Sound("Hits::Materials::Wood::DullWoodHit?");
 }
 
 public func SaveScenarioObject(props)
 {
 	if (!inherited(props, ...)) return false;
-	var v = PowderCount();
-	if (v != 12) props->AddCall("Powder", this, "SetPowderCount", v);
+	var v = GetPowderCount();
+	if (v != MaxContentsCount) props->AddCall("Powder", this, "SetPowderCount", v);
 	return true;
 }
 
 func IsChemicalProduct() { return true; }
 func AlchemyProcessTime() { return 100; }
+public func IsExplosive() { return true; }
 
-local Collectible = false;
-local Touchable = 2;
+
+/*-- Properties --*/
+
+local Collectible = true;
 local Name = "$Name$";
 local Description = "$Description$";
-local Rebuy = true;
 local BlastIncinerate = 1;
-local NoBurnDecay = 1;
+local NoBurnDecay = true;
 local ContactIncinerate = 2;
+local Components = {Barrel = 1, Coal = 1};

@@ -34,14 +34,14 @@
 	
 	Most objects which can be stacked might want to set different pictures
 	and ingame graphics for different counts of objects. This can be done
-	by overloading UpdatePicture(), but remember to write _inherited() then.
+	by overloading UpdatePicture(), but remember to write _inherited(...) then.
 --*/
 
 
 local count, count_is_infinite;
 
 // Max size of stack
-static const Stackable_Max_Count = 999;
+static const Stackable_Max_Count = 2147483647;
 
 // What GetStackCount should return if the count is set to infinite
 // Set this to a fairly large number and not e.g. -1, so naive
@@ -53,48 +53,98 @@ static const Stackable_Max_Count = 999;
 static const Stackable_Infinite_Count = 50;
 
 public func IsStackable() { return true; }
-public func GetStackCount() { return Max(1, count); }
+public func GetStackCount() { return count; }
 public func MaxStackCount() { return 20; }
+public func InitialStackCount() { return MaxStackCount(); }
+public func IsFullStack() { return this->IsInfiniteStackCount() || (GetStackCount() >= MaxStackCount()); }
+public func IsInfiniteStackCount() { return !!count_is_infinite; }
 
 protected func Construction()
 {
-	count = MaxStackCount();
+	count = InitialStackCount();
 	return _inherited(...);
 }
 
-public func Stack(object obj)
+func Destruction()
 {
-	if (obj->GetID() != GetID())
-		return 0;
-	
+	NotifyContainer();
+	return _inherited(...);
+}
+
+
+/**
+ * Puts the stack count of another object on top of this stack.
+ * The stack count of the other object is not modified.
+ * @par other the other object. Must be of the same ID as the stack.
+ * @return the amount of objects that could be stacked.
+ */
+public func Stack(object other)
+{
+	if (other->GetID() != GetID()) return 0;
+	if (other == this) return 0; 
+
 	// Infinite stacks can always take everything
-	if (IsInfiniteStackCount()) return obj->GetStackCount();
-	if (obj->~IsInfiniteStackCount())
+	if (this->IsInfiniteStackCount()) return other->GetStackCount();
+	if (other->~IsInfiniteStackCount())
 	{
 		SetInfiniteStackCount();
-		return obj->GetStackCount();
+		return other->GetStackCount();
 	}
-	
-	var howmany = Min(obj->GetStackCount(), MaxStackCount() - GetStackCount());
-	
-	if (count + howmany > Stackable_Max_Count)
-		return 0;
-	
-	SetStackCount(count + howmany);
 
+	var howmany = Min(other->GetStackCount(), MaxStackCount() - GetStackCount());
+	var future_count = GetStackCount() + howmany;
+	
+	if (howmany <= 0 || future_count > Stackable_Max_Count)
+		return 0;
+
+	SetStackCount(future_count);
 	return howmany;
 }
 
+
+/**
+ * Defines how many objects are contained in this stack.
+ * If the stack count is set to a value less than 1
+ * the object gets removed.
+ * If the stack was infinite, then it will be finite
+ * after setting the stack count.
+ * @par amount this many objects are in the stack.
+ * @return always returns true.             
+ */
 public func SetStackCount(int amount)
 {
-	count = BoundBy(amount, 0, Stackable_Max_Count);
+	count = BoundBy(amount, 0, Stackable_Max_Count); // allow 0, so that the object can be removed in UpdateStackDisplay
 	count_is_infinite = false;
 	UpdateStackDisplay();
 	return true;
 }
 
-public func IsInfiniteStackCount() { return count_is_infinite; }
 
+/**
+ * Changes the stack count.
+ * If the stack count is set to a value less than 1
+ * the object gets removed.
+ * Does not affect infinite stacks.
+ * @par change the stack count will be changed by this
+        amount.
+ */
+public func DoStackCount(int change)
+{
+	if (!(this->IsInfiniteStackCount()))
+	{
+		count += change;
+		UpdateStackDisplay();
+	}
+}
+
+
+/**
+ * Defines the stack as infinite:
+ * - one can always TakeObject() from the stack
+ * - always accepts stacking other stacks
+ * - if put into a container the first contained
+ *   stack becomes infinite, this object gets removed
+ */
 public func SetInfiniteStackCount()
 {
 	count = Stackable_Infinite_Count;
@@ -103,160 +153,287 @@ public func SetInfiniteStackCount()
 	return true;
 }
 
+
+/**
+ * Takes one object from the stack, the
+ * stack count is reduced by 1.
+ * @return the object that was taken.
+ *         This object is not contained.
+ */
 public func TakeObject()
 {
-	if (count == 1)
+	if (GetStackCount() == 1)
 	{
 		Exit();
 		return this;
 	}
-	else if (count > 1)
+	else
 	{
-		if (!count_is_infinite) SetStackCount(count - 1);
+		DoStackCount(-1);
 		var take = CreateObject(GetID(), 0, 0, GetOwner());
 		take->SetStackCount(1);
-		if (!count_is_infinite) UpdateStackDisplay();
 		return take;
 	}
 }
 
+
+/**
+ * Updates the stack, concerning information
+ * that is required by other objects and the GUI.
+ * The stack is removed if the stack count is <= 0. 
+ */
 public func UpdateStackDisplay()
 {
+	// empty stacks have to be removed
+	if (GetStackCount() <= 0)
+	{
+		RemoveObject();
+		return;
+	}
+	// otherwise update the object
 	UpdatePicture();
 	UpdateMass();
 	UpdateName();
+	NotifyContainer();
+}
+
+
+/**
+ * Updates the picture. Called by UpdateStack().
+ */
+private func UpdatePicture()
+{
+	// Allow other objects to adjust their picture.
+	return _inherited(...);
+}
+
+
+/**
+ * Updates the name. Called by UpdateStack().
+ * By default the name is changed to e.g. "5x Name"
+ * if the stack count is 5, or "Infinite Name" if
+ * the stack is infinite.
+ */
+private func UpdateName()
+{
+	if (this->IsInfiniteStackCount())
+		SetName(Format("$Infinite$ %s", GetID()->GetName()));
+	else
+		SetName(Format("%dx %s", GetStackCount(), GetID()->GetName()));
+}
+
+
+/**
+ * Updates the mass. Called by UpdateStack().
+ * The mass is proportional to the mass of the definition.
+ * It is assumed that the mass of the definition is that of
+ * InitialStackCount() objects in one stack.
+ */
+private func UpdateMass()
+{
+	SetMass(GetID()->GetMass() * Max(GetStackCount(), 1) / InitialStackCount());
+}
+
+
+/**
+ * Tells a possible container that the stack was
+ * changed.
+ * Calls NotifyHUD() in containers with extra slots,
+ * or OnInventoryChange() otherwise. 
+ */
+private func NotifyContainer()
+{
 	// notify hud
 	var container = Contained();
 	if (container)
 	{
 		// has an extra slot
 		if (container->~HasExtraSlot())
+		{
 			container->~NotifyHUD();
+		}
 		// is a clonk with new inventory system
-		else if (container->~GetSelected())
-		{
-			var pos = container->GetItemPos(this);
-			container->~OnSlotFull(pos);
-		}
-	}
-}
-
-private func UpdatePicture()
-{
-	// Put a small number showing the stack count in the bottom right 
-	// corner of the picture
-	var s = 400;
-	var yoffs = 14000;
-	var xoffs = 22000;
-	var spacing = 14000;
-
-	if  (count_is_infinite)
-	{
-		SetGraphics(nil, nil, 10);
-		SetGraphics(nil, nil, 11);
-		SetGraphics("Inf", Icon_Number, 12, GFXOV_MODE_Picture);
-		SetObjDrawTransform(s, 0, xoffs, 0, s, yoffs, 12);
-	}
-	else
-	{
-		var one = GetStackCount() % 10;
-		var ten = (GetStackCount() / 10) % 10;
-		var hun = (GetStackCount() / 100) % 10;
-		
-		if (hun > 0)
-		{
-			SetGraphics(Format("%d", hun), Icon_Number, 10, GFXOV_MODE_Picture);
-			SetObjDrawTransform(s, 0, xoffs - 2 * spacing, 0, s, yoffs, 10);
-		}
 		else
-			SetGraphics(nil, nil, 10);
-
-		if (ten > 0 || hun > 0)
 		{
-			SetGraphics(Format("%d", ten), Icon_Number, 11, GFXOV_MODE_Picture);
-			SetObjDrawTransform(s, 0, xoffs - spacing, 0, s, yoffs, 11);
+			container->~OnInventoryChange();
 		}
-		else
-			SetGraphics(nil, nil, 11);
-			
-		SetGraphics(Format("%d", one), Icon_Number, 12, GFXOV_MODE_Picture);
-		SetObjDrawTransform(s, 0, xoffs, 0, s, yoffs, 12);
 	}
-	return _inherited(...);
 }
 
-private func UpdateName()
-{
-	if (IsInfiniteStackCount())
-		SetName(Format("$Infinite$ %s", GetID()->GetName()));
-	else
-		SetName(Format("%dx %s", GetStackCount(), GetID()->GetName()));
-}
 
-private func UpdateMass()
-{
-	SetMass(GetID()->GetMass() * Max(GetStackCount(), 1) / MaxStackCount());
-}
-
+/**
+ * Tries merging packs BEFORE entering the container.
+ * That means that a container can not prevent objects stacking into it.
+ * However, the other way round (after the object has entered) presents more issues.
+ */
 protected func RejectEntrance(object into)
 {
-	if (TryPutInto(into))
-		return true;
+	// Merge the stack into existing stacks.
+	if (MergeWithStacksIn(into)) return true;
+	// Finally, allow the object to reject the stack, if it filled existing stacks but still should
+	// not be allowed to enter. This is the case in the barrel: It contains a stack, fills that to
+	// the maximum and then prevents the remaining liquid from forming a second stack in the barrel
+	if (this && into->~RejectStack(this)) return true;
+	
 	return _inherited(into, ...);
 }
 
-/* Value */
 
+/**
+ * Value calculation. The value is proportional to the value of the definition.
+ * It is assumed that the definition value defines the value for InitialStackCount()
+ * objects in one stack.
+ */
 public func CalcValue(object in_base, int for_plr)
 {
-	return GetID()->GetValue() * Max(GetStackCount(), 1) / MaxStackCount();
+	return GetID()->GetValue() * Max(GetStackCount(), 1) / InitialStackCount();
 }
 
-private func TryPutInto(object into)
+
+/**
+ * Tries to add this object to another stack.
+ * This call removes this item if its stack
+ * count is reduced to 0, or if it is an
+ * infinite stack.
+ * @par other the other stack.
+ * @return true if successful. That is, if
+ *         one or more objects were transferred
+ *         to the other stack.
+ */
+public func TryAddToStack(object other)
 {
-	var contents = FindObjects(Find_Container(into));
-
-	// first check if stackable can be put into object with extra slot
-	for (var content in contents)
-	{
-		if (!content)
-			continue;
-		if (content->~HasExtraSlot())
-			if (TryPutInto(content))
-				return true;
-	}
-
-	// then check this object
-	for (var content in contents)
-	{
-		var howmany = 0;
-		if (!content)
-			continue;
-		if (content->~IsStackable())
-			if (content->GetID() == GetID())
-				if (howmany = content->Stack(this))
-				{
-					count -= howmany;
-					if(count <= 0)
-					{
-						RemoveObject();
-						return true;
-					}
-				}
-	}
+	if (other == this) return false;
 	
-	UpdateStackDisplay();
+	// Is a stack possible in theory?
+	if (other->~IsStackable() && other->GetID() == GetID())
+	{
+		var howmany = other->Stack(this);
+		if (howmany > 0)
+		{
+			var stack = this;
+			DoStackCount(-howmany);
+			if (stack && stack->IsInfiniteStackCount()) stack->RemoveObject(); 
+			// Stack succesful! No matter how many items were transfered.
+			return true;
+		}
+	}
 	return false;
 }
 
-// Save stack counts in saved scenarios
+
+/**
+ * Attempts to add this stack to existing stacks in an object.
+ * By default the function considers stacks that are contained
+ * directly in the object 'into', as well as stacks that are
+ * contained in contents with HasExtraSlot() in 'into'.
+ * 
+ * @par into stacks in this object are considered.
+ * @par ignore_extra_slot_containers if set to 'true' the stacks in
+ *      contents with HasExtraSlot() will not be considered.
+ *      The default value is 'false'.
+ * @par continue_on_limit_reached containers may have a stack size limit.
+ *      RejectEntrance() should return 'true' to prevent 
+ */
+public func MergeWithStacksIn(object into, bool ignore_extra_slot_containers)
+{
+	// The object may grab contents first. The implementation of CollectFromStack()
+	// should ensure that no loop is created, however.
+	// This is used in the barrel from example: If the liquid stack that enters is too large,
+	// then the barrel grabs a single liquid item
+	into->~CollectFromStack(this);
+
+	ignore_extra_slot_containers = ignore_extra_slot_containers ?? false;
+	var contents = FindObjects(Find_Container(into));
+
+	if (!ignore_extra_slot_containers)
+	{
+		// first check if stackable can be put into object with extra slot
+		for (var container in contents)
+		{
+			if (!container)
+				continue;
+			if (container->~HasExtraSlot())
+				if (MergeWithStacksIn(container))
+					return true;
+		}
+	}
+	
+	// then check this object
+	for (var stack in contents)
+	{
+		if (!stack)
+			continue;
+		TryAddToStack(stack);
+		if (!this) return true;
+	}
+	
+	return false; // TODO was: added_to_stack
+}
+
+
+/**
+ * Relevant for the GUI only. Infinite stacks can be stacked on top of other infinite
+ * stacks only.
+ * This does not affect the functions Stack() or TryAddToStack().
+ */
+public func CanBeStackedWith(object other)
+{
+	// Infinite stacks can only be stacked on top of others.
+	if (this->IsInfiniteStackCount() != other->~IsInfiniteStackCount())
+		return false;
+	// If this and other are contained in extra slots stack count must be the same for the parents to be stackable.
+	if (this->Contained() && other->Contained())
+		if (this->Contained()->~HasExtraSlot() && other->Contained()->~HasExtraSlot())
+			return this->GetStackCount() == other->~GetStackCount() && _inherited(other, ...);
+	return _inherited(other, ...);
+}
+
+
+/**
+ * Infinite stacks show a little symbol in their corner.
+ */
+public func GetInventoryIconOverlay()
+{
+	if (!(this->IsInfiniteStackCount())) return nil;
+	return {Left = "50%", Bottom = "50%", Symbol = Icon_Number, GraphicsName = "Inf"};
+}
+
+
+/**
+ * Saves stack counts in saved scenarios.
+ */
 public func SaveScenarioObject(props)
 {
 	if (!inherited(props, ...)) return false;
 	props->Remove("Name");
-	if (IsInfiniteStackCount())
+	if (this->IsInfiniteStackCount())
 		props->AddCall("Stack", this, "SetInfiniteStackCount");
-	else if (GetStackCount() != MaxStackCount())
+	else if (GetStackCount() != InitialStackCount())
 		props->AddCall("Stack", this, "SetStackCount", GetStackCount());
 	return true;
+}
+
+
+/**
+ * Offers editor properties for stack count and inifnite setting
+ */
+public func Definition(def, ...)
+{
+	_inherited(def, ...);
+	if (!def.EditorProps) def.EditorProps = {};
+	def.EditorProps.count = { Name="$Count$", Type="enum", AsyncGet="GetEditorStackCount", Set="SetEditorStackCount", Options=[
+		{ Name=Format("$DefaultStack$", def->InitialStackCount()), Value=def->InitialStackCount() },
+		{ Name="$CustomStack$", Type=C4V_Int, Value=def->InitialStackCount(), Delegate={ Type="int", Min=1/*, Max=def->MaxStackCount()*/ } }, // there's no reason to restrict the max stack in editor
+		{ Name="$Infinite$", Value="infinite" }
+		]};
+}
+
+private func GetEditorStackCount()
+{
+	if (count_is_infinite) return "infinite"; else return count;
+}
+
+private func SetEditorStackCount(to_val)
+{
+	if (to_val == "infinite") SetInfiniteStackCount(); else SetStackCount(to_val);
 }

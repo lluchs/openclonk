@@ -2,6 +2,7 @@
 
 local Name = "$Name$";
 local Description = "$Description$";
+local Plane = 300;
 
 local grow_anim;
 local attached_berry;
@@ -81,7 +82,7 @@ func AddLeaves(bool fullyGrown)
 	// add two leaves
 	for(var i = 1; i <= 2; ++i)
 	{
-		var rtrans = Trans_Rotate(Random(360), 0, 1, 0);
+		var rtrans = Trans_Rotate(Random(360), 1, 0, 0);
 		var matrix = Trans_Mul(Trans_Scale(1, 1, 1), rtrans);
 		if(fullyGrown)
 			matrix = rtrans;
@@ -98,7 +99,7 @@ func PlayRandomGrowAnimation(int start, int max)
 	var growActions = 2;
 	grow_anim = Format("Grow%d", Random(growActions)+1);
 	var len = GetAnimationLength(grow_anim);
-	PlayAnimation(grow_anim, 1, Anim_Linear(start, 0, len, max,  ANIM_Hold), Anim_Const(1000)); 
+	PlayAnimation(grow_anim, 1, Anim_Linear(start, 0, len, max,  ANIM_Hold)); 
 }
 
 func Init(object bush)
@@ -115,7 +116,7 @@ func Init(object bush)
 	// actually grow
 	SetObjDrawTransform();
 	var steps = 1000 / max_grow_time;
-	AddEffect("VirtGrow", this, 1, 1, this, 0, Max(1, steps));
+	AddEffect("VirtGrow", this, 1, 1, this, nil, Max(1, steps));
 	
 	// add two leaves
 	AddLeaves(false);
@@ -189,8 +190,6 @@ func FxLifeTimerTimer(target, effect, time)
 		if(!t) return;
 		
 		if(!Random(10))
-			;//Die();
-		if(!Random(10))
 		{
 			if(attached_flower != -1)
 			{
@@ -216,10 +215,11 @@ func Damage()
 	Die(false);
 }
 
-func IsProjectileTarget(object weapon, object wielder)
+public func IsProjectileTarget(object projectile, object shooter)
 {
-	if(Random(20)) return false;
-	return ObjectDistance(this, weapon) < 15;
+	if(Random(20))
+		return false;
+	return !projectile || ObjectDistance(this, projectile) < 15;
 }
 
 func AttachTargetLost()
@@ -250,7 +250,7 @@ func Die(bool natural_cause)
 	
 	var time = 20 + Random(20);
 	var len = GetAnimationLength(grow_anim);
-	PlayAnimation(grow_anim, 6, Anim_Linear(len, len, 0, time,  ANIM_Hold), Anim_Const(1000)); 
+	PlayAnimation(grow_anim, 6, Anim_Linear(len, len, 0, time,  ANIM_Hold)); 
 	AddEffect("QuickFade", this, 1, 1, this, nil, time/2);
 	
 	if(this.isDead)

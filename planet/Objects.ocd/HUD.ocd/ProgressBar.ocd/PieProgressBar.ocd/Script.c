@@ -56,7 +56,7 @@ func Init(to, max, cur, timeout, offset, visibility, data)
 	ring[0] = this;
 	
 	for(var i = 1; i < amount; ++i)
-		ring[i] = CreateObject(GetID(), 0, 0, GetOwner());
+		ring[i] = CreateObjectAbove(GetID(), 0, 0, GetOwner());
 
 	var cnt = 0;
 	for(var obj in ring)
@@ -64,8 +64,6 @@ func Init(to, max, cur, timeout, offset, visibility, data)
 		obj->Set(to, 180 / amount + ((cnt * 360) / amount), offset, visibility, size);
 		++cnt;
 	}
-	
-	AddEffect("LifeCheck", to, 1, 0, this);
 	Update();
 }
 

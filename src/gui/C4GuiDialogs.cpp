@@ -3,7 +3,7 @@
  *
  * Copyright (c) 1998-2000, Matthes Bender
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -17,22 +17,20 @@
 // generic user interface
 // dialog base classes and some user dialogs
 
-#include <C4Include.h>
-#include <C4Gui.h>
+#include "C4Include.h"
+#include "C4ForbidLibraryCompilation.h"
+#include "gui/C4Gui.h"
 
-#include <C4DefList.h>
-#include <C4FullScreen.h>
-#include <C4LoaderScreen.h>
-#include <C4Application.h>
-#include <C4Viewport.h>
-#include <C4Console.h>
-#include <C4Def.h>
-#include <C4MouseControl.h>
-#include <C4GraphicsResource.h>
-#include <C4Game.h>
+#include "game/C4Application.h"
+#include "game/C4GameScript.h"
+#include "game/C4Viewport.h"
+#include "graphics/C4Draw.h"
+#include "graphics/C4GraphicsResource.h"
+#include "object/C4DefList.h"
+#include "object/C4Def.h"
 
-#include <C4DrawGL.h>
-#include <StdRegistry.h>
+#include "graphics/C4DrawGL.h"
+#include "platform/StdRegistry.h"
 
 namespace C4GUI
 {
@@ -42,6 +40,7 @@ namespace C4GUI
 
 	void FrameDecoration::Clear()
 	{
+		pSourceDef = nullptr;
 		idSourceDef = C4ID::None;
 		dwBackClr = C4GUI_StandardBGColor;
 		iBorderTop=iBorderLeft=iBorderRight=iBorderBottom=0;
@@ -77,14 +76,18 @@ namespace C4GUI
 
 	bool FrameDecoration::SetByDef(C4ID idSourceDef)
 	{
-		// get source def
-		C4Def *pSrcDef = C4Id2Def(idSourceDef);
+		return SetByDef(C4Id2Def(idSourceDef));
+	}
+
+	bool FrameDecoration::SetByDef(C4Def *pSrcDef)
+	{
 		if (!pSrcDef) return false;
 		// script compiled?
 		if (!pSrcDef->Script.IsReady()) return false;
 		// reset old
 		Clear();
-		this->idSourceDef = idSourceDef;
+		this->pSourceDef = pSrcDef;
+		this->idSourceDef = pSrcDef->id;
 		// query values
 		dwBackClr     = pSrcDef->Call(FormatString(PSF_FrameDecoration, "BackClr"     ).getData()).getInt();
 		iBorderTop    = pSrcDef->Call(FormatString(PSF_FrameDecoration, "BorderTop"   ).getData()).getInt();
@@ -127,7 +130,7 @@ namespace C4GUI
 		{
 			for (x = iBorderLeft; x < rcBounds.Wdt-iBorderRight; x += fctTop.Wdt)
 			{
-				int w = Min<int>(fctTop.Wdt, rcBounds.Wdt-iBorderRight-x);
+				int w = std::min<int>(fctTop.Wdt, rcBounds.Wdt-iBorderRight-x);
 				fctTop.Wdt = w;
 				fctTop.Draw(cgo.Surface, ox+x, oy+fctTop.TargetY);
 			}
@@ -138,7 +141,7 @@ namespace C4GUI
 		{
 			for (y = iBorderTop; y < rcBounds.Hgt-iBorderBottom; y += fctLeft.Hgt)
 			{
-				int h = Min<int>(fctLeft.Hgt, rcBounds.Hgt-iBorderBottom-y);
+				int h = std::min<int>(fctLeft.Hgt, rcBounds.Hgt-iBorderBottom-y);
 				fctLeft.Hgt = h;
 				fctLeft.Draw(cgo.Surface, ox+fctLeft.TargetX, oy+y);
 			}
@@ -149,7 +152,7 @@ namespace C4GUI
 		{
 			for (y = iBorderTop; y < rcBounds.Hgt-iBorderBottom; y += fctRight.Hgt)
 			{
-				int h = Min<int>(fctRight.Hgt, rcBounds.Hgt-iBorderBottom-y);
+				int h = std::min<int>(fctRight.Hgt, rcBounds.Hgt-iBorderBottom-y);
 				fctRight.Hgt = h;
 				fctRight.Draw(cgo.Surface, ox+rcBounds.Wdt-iBorderRight+fctRight.TargetX, oy+y);
 			}
@@ -160,7 +163,7 @@ namespace C4GUI
 		{
 			for (x = iBorderLeft; x < rcBounds.Wdt-iBorderRight; x += fctBottom.Wdt)
 			{
-				int w = Min<int>(fctBottom.Wdt, rcBounds.Wdt-iBorderRight-x);
+				int w = std::min<int>(fctBottom.Wdt, rcBounds.Wdt-iBorderRight-x);
 				fctBottom.Wdt = w;
 				fctBottom.Draw(cgo.Surface, ox+x, oy+rcBounds.Hgt-iBorderBottom+fctBottom.TargetY);
 			}
@@ -224,19 +227,22 @@ namespace C4GUI
 #endif
 		}
 		C4TargetFacet cgo;
-		cgo.Set(NULL, 0, 0, r.Wdt, r.Hgt, 0, 0);
+		cgo.Set(nullptr, 0, 0, r.Wdt, r.Hgt, 0, 0);
 		pDialog->Draw(cgo);
 	}
 
 	void DialogWindow::Close()
 	{
 		// FIXME: Close the dialog of this window
-		//Dialog *pDlg = ::pGUI ? ::pGUI->GetDialog(hWindow) : NULL;
-		//if (pDlg) pDlg->Close();
 	}
 
 	bool Dialog::CreateConsoleWindow()
 	{
+#ifdef WITH_QT_EDITOR
+		// TODO: Implement these as Qt editor windows.
+		// This currently creates an empty window in Windows and a segfault in Linux.
+		return false;
+#endif
 		// already created?
 		if (pWindow) return true;
 		// create it!
@@ -244,7 +250,7 @@ namespace C4GUI
 		if (!pWindow->Init(&Application, TitleString.getData(), rcBounds, GetID()))
 		{
 			delete pWindow;
-			pWindow = NULL;
+			pWindow = nullptr;
 			return false;
 		}
 		// create rendering context
@@ -260,15 +266,15 @@ namespace C4GUI
 			delete pWindow->pSurface;
 			pWindow->Clear();
 			delete pWindow;
-			pWindow = NULL;
+			pWindow = nullptr;
 		}
 	}
 
 	Dialog::Dialog(int32_t iWdt, int32_t iHgt, const char *szTitle, bool fViewportDlg):
-			Window(), pTitle(NULL), pCloseBtn(NULL), fDelOnClose(false), fViewportDlg(fViewportDlg), pWindow(NULL), pFrameDeco(NULL)
+			Window(), pTitle(nullptr), pCloseBtn(nullptr), fDelOnClose(false), fViewportDlg(fViewportDlg), pWindow(nullptr), pFrameDeco(nullptr)
 	{
 		// zero fields
-		pActiveCtrl = NULL;
+		pActiveCtrl = nullptr;
 		fShow = fOK = false;
 		iFade = 100; eFade = eFadeNone;
 		// add title
@@ -278,45 +284,45 @@ namespace C4GUI
 		SetBounds(C4Rect(0,0,iWdt,iHgt));
 		// create key callbacks
 		C4CustomKey::CodeList Keys;
-		Keys.push_back(C4KeyCodeEx(K_TAB));
+		Keys.emplace_back(K_TAB);
 		if (Config.Controls.GamepadGuiControl)
 		{
-			Keys.push_back(C4KeyCodeEx(KEY_Gamepad(0, KEY_JOY_Right)));
+			ControllerKeys::Right(Keys);
 		}
 		pKeyAdvanceControl = new C4KeyBinding(Keys, "GUIAdvanceFocus", KEYSCOPE_Gui,
 		                                      new DlgKeyCBEx<Dialog, bool>(*this, false, &Dialog::KeyAdvanceFocus), C4CustomKey::PRIO_Dlg);
 		Keys.clear();
-		Keys.push_back(C4KeyCodeEx(K_TAB, KEYS_Shift));
+		Keys.emplace_back(K_TAB, KEYS_Shift);
 		if (Config.Controls.GamepadGuiControl)
 		{
-			Keys.push_back(C4KeyCodeEx(KEY_Gamepad(0, KEY_JOY_Left)));
+			ControllerKeys::Left(Keys);
 		}
 		pKeyAdvanceControlB = new C4KeyBinding(Keys, "GUIAdvanceFocusBack", KEYSCOPE_Gui,
 		                                       new DlgKeyCBEx<Dialog, bool>(*this, true, &Dialog::KeyAdvanceFocus), C4CustomKey::PRIO_Dlg);
 		Keys.clear();
-		Keys.push_back(C4KeyCodeEx(KEY_Any, KEYS_Alt));
-		Keys.push_back(C4KeyCodeEx(KEY_Any, C4KeyShiftState(KEYS_Alt | KEYS_Shift)));
+		Keys.emplace_back(KEY_Any, KEYS_Alt);
+		Keys.emplace_back(KEY_Any, C4KeyShiftState(KEYS_Alt | KEYS_Shift));
 		pKeyHotkey = new C4KeyBinding(Keys, "GUIHotkey", KEYSCOPE_Gui,
 		                              new DlgKeyCBPassKey<Dialog>(*this, &Dialog::KeyHotkey), C4CustomKey::PRIO_Ctrl);
 		Keys.clear();
-		Keys.push_back(C4KeyCodeEx(K_RETURN));
+		Keys.emplace_back(K_RETURN);
 		if (Config.Controls.GamepadGuiControl)
 		{
-			Keys.push_back(C4KeyCodeEx(KEY_Gamepad(0, KEY_JOY_AnyLowButton)));
+			ControllerKeys::Ok(Keys);
 		}
 		pKeyEnter = new C4KeyBinding(Keys, "GUIDialogOkay", KEYSCOPE_Gui,
 		                             new DlgKeyCB<Dialog>(*this, &Dialog::KeyEnter), C4CustomKey::PRIO_Dlg);
 		Keys.clear();
-		Keys.push_back(C4KeyCodeEx(K_ESCAPE));
+		Keys.emplace_back(K_ESCAPE);
 		if (Config.Controls.GamepadGuiControl)
 		{
-			Keys.push_back(C4KeyCodeEx(KEY_Gamepad(0, KEY_JOY_AnyHighButton)));
+			ControllerKeys::Cancel(Keys);
 		}
 		pKeyEscape = new C4KeyBinding(Keys, "GUIDialogAbort", KEYSCOPE_Gui,
 		                              new DlgKeyCB<Dialog>(*this, &Dialog::KeyEscape), C4CustomKey::PRIO_Dlg);
 		Keys.clear();
-		Keys.push_back(C4KeyCodeEx(KEY_Any));
-		Keys.push_back(C4KeyCodeEx(KEY_Any, KEYS_Shift));
+		Keys.emplace_back(KEY_Any);
+		Keys.emplace_back(KEY_Any, KEYS_Shift);
 		pKeyFocusDefControl = new C4KeyBinding(Keys, "GUIFocusDefault", KEYSCOPE_Gui,
 		                                       new DlgKeyCB<Dialog>(*this, &Dialog::KeyFocusDefault), C4CustomKey::PRIO_Dlg);
 	}
@@ -324,7 +330,7 @@ namespace C4GUI
 	int32_t Dialog::GetDefaultTitleHeight()
 	{
 		// default title font
-		return Min<int32_t>(::GraphicsResource.TextFont.GetLineHeight(), C4GUI_MinWoodBarHgt);
+		return std::min<int32_t>(::GraphicsResource.TextFont.GetLineHeight(), C4GUI_MinWoodBarHgt);
 	}
 
 	void Dialog::SetTitle(const char *szTitle, bool fShowCloseButton)
@@ -358,7 +364,7 @@ namespace C4GUI
 				pTitle->SetRightIndent(20); // for close button
 				if (!pCloseBtn)
 				{
-					AddElement(pCloseBtn = new CallbackButton<Dialog, IconButton>(Ico_Close, pTitle->GetToprightCornerRect(16,16,4,4,0), 0, &Dialog::OnUserClose));
+					AddElement(pCloseBtn = new CallbackButton<Dialog, IconButton>(Ico_Close, pTitle->GetToprightCornerRect(16,16,4,4,0), '\0', &Dialog::OnUserClose));
 					pCloseBtn->SetToolTip(LoadResStr("IDS_MNU_CLOSE"));
 				}
 				else
@@ -367,8 +373,8 @@ namespace C4GUI
 		}
 		else
 		{
-			if (pTitle) { delete pTitle; pTitle=NULL; }
-			if (pCloseBtn) { delete pCloseBtn; pCloseBtn = NULL; }
+			if (pTitle) { delete pTitle; pTitle=nullptr; }
+			if (pCloseBtn) { delete pCloseBtn; pCloseBtn = nullptr; }
 		}
 	}
 
@@ -423,7 +429,7 @@ namespace C4GUI
 		// inherited
 		Window::RemoveElement(pChild);
 		// clear ptr
-		if (pChild == pActiveCtrl) pActiveCtrl = NULL;
+		if (pChild == pActiveCtrl) pActiveCtrl = nullptr;
 	}
 
 	void Dialog::Draw(C4TargetFacet &cgo0)
@@ -478,6 +484,16 @@ namespace C4GUI
 		// blit output to own window
 		if (pWindow)
 		{
+			// Draw context menu on editor window
+			ContextMenu *menu;
+			if ((menu = GetScreen()->pContext))
+			{
+				if (menu->GetTargetDialog() == this)
+				{
+					menu->Draw(cgo);
+				}
+			}
+			// Editor window: Blit to output
 			C4Rect rtSrc,rtDst;
 			rtSrc.x=rcBounds.x; rtSrc.y=rcBounds.y;  rtSrc.Wdt=rcBounds.Wdt; rtSrc.Hgt=rcBounds.Hgt;
 			rtDst.x=0; rtDst.y=0;    rtDst.Wdt=rcBounds.Wdt; rtDst.Hgt=rcBounds.Hgt;
@@ -552,7 +568,7 @@ namespace C4GUI
 		if (pActiveCtrl)
 		{
 			Control *pC = pActiveCtrl;
-			pActiveCtrl = NULL;
+			pActiveCtrl = nullptr;
 			pC->OnLooseFocus();
 			// if leaving the old focus set a new one, abort here because it looks like the control didn't want to lose focus
 			if (pActiveCtrl) return;
@@ -571,13 +587,13 @@ namespace C4GUI
 			// get next element
 			pCurrElement = GetNextNestedElement(pCurrElement, fBackwards);
 			// end reached: start from beginning
-			if (!pCurrElement && pActiveCtrl) if (!(pCurrElement = GetNextNestedElement(NULL, fBackwards))) return;
+			if (!pCurrElement && pActiveCtrl) if (!(pCurrElement = GetNextNestedElement(nullptr, fBackwards))) return;
 			// cycled?
 			if (pCurrElement == pActiveCtrl)
 			{
 				// but current is no longer a focus element? Then defocus it and return
 				if (pCurrElement && !pCurrElement->IsFocusElement())
-					SetFocus(NULL, false);
+					SetFocus(nullptr, false);
 				return;
 			}
 			// for list elements, check whether the child can be selected
@@ -641,14 +657,21 @@ namespace C4GUI
 
 	bool Dialog::DoModal()
 	{
+		// Cancel all dialogues if game is left (including e.g. league dialogues)
+		if (::Application.IsQuittingGame()) return false;
 		// main message loop
 		while (fShow)
 		{
 			// dialog idle proc
 			OnIdle();
+			// Modal dialogue during running game is tricky. Do not execute game!
+			bool fGameWasRunning = ::Game.IsRunning;
+			::Game.IsRunning = false;
 			// handle messages - this may block until the next timer
 			if (!Application.ScheduleProcs())
 				return false; // game GUI and lobby will deleted in Game::Clear()
+			// reset game run state
+			if (fGameWasRunning) ::Game.IsRunning = true;
 		}
 		// return whether dlg was OK
 		return fOK;
@@ -760,7 +783,7 @@ namespace C4GUI
 // FullscreenDialog
 
 	FullscreenDialog::FullscreenDialog(const char *szTitle, const char *szSubtitle)
-			: Dialog(Screen::GetScreenS()->GetClientRect().Wdt, Screen::GetScreenS()->GetClientRect().Hgt, NULL /* create own title */, false), pFullscreenTitle(NULL)
+			: Dialog(Screen::GetScreenS()->GetClientRect().Wdt, Screen::GetScreenS()->GetClientRect().Hgt, nullptr /* create own title */, false), pFullscreenTitle(nullptr)
 	{
 		// set margins
 		int32_t iScreenX = Screen::GetScreenS()->GetClientRect().Wdt;
@@ -777,12 +800,12 @@ namespace C4GUI
 			AddElement(pSubTitle = new Label(szSubtitle, rcClientRect.Wdt, C4UpperBoardHeight-::GraphicsResource.CaptionFont.GetLineHeight()/2-25-GetMarginTop(), ARight, C4GUI_CaptionFontClr, &::GraphicsResource.TextFont));
 			pSubTitle->SetToolTip(szTitle);
 		}
-		else pSubTitle = NULL;
+		else pSubTitle = nullptr;
 	}
 
 	void FullscreenDialog::SetTitle(const char *szTitle)
 	{
-		if (pFullscreenTitle) { delete pFullscreenTitle; pFullscreenTitle=NULL; }
+		if (pFullscreenTitle) { delete pFullscreenTitle; pFullscreenTitle=nullptr; }
 		// change title text; creates or removes title bar if necessary
 		if (szTitle && *szTitle)
 		{
@@ -801,7 +824,7 @@ namespace C4GUI
 	{
 		// draw upper board
 		if (HasUpperBoard())
-			pDraw->BlitSurfaceTile(::GraphicsResource.fctUpperBoard.Surface,cgo.Surface,0,Min<int32_t>(iFade-::GraphicsResource.fctUpperBoard.Hgt, 0),cgo.Wdt,::GraphicsResource.fctUpperBoard.Hgt);
+			pDraw->BlitSurfaceTile(::GraphicsResource.fctUpperBoard.Surface,cgo.Surface,0,std::min<int32_t>(iFade-::GraphicsResource.fctUpperBoard.Hgt, 0),cgo.Wdt,::GraphicsResource.fctUpperBoard.Hgt, 0, 0, nullptr);
 	}
 
 	void FullscreenDialog::UpdateOwnPos()
@@ -813,8 +836,6 @@ namespace C4GUI
 	void FullscreenDialog::DrawBackground(C4TargetFacet &cgo, C4Facet &rFromFct)
 	{
 		// draw across fullscreen bounds - zoom 1px border to prevent flashing borders by blit offsets
-		Screen *pScr = GetScreen();
-		C4Rect &rcScreenBounds = pScr ? pScr->GetBounds() : GetBounds();
 		rFromFct.DrawFullScreen(cgo);
 	}
 
@@ -822,7 +843,7 @@ namespace C4GUI
 // MessageDialog
 
 	MessageDialog::MessageDialog(const char *szMessage, const char *szCaption, DWORD dwButtons, Icons icoIcon, DlgSize eSize, int32_t *piConfigDontShowAgainSetting, bool fDefaultNo)
-			: Dialog(eSize, 100 /* will be resized */, szCaption, false), piConfigDontShowAgainSetting(piConfigDontShowAgainSetting), pKeyCopy(NULL), sCopyText()
+			: Dialog(eSize, 100 /* will be resized */, szCaption, false), piConfigDontShowAgainSetting(piConfigDontShowAgainSetting), pKeyCopy(nullptr), sCopyText()
 	{
 		CStdFont &rUseFont = ::GraphicsResource.TextFont;
 		// get positions
@@ -854,7 +875,7 @@ namespace C4GUI
 		{
 			int w=100,h=20;
 			const char *szCheckText = LoadResStr("IDS_MSG_DONTSHOW");
-			CheckBox::GetStandardCheckBoxSize(&w, &h, szCheckText, NULL);
+			CheckBox::GetStandardCheckBoxSize(&w, &h, szCheckText, nullptr);
 			CheckBox *pCheck = new C4GUI::CheckBox(caMain.GetFromTop(h, w), szCheckText, !!*piConfigDontShowAgainSetting);
 			pCheck->SetOnChecked(new C4GUI::CallbackHandler<MessageDialog>(this, &MessageDialog::OnDontShowAgainCheck));
 			AddElement(pCheck);
@@ -865,7 +886,7 @@ namespace C4GUI
 		int32_t iButtonCount = 0;
 		int32_t i=1; while (i) { if (dwButtons & i) ++iButtonCount; i=i<<1; }
 		fHasOK = !!(dwButtons & btnOK) || !!(dwButtons & btnYes);
-		Button *btnFocus = NULL;
+		Button *btnFocus = nullptr;
 		if (iButtonCount)
 		{
 			C4Rect rcBtn = caButtonArea.GetCentered(iButtonCount*C4GUI_DefButton2Wdt+(iButtonCount-1)*C4GUI_DefButton2HSpace, C4GUI_ButtonHgt);
@@ -874,7 +895,7 @@ namespace C4GUI
 			if (dwButtons & btnOK)
 			{
 				Button *pBtnOK = new OKButton(rcBtn);
-				AddElement(pBtnOK); //pBtnOK->SetToolTip((dwButtons & btnAbort) ? LoadResStr("IDS_DLGTIP_OK2") : LoadResStr("IDS_DLGTIP_OK"));
+				AddElement(pBtnOK);
 				rcBtn.x += C4GUI_DefButton2Wdt+C4GUI_DefButton2HSpace;
 				if (!fDefaultNo) btnFocus = pBtnOK;
 			}
@@ -882,7 +903,7 @@ namespace C4GUI
 			if (dwButtons & btnRetry)
 			{
 				Button *pBtnRetry = new RetryButton(rcBtn);
-				AddElement(pBtnRetry); //pBtnAbort->SetToolTip(LoadResStr("IDS_DLGTIP_CANCEL"));
+				AddElement(pBtnRetry);
 				rcBtn.x += C4GUI_DefButton2Wdt+C4GUI_DefButton2HSpace;
 				if (!btnFocus) btnFocus = pBtnRetry;
 
@@ -891,7 +912,7 @@ namespace C4GUI
 			if (dwButtons & btnAbort)
 			{
 				Button *pBtnAbort = new CancelButton(rcBtn);
-				AddElement(pBtnAbort); //pBtnAbort->SetToolTip(LoadResStr("IDS_DLGTIP_CANCEL"));
+				AddElement(pBtnAbort);
 				rcBtn.x += C4GUI_DefButton2Wdt+C4GUI_DefButton2HSpace;
 				if (!btnFocus) btnFocus = pBtnAbort;
 			}
@@ -899,7 +920,7 @@ namespace C4GUI
 			if (dwButtons & btnYes)
 			{
 				Button *pBtnYes = new YesButton(rcBtn);
-				AddElement(pBtnYes); //pBtnYes->SetToolTip(LoadResStr("IDS_DLGTIP_OK2"));
+				AddElement(pBtnYes);
 				rcBtn.x += C4GUI_DefButton2Wdt+C4GUI_DefButton2HSpace;
 				if (!btnFocus && !fDefaultNo) btnFocus = pBtnYes;
 			}
@@ -907,15 +928,14 @@ namespace C4GUI
 			if (dwButtons & btnNo)
 			{
 				Button *pBtnNo = new NoButton(rcBtn);
-				AddElement(pBtnNo); //pBtnNo->SetToolTip(LoadResStr("IDS_DLGTIP_CANCEL"));
-				//rcBtn.x += C4GUI_DefButton2Wdt+C4GUI_DefButton2HSpace;
+				AddElement(pBtnNo);
 				if (!btnFocus) btnFocus = pBtnNo;
 			}
 			// Reset
 			if (dwButtons & btnReset)
 			{
 				Button *pBtnReset = new ResetButton(rcBtn);
-				AddElement(pBtnReset); //pBtnAbort->SetToolTip("[!]Reset to default");
+				AddElement(pBtnReset);
 				rcBtn.x += C4GUI_DefButton2Wdt+C4GUI_DefButton2HSpace;
 				if (!btnFocus) btnFocus = pBtnReset;
 
@@ -925,7 +945,7 @@ namespace C4GUI
 		// resize to actually needed size
 		SetClientSize(GetClientRect().Wdt, GetClientRect().Hgt - caMain.GetHeight());
 		// Control+C copies text to clipboard
-		sCopyText.Format("[%s] %s", szCaption ? szCaption : "", szMessage ? szMessage : "");
+		sCopyText = strprintf("[%s] %s", szCaption ? szCaption : "", szMessage ? szMessage : "");
 		pKeyCopy = new C4KeyBinding(C4KeyCodeEx(K_C, KEYS_Control), "GUIEditCopy", KEYSCOPE_Gui,
 		               new DlgKeyCB<MessageDialog>(*this, &MessageDialog::KeyCopy), C4CustomKey::PRIO_CtrlOverride);
 	}
@@ -959,14 +979,14 @@ bool MessageDialog::KeyCopy()
 	void ConfirmationDialog::OnClosed(bool fOK)
 	{
 		// confirmed only on OK
-		BaseCallbackHandler *pStackCB = fOK ? pCB : NULL;
+		BaseCallbackHandler *pStackCB = fOK ? pCB : nullptr;
 		if (pStackCB) pStackCB->Ref();
 		// caution: this will usually delete the dlg (this)
 		// so the CB-interface is backed up
 		MessageDialog::OnClosed(fOK);
 		if (pStackCB)
 		{
-			pStackCB->DoCall(NULL);
+			pStackCB->DoCall(nullptr);
 			pStackCB->DeRef();
 		}
 	}
@@ -976,7 +996,7 @@ bool MessageDialog::KeyCopy()
 // ProgressDialog
 
 	ProgressDialog::ProgressDialog(const char *szMessage, const char *szCaption, int32_t iMaxProgress, int32_t iInitialProgress, Icons icoIcon)
-			: Dialog(C4GUI_ProgressDlgWdt, Max(::GraphicsResource.TextFont.BreakMessage(szMessage, C4GUI_ProgressDlgWdt-3*C4GUI_DefDlgIndent-C4GUI_IconWdt, 0, 0, true), C4GUI_IconHgt) + C4GUI_ProgressDlgVRoom, szCaption, false)
+			: Dialog(C4GUI_ProgressDlgWdt, std::max(::GraphicsResource.TextFont.BreakMessage(szMessage, C4GUI_ProgressDlgWdt-3*C4GUI_DefDlgIndent-C4GUI_IconWdt, nullptr, 0, true), C4GUI_IconHgt) + C4GUI_ProgressDlgVRoom, szCaption, false)
 	{
 		// get positions
 		ComponentAligner caMain(GetClientRect(), C4GUI_DefDlgIndent, C4GUI_DefDlgIndent, true);
@@ -998,7 +1018,7 @@ bool MessageDialog::KeyCopy()
 		AddElement(pBar);
 		// place abort button
 		Button *pBtnAbort = new CancelButton(caButtonArea.GetCentered(C4GUI_DefButtonWdt, C4GUI_ButtonHgt));
-		AddElement(pBtnAbort); //pBtnAbort->SetToolTip(LoadResStr("IDS_DLGTIP_CANCEL"));
+		AddElement(pBtnAbort);
 	}
 
 
@@ -1037,7 +1057,7 @@ bool MessageDialog::KeyCopy()
 		// create progress dlg
 		ProgressDialog *pDlg = new ProgressDialog(szMessage, szCaption, iMaxProgress, iInitialProgress, icoIcon);
 		// show it
-		if (!pDlg->Show(this, true)) { delete pDlg; return NULL; }
+		if (!pDlg->Show(this, true)) { delete pDlg; return nullptr; }
 		// return dlg pointer
 		return pDlg;
 	}
@@ -1080,9 +1100,9 @@ bool MessageDialog::KeyCopy()
 	InputDialog::InputDialog(const char *szMessage, const char *szCaption, Icons icoIcon, BaseInputCallback *pCB, bool fChatLayout)
 			: Dialog(fChatLayout ? C4GUI::GetScreenWdt()*4/5 : C4GUI_InputDlgWdt,
 			         fChatLayout ? C4GUI::Edit::GetDefaultEditHeight() + 2 :
-			         Max(::GraphicsResource.TextFont.BreakMessage(szMessage, C4GUI_InputDlgWdt - 3 * C4GUI_DefDlgIndent - C4GUI_IconWdt, 0, 0, true),
+			         std::max(::GraphicsResource.TextFont.BreakMessage(szMessage, C4GUI_InputDlgWdt - 3 * C4GUI_DefDlgIndent - C4GUI_IconWdt, nullptr, 0, true),
 			             C4GUI_IconHgt) + C4GUI_InputDlgVRoom, szCaption, false),
-			pEdit(NULL), pCB(pCB), fChatLayout(fChatLayout), pChatLbl(NULL)
+			pEdit(nullptr), pCB(pCB), fChatLayout(fChatLayout), pChatLbl(nullptr)
 	{
 		if (fChatLayout)
 		{
@@ -1121,11 +1141,11 @@ bool MessageDialog::KeyCopy()
 			rcBtn.Wdt = C4GUI_DefButton2Wdt;
 			// OK
 			Button *pBtnOK = new OKButton(rcBtn);
-			AddElement(pBtnOK); //pBtnOK->SetToolTip(LoadResStr("IDS_DLGTIP_OK"));
+			AddElement(pBtnOK);
 			rcBtn.x += rcBtn.Wdt + C4GUI_DefButton2HSpace;
 			// Cancel
 			Button *pBtnAbort = new CancelButton(rcBtn);
-			AddElement(pBtnAbort); //pBtnAbort->SetToolTip(LoadResStr("IDS_DLGTIP_CANCEL"));
+			AddElement(pBtnAbort);
 			rcBtn.x += rcBtn.Wdt + C4GUI_DefButton2HSpace;
 		}
 		// input dlg always closed in the end
@@ -1184,7 +1204,10 @@ bool MessageDialog::KeyCopy()
 			pTextWin->AddTextLine(sLine.getData(), &::GraphicsResource.TextFont, C4GUI_MessageFontClr, false, true);
 		}
 		pTextWin->UpdateHeight();
-		//pTextWin->ScrollToBottom();
+	}
+	InfoDialog::~InfoDialog()
+	{
+		Application.Remove(this);
 	}
 
 	void InfoDialog::CreateSubComponents()
@@ -1193,7 +1216,7 @@ bool MessageDialog::KeyCopy()
 		ComponentAligner caMain(GetClientRect(), C4GUI_DefDlgIndent, C4GUI_DefDlgIndent, true);
 		ComponentAligner caButtonArea(caMain.GetFromBottom(C4GUI_ButtonAreaHgt), 0,0);
 		// place info box
-		pTextWin = new TextWindow(caMain.GetAll(), 0, 0, 0, 100, 4096, "  ", true, NULL, 0);
+		pTextWin = new TextWindow(caMain.GetAll(), 0, 0, 0, 100, 4096, "  ", true, nullptr, 0);
 		AddElement(pTextWin);
 		// place close button
 		Button *pBtnClose = new DlgCloseButton(caButtonArea.GetCentered(C4GUI_DefButtonWdt, C4GUI_ButtonHgt));

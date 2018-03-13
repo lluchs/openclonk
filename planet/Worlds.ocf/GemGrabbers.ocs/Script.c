@@ -13,13 +13,11 @@
 */
 
 
-// Scenario properties which can be set later by the lobby options.
-static const SCENOPT_Material = 3; // Amount of material available from start.
-static const SCENOPT_MapSize = 1; // Size of the map.
-static const SCENOPT_Difficulty = 2; // Difficulty settings.
-
 protected func Initialize()
 {
+	// Show wealth in HUD.
+	GUI_Controller->ShowWealth();
+	
 	// Rules: team account and buying at flagpole.
 	CreateObject(Rule_TeamAccount);
 	CreateObject(Rule_BuyAtFlagpole);
@@ -27,19 +25,25 @@ protected func Initialize()
 	// Goal: Sell Gems, amount depends on difficulty and initial availability.
 	var gems = (4 * GetMaterialCount(Material("Ruby"))) / (5 * GetMaterialVal("Blast2ObjectRatio", "Material", Material("Ruby")));
 	gems += (4 * GetMaterialCount(Material("Amethyst"))) / (5 * GetMaterialVal("Blast2ObjectRatio", "Material", Material("Amethyst")));
-	var percentage = 55 + 15 * SCENOPT_Difficulty;
+	var percentage = 40 + 20 * SCENPAR_Difficulty;
 	var goal = CreateObject(Goal_SellGems);
 	goal->SetTargetAmount((gems * percentage) / 100);
 	
 	// Initialize different parts of the scenario.
-	InitEnvironment();
-	InitVegetation();
-	InitAnimals();
-	InitResources();
-	InitMainIsland(SCENOPT_Material);
-	InitIslands(SCENOPT_Material);
-		
+	InitEnvironment(SCENPAR_Difficulty);
+	InitVegetation(SCENPAR_MapSize);
+	InitAnimals(SCENPAR_MapSize, SCENPAR_Difficulty);
+	InitResources(SCENPAR_Difficulty);
+	InitMainIsland(4 - SCENPAR_Difficulty);
+	InitIslands(4 - SCENPAR_Difficulty);
 	return;
+}
+
+protected func OnGoalsFulfilled()
+{
+	// Give the remaining players their achievement.
+	GainScenarioAchievement("Done", BoundBy(SCENPAR_Difficulty, 1, 3));
+	return false;
 }
 
 
@@ -47,12 +51,11 @@ protected func Initialize()
 
 protected func InitializePlayer(int plr)
 {
-	// Harsh zoom range
-	SetPlayerZoomByViewRange(plr, 500, 350, PLRZOOM_LimitMax);
-	SetPlayerZoomByViewRange(plr, 500, 350, PLRZOOM_Direct);
+	// Harsh zoom range.
+	SetPlayerZoomByViewRange(plr, 500, nil, PLRZOOM_Direct | PLRZOOM_LimitMax);
 	SetPlayerViewLock(plr, true);
 	
-	// Position and materials
+	// Position and materials.
 	var i, crew;
 	for (i = 0; crew = GetCrew(plr, i); ++i)
 	{
@@ -62,11 +65,17 @@ protected func InitializePlayer(int plr)
 	}
 	
 	// Give the player its knowledge.
-	GivePlayerKnowledge(plr);
+	GivePlayerBasicKnowledge(plr);
+	GivePlayerPumpingKnowledge(plr);
+	GivePlayerWeaponryKnowledge(plr);
+	GivePlayerAdvancedKnowledge(plr);
+	GivePlayerFarmingKnowledge(plr);
+	GivePlayerAirKnowledge(plr);
+	RemovePlayerSpecificKnowledge(plr, [InventorsLab, Shipyard, WallKit]);
 	
 	// Only clonks for sale at the homebase, depending on diffuculty: 3, 5, 10 available.
-	var nr_clonks = Max(9 - 2 * SCENOPT_Difficulty, 1);
-	if (SCENOPT_Difficulty == 1)
+	var nr_clonks = Max(9 - 2 * SCENPAR_Difficulty, 1);
+	if (SCENPAR_Difficulty == 1)
 		nr_clonks += 3;
 	SetBaseMaterial(plr, Clonk, nr_clonks);
 	SetBaseProduction(plr, Clonk, nr_clonks);
@@ -78,43 +87,22 @@ protected func InitializePlayer(int plr)
 	return;
 }
 
-// Give the relevant knowledge to each player.
-private func GivePlayerKnowledge(int plr)
-{
-	var structures = [Flagpole, Basement, WindGenerator, SteamEngine, Compensator, Foundry, Sawmill, Elevator, Pump, ToolsWorkshop, ChemicalLab, Armory, Chest, Windmill, Kitchen];
-	var items = [Loam, GoldBar, Metal, Shovel, Axe, Hammer, Pickaxe, Barrel, Bucket, Dynamite, DynamiteBox, PowderKeg, Pipe, TeleGlove, WindBag, GrappleBow, Boompack, Balloon];
-	var weapons = [Bow, Arrow, Club, Sword, Javelin, Shield, Musket, LeadShot, IronBomb, GrenadeLauncher];
-	var vehicles = [Lorry, Catapult, Cannon, Airship, Plane];
-	for (var structure in structures)
-		SetPlrKnowledge(plr, structure);
-	for (var item in items)
-		SetPlrKnowledge(plr, item);
-	for (var weapon in weapons)
-		SetPlrKnowledge(plr, weapon);	
-	for (var vehicle in vehicles)
-		SetPlrKnowledge(plr, vehicle);
-	return;
-}
-
 
 /*-- Scenario Initialization --*/
 
 // Initializes environment and disasters.
-private func InitEnvironment()
+private func InitEnvironment(int difficulty)
 {
-	// Set time to almost night and have stars.	
-	CreateObject(Environment_Celestial);
-	var time = CreateObject(Environment_Time);
-	time->SetTime(20 * 60 + 15);
-	time->SetCycleSpeed(0);
+	// Set time to almost night and have stars.
+	Time->Init();
+	Time->SetTime(20 * 60 + 15);
+	Time->SetCycleSpeed(0);
 	
 	// Clouds and rain.
 	Cloud->Place(15);
-	Cloud->SetPrecipitation("Water", 100 + 25 * SCENOPT_Difficulty);
+	Cloud->SetPrecipitation("Water", 100 + 25 * difficulty);
 	for (var cloud in FindObjects(Find_ID(Cloud)))
 	{
-		while (cloud->RemoveVertex())
-			/* Empty */;
 		// Make some clouds appear in the foreground with high alpha.
 		if (Random(3) == 0)
 		{
@@ -127,36 +115,43 @@ private func InitEnvironment()
 	SetSkyParallax(0, 20, 20);
 	
 	// Disasters: meteors and lightning.
-	Meteor->SetChance(2 * SCENOPT_Difficulty);
-	Cloud->SetLightning(8 * SCENOPT_Difficulty);
-	
+	Meteor->SetChance(2 * difficulty);
+	Cloud->SetLightning(3 * difficulty**2 + difficulty + 2);
 	return;
 }
 
 // Initializes grass, trees and in-earth objects.
-private func InitVegetation()
+private func InitVegetation(int amount)
 {
 	// Grass on all islands.
-	PlaceGrass(85);
+	Grass->Place(85);
 	
-	// Place some cocont trees all around the island and some extra trees on the main island.
-	for (var i = 0; i < 40 + Random(8); i++)
-		PlaceVegetation(Tree_Coconut, 0, 0, LandscapeWidth(), LandscapeHeight(), 1000 * (61 + Random(40)));
-	for (var i = 0; i < 6 + Random(2); i++)
-		PlaceVegetation(Tree_Coconut, LandscapeWidth() - 300, LandscapeHeight() - 200, 600, 400, 1000 * (71 + Random(30)));
+	// Vegetation around all islands.
+	Flower->Place(10 + 4 * amount);
+	Mushroom->Place(10 + 4 * amount);
+	Branch->Place(10 + 4 * amount);
+	Trunk->Place(4 + 2 * amount);
+	Vine->Place(8 + 3 * amount);
+	
+	// Place trees around the islands.
+	Tree_Deciduous->Place(10 + 4 * amount);
+	Tree_Coconut->Place(40 + 8 * amount);
+	Tree_Coconut->Place(6 + Random(3), Rectangle(LandscapeWidth()/2 - 300, LandscapeHeight()/2 - 200, 600, 400));
+			
+	// Place some cotton plants over the map
+	Cotton->Place(8 + 2 * amount);
 		
-	// Create an effect to make sure there will always grow some new trees.	
-	AddEffect("EnsureTreesOnMainIsland", nil, 100, 20, nil);
+	// Create an effect to make sure there will always grow some new trees and cotton.	
+	AddEffect("EnsureVegetationOnMainIsland", nil, 100, 20, nil);
 	
 	// Some objects in the earth.	
 	PlaceObjects(Rock, 35 + Random(10), "Earth");
 	PlaceObjects(Firestone, 25 + Random(5), "Earth");
-	
 	return;
 }
 
-// Ensures that there will always grow some trees on the main island.
-global func FxEnsureTreesOnMainIslandTimer()
+// Ensures that there will always grow some trees and cotton on the main island.
+global func FxEnsureVegetationOnMainIslandTimer()
 {
 	var wdt = LandscapeWidth();
 	var hgt = LandscapeHeight();
@@ -165,21 +160,31 @@ global func FxEnsureTreesOnMainIslandTimer()
 	if (Random(9) >= nr_trees)
 		if (!Random(20))
 			PlaceVegetation(Tree_Coconut, wdt / 2 - 300, hgt / 2 - 200, 600, 400, 3);
+	// Place cotton plants (at least two).
+	var nr_cotton = ObjectCount(Find_ID(Cotton), Find_InRect(wdt / 2 - 300, hgt / 2 - 200, 600, 400));
+	if (Random(3) >= nr_cotton)
+		if (!Random(20))
+			PlaceVegetation(Cotton, wdt / 2 - 300, hgt / 2 - 200, 600, 400, 3);
 	return FX_OK;
 }
 
 // Initializes animals.
-private func InitAnimals()
+private func InitAnimals(int amount, int difficulty)
 {
-
+	// Some fireflies attracted to trees.
+	Firefly->Place(4 + 2 * amount);
+	// Place some bats on insane difficulty.
+	if (difficulty == 3)
+		Bat->Place(6 + 2 * amount, nil, {tunnel_only = true});
 	return;
 }
 
 // Initializes the growth of gem stalactites.
-private func InitResources()
+private func InitResources(int difficulty)
 {
 	// Add an effect to ensure gem stalactites are grown when the player seems unable to complete the goal.
-	AddEffect("GrowGemStalactites", nil, 100, 60 * 36, nil);
+	var effect = AddEffect("GrowGemStalactites", nil, 100, 60 * 36, nil, nil, difficulty);
+	effect.difficulty = difficulty;
 	return;
 }
 
@@ -191,10 +196,10 @@ global func FxGrowGemStalactitesTimer(object target, proplist effect, int time)
 	gems += ObjectCount(Find_Or(Find_ID(Ruby), Find_ID(Amethyst)));
 	var goal = FindObject(Find_ID(Goal_SellGems));
 	if (!goal)
-		return 1;
+		return FX_OK;
 	// The comparison depends on the difficulty settings.	
-	if (gems - goal->GetTargetAmount() > 5 * (4 - SCENOPT_Difficulty))
-		return 1;	
+	if (gems - goal->GetTargetAmount() > 5 * (4 - effect.difficulty))
+		return FX_OK;	
 		
 	// Find a location to grow a stalactite, possible away from others and clonks.
 	var pos, good_pos;
@@ -202,7 +207,7 @@ global func FxGrowGemStalactitesTimer(object target, proplist effect, int time)
 	{
 		good_pos = false;
 		var dist = 64; // distance from border
-		pos = FindLocation(Loc_Sky(), Loc_Wall(CNAT_Top), Loc_Space(8), Loc_InRect(dist, dist, LandscapeWidth() - 2 * dist, LandscapeHeight() - 2 * dist));
+		pos = FindLocation(Loc_Sky(), Loc_Wall(CNAT_Top), Loc_Space(8, CNAT_Bottom | CNAT_Left | CNAT_Right), Loc_InRect(dist, dist, LandscapeWidth() - 2 * dist, LandscapeHeight() - 2 * dist));
 		if (!pos)
 			continue;
 			
@@ -213,10 +218,13 @@ global func FxGrowGemStalactitesTimer(object target, proplist effect, int time)
 		if (y <= pos.y - 5)
 			continue;
 		
-		// Check for other stalactites and crew members.
-		var dist = 300;		
+		// Check for other stalactites, crew members, and vehicle material (wooden bridges, etc.). The new stalactite should not be too close to either 
+		var dist = 300;
+		var vehicle_dist = 30;
+		if (!!FindLocation(Loc_Or(Loc_Material("Vehicle")), Loc_InRect(pos.x - vehicle_dist, pos.y - vehicle_dist, 2 * vehicle_dist, 2 * vehicle_dist)))
+			continue;
 		if (!!FindLocation(Loc_Or(Loc_Material("Ruby"), Loc_Material("Amethyst")), Loc_InRect(pos.x - dist, pos.y - dist, 2 * dist, 2 * dist)))
-			continue;		
+			continue;
 		if (!!FindObject(Find_OCF(OCF_CrewMember), Find_Distance(dist, pos.x, pos.y)))
 			continue;
 
@@ -226,32 +234,31 @@ global func FxGrowGemStalactitesTimer(object target, proplist effect, int time)
 	}
 	
 	if (!good_pos)
-		return 1;
+		return FX_OK;
 		
 	// Add growing stalactite effect.
 	effect = AddEffect("GrowStalactite", nil, 100, 8, nil);
 	effect.Material = "Ruby";
 	if (Random(2))
 		effect.Material = "Amethyst";
-	effect.X = pos.x;
-	effect.Y = pos.y;
-	effect.Size = 36;
-
-	return 1;
+	effect.x = pos.x;
+	effect.y = pos.y;
+	effect.size = 36;
+	return FX_OK;
 }
 
 // Grows a single stalactite.
 global func FxGrowStalactiteTimer(object target, proplist effect, int time)
 {
-	if (effect.Size <= 1)
-		return -1;
+	if (effect.size <= 1)
+		return FX_Execute_Kill;
 
-	var width = 4 * Min(effect.Size, 24) / 3 + RandomX(3, 5);
+	var width = 4 * Min(effect.size, 24) / 3 + RandomX(3, 5);
 	
-	for (var x = effect.X - width / 2; x <= effect.X + width / 2; x++)
+	for (var x = effect.x - width / 2; x <= effect.x + width / 2; x++)
 	{
 		var cnt = 0;
-		var y = effect.Y;
+		var y = effect.y;
 		while (!GBackSemiSolid(x, y) && ++cnt < 10)
 		{
 			DrawMaterialQuad(effect.Material, x, y, x + 1, y, x + 1, y + 1, x, y + 1, true);
@@ -259,9 +266,10 @@ global func FxGrowStalactiteTimer(object target, proplist effect, int time)
 		}
 	}
 	
-	effect.Y += Random(2) + 1;
-	effect.X += RandomX(-1, 1);
-	effect.Size--;
+	effect.y += Random(2) + 1;
+	effect.x += RandomX(-1, 1);
+	effect.size--;
+	return FX_OK;
 }
 
 // Initializes the main island according to the material specification.
@@ -274,7 +282,7 @@ private func InitMainIsland(int amount)
 	// The boompack is also always there to have the opportunity to get one clonk on another
 	// sky island and start exploring.
 	var lorry_pos = FindMainIslandPosition(0, 80);
-	var lorry = CreateObject(Lorry, lorry_pos[0], lorry_pos[1] - 8);
+	var lorry = CreateObjectAbove(Lorry, lorry_pos[0], lorry_pos[1] - 8);
 	lorry->CreateContents(Hammer, 2);
 	lorry->CreateContents(Axe, 2);
 	lorry->CreateContents(Wood, 6);
@@ -286,11 +294,11 @@ private func InitMainIsland(int amount)
 	if (amount >= 2)
 	{
 		pos = FindMainIslandPosition(-120, 20);
-		CreateObject(Flagpole, pos[0], pos[1]);
+		CreateObjectAbove(Flagpole, pos[0], pos[1]);
 		pos = FindMainIslandPosition(120, 20);
-		CreateObject(Flagpole, pos[0], pos[1]);
+		CreateObjectAbove(Flagpole, pos[0], pos[1]);
 		pos = FindMainIslandPosition(nil, nil, true);
-		CreateObject(WindGenerator, pos[0], pos[1]);
+		CreateObjectAbove(WindGenerator, pos[0], pos[1]);
 		lorry->CreateContents(Wood, 4);
 		lorry->CreateContents(Metal, 2);
 		lorry->CreateContents(Pickaxe, 1);
@@ -302,18 +310,17 @@ private func InitMainIsland(int amount)
 	if (amount >= 3)
 	{
 		pos = FindMainIslandPosition(nil, nil, true);
-		CreateObject(Sawmill, pos[0], pos[1]);
+		CreateObjectAbove(Sawmill, pos[0], pos[1]);
 		pos = FindMainIslandPosition(nil, nil, true);
-		CreateObject(ChemicalLab, pos[0], pos[1]);
+		CreateObjectAbove(ChemicalLab, pos[0], pos[1]);
 		pos = FindMainIslandPosition(nil, nil, true);
-		CreateObject(ToolsWorkshop, pos[0], pos[1]);
+		CreateObjectAbove(ToolsWorkshop, pos[0], pos[1]);
 	
 		lorry->CreateContents(Barrel, 1);
 		lorry->CreateContents(Bucket, 1);
 		lorry->CreateContents(Loam, 4);
 		lorry->CreateContents(DynamiteBox, 1);	
 	}
-	
 	return;
 }
 
@@ -338,7 +345,6 @@ private func FindMainIslandPosition(int xpos, int sep, bool no_struct)
 		if (!no_struct || !FindObject(Find_Or(Find_Category(C4D_Structure), Find_Func("IsFlagpole")), Find_Distance(60, x, y)))
 			break;
 	}
-
 	return [x, y];
 }
 
@@ -358,7 +364,6 @@ private func InitIslands(int amount)
 	var island_nr = 1;
 	for (var island in islands)
 		island_nr += ProvideIsland(island, island_nr, amount);
-
 	return;
 }
 
@@ -383,7 +388,6 @@ private func FindIslands()
 		}	
 	}
 	while (spot = FindLocation(Loc_Solid(), Loc_Not(Loc_InRect(main[0], main[1], main[2], main[3])), island_cond));
-	
 	return islands;
 }
 
@@ -425,7 +429,7 @@ private func ProvideIsland(array island, int number, int amount)
 	// All of the islands have a few in-earth loam pieces.
 	PlaceObjects(Loam, amount + RandomX(1, 3), "Earth", island[0], island[1], island[2], island[3]);
 	
-	var spot = FindLocation(Loc_InRect(island[0], island[1], island[2], island[3] / 2), Loc_Wall(CNAT_Bottom), Loc_Space(20), Loc_Sky());
+	var spot = FindLocation(Loc_InRect(island[0], island[1], island[2], island[3] / 2), Loc_Wall(CNAT_Bottom), Loc_Space(20, CNAT_Left | CNAT_Right | CNAT_Top), Loc_Sky());
 	if (!spot)
 		return 0;		
 	
@@ -433,29 +437,33 @@ private func ProvideIsland(array island, int number, int amount)
 	// materials for Boompack, balloon, windbag and teleglove dependent on material settings.
 	if (number == 1)
 	{
-		var lab = CreateObject(InventorsLab, spot.x, spot.y);
+		var lab = CreateObjectAbove(InventorsLab, spot.x, spot.y);
 		lab->CreateContents(Wood, 2 * amount);	
 		lab->CreateContents(Metal, 2 * amount);	
 		lab->CreateContents(Cloth, amount);	
 		lab->CreateContents(PowderKeg, amount - 1);
 		lab->CreateContents(Firestone, amount - 1);
 		lab->MakeInvincible();
+		var basement = lab->CreateObjectAbove(Basement, 0, lab->GetBottom() + 8);
+		basement->SetParent(lab);
 	}
 	
 	// A shipyard with material for a airship, but without power supply for the second island.
 	// If the player finds this island and manages to construct a windmill he can escape.
 	if (number == 2)
 	{
-		var shipyard = CreateObject(Shipyard, spot.x, spot.y);
+		var shipyard = CreateObjectAbove(Shipyard, spot.x, spot.y);
 		shipyard->CreateContents(Wood, 4);
 		shipyard->CreateContents(Metal, 2 * amount);
 		shipyard->MakeInvincible();
+		var basement = shipyard->CreateObjectAbove(Basement, 0, shipyard->GetBottom() + 8);
+		basement->SetParent(shipyard);
 	}
 	
 	// A cannon with a powder keg for the third island and place some metal & wood.
 	if (number == 3)
 	{
-		var cannon = CreateObject(Cannon, spot.x, spot.y);
+		var cannon = CreateObjectAbove(Cannon, spot.x, spot.y);
 		cannon->CreateContents(PowderKeg);
 		PlaceObjects(Wood, amount + Random(2), "Earth", island[0], island[1], island[2], island[3]);
 		PlaceObjects(Metal, amount + Random(2), "Earth", island[0], island[1], island[2], island[3]);
@@ -464,8 +472,8 @@ private func ProvideIsland(array island, int number, int amount)
 	// A catapult for the fourth island and place some metal & wood.
 	if (number == 4)
 	{
-		SproutBerryBush->Place(Random(amount + 1), Rectangle(island[0], island[1] - 80, island[2], island[3] / 2));
-		CreateObject(Catapult, spot.x, spot.y);
+		SproutBerryBush->Place(Random(amount + 1), Shape->Rectangle(island[0], island[1] - 80, island[2], island[3] / 2));
+		CreateObjectAbove(Catapult, spot.x, spot.y);
 		PlaceObjects(Wood, amount + Random(2), "Earth", island[0], island[1], island[2], island[3]);
 		PlaceObjects(Metal, amount + Random(2), "Earth", island[0], island[1], island[2], island[3]);
 	}
@@ -474,22 +482,21 @@ private func ProvideIsland(array island, int number, int amount)
 	// Place some sproutberries as well.
 	if (number >= 5)
 	{
-		var lorry = CreateObject(Lorry, spot.x, spot.y);
+		var lorry = CreateObjectAbove(Lorry, spot.x, spot.y);
 		lorry->CreateContents(Loam, 2 + amount);
 		lorry->CreateContents(DynamiteBox, amount);
 		lorry->CreateContents(Dynamite, 4);
 		lorry->CreateContents(GoldBar, Random(amount + 1));
-		SproutBerryBush->Place(amount + Random(2), Rectangle(island[0], island[1] - 80, island[2], island[3] / 2));
+		SproutBerryBush->Place(amount + Random(2), Shape->Rectangle(island[0], island[1] - 80, island[2], island[3] / 2));
 	}
 	
 	// For all the islands some decoration.
 	if (!Random(3))
 	{
-		var spot = FindLocation(Loc_InRect(island[0], island[1], island[2], island[3] / 2), Loc_Wall(CNAT_Bottom), Loc_Space(20), Loc_Sky());
+		var spot = FindLocation(Loc_InRect(island[0], island[1], island[2], island[3] / 2), Loc_Wall(CNAT_Bottom), Loc_Space(20, CNAT_Top | CNAT_Left | CNAT_Right), Loc_Sky());
 		if (spot)
-			CreateObject(Column, spot.x, spot.y);
+			CreateObjectAbove(Column, spot.x, spot.y);
 	}	
-
 	return 1;
 }
 
@@ -501,7 +508,7 @@ global func TestGemCount()
 	var pos;
 	while (pos = FindLocation(Loc_Or(Loc_Material("Ruby"), Loc_Material("Amethyst"))))
 	{
-		var pos = CreateObject(Rock, pos.x, pos.y)->Explode(100);
+		var pos = CreateObjectAbove(Rock, pos.x, pos.y)->Explode(100);
 	}
 	var gem_count = ObjectCount(Find_Or(Find_ID(Ruby), Find_ID(Amethyst)));
 	return gem_count;
@@ -515,7 +522,6 @@ global func DrawBoundingBox(int x, int y, int wdt, int hgt)
 	
 	// Draw right and left lines.
 	DrawMaterialQuad("Brick", x - 1, y, x + 1, y, x + 1, y + hgt, x - 1, y + hgt);
-	DrawMaterialQuad("Brick", x + wdt - 1, y, x + wdt + 1, y, x + wdt + 1, y + hgt, x + wdt - 1, y + hgt);	
-	
+	DrawMaterialQuad("Brick", x + wdt - 1, y, x + wdt + 1, y, x + wdt + 1, y + hgt, x + wdt - 1, y + hgt);
 	return;
 }

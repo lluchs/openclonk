@@ -1,4 +1,7 @@
-/*-- Shield --*/
+/**
+	Shield
+	Offers protection against all kinds of attacks.
+*/
 
 #include Library_MeleeWeapon
 
@@ -9,33 +12,61 @@ local mTrans;
 
 local solid_mask_helper;
 
-/* Usage callbacks */
+/*-- Engine Callbacks --*/
+
+func Hit()
+{
+	Sound("Hits::Materials::Metal::DullMetalHit?");
+}
+
+// Colour by owner
+func Entrance(object container)
+{
+	if(container->GetOwner() != NO_OWNER) SetColor(GetPlayerColor(container->GetOwner()));
+}
+
+
+/*-- Callbacks --*/
+
+public func HitByWeapon(by, iDamage)
+{
+	var object_angle = Angle(GetX(),GetY(),by->GetX(), by->GetY());
+	var shield_angle = iAngle;
+	// angle difference: 0..180
+	var angle_diff = Abs(Normalize(shield_angle-object_angle,-180));
+	if (angle_diff > 45) return 0;
+
+	Sound("Objects::Weapons::Shield::MetalHit?");
+	
+	// bash him hard!
+	ApplyWeaponBash(by, 100, iAngle);
+	
+	// uber advantage in melee combat
+	AddEffect("ShieldBlockWeaponCooldown", by, 1, 30, this);
+	
+	// shield factor
+	return 100;
+}
+
+/*-- Usage --*/
+
+public func HoldingEnabled() { return true; }
+
+public func RejectUse(object clonk)
+{
+	return !clonk->HasHandAction() || !clonk->IsWalking() || !CanStrikeWithWeapon(clonk);
+}
 
 public func ControlUseStart(object clonk, int x, int y)
 {
-	// may only be used while walking
-	if(!clonk->HasHandAction() || !clonk->IsWalking() || !CanStrikeWithWeapon(clonk))
-	{
-		AddEffect("IntShieldSuspend", clonk, 1, 5, this);
-	}
-	else
-	{
-		StartUsage(clonk);
-		UpdateShieldAngle(clonk, x,y);
-	}
+	StartUsage(clonk);
+	UpdateShieldAngle(clonk, x,y);
 	return true;
 }
 
 public func ControlUseHolding(object clonk, int x, int y)
 {
 	UpdateShieldAngle(clonk, x, y);
-}
-
-public func HoldingEnabled() { return true; }
-
-public func ControlUseStop(object clonk)
-{
-	ControlUseCancel(clonk);
 }
 
 public func ControlUseCancel(object clonk)
@@ -45,7 +76,12 @@ public func ControlUseCancel(object clonk)
 		RemoveEffect("IntShieldSuspend", clonk);
 }
 
-private func StartUsage(object clonk)
+public func ControlUseStop(object clonk)
+{
+	ControlUseCancel(clonk);
+}
+
+func StartUsage(object clonk)
 {
 	var hand;
 	// which animation to use? (which hand)
@@ -60,7 +96,7 @@ private func StartUsage(object clonk)
 		hand = "ShieldArms.L";
 	}
 
-	aim_anim = clonk->PlayAnimation(hand, 10, Anim_Const(clonk->GetAnimationLength(hand)/2), Anim_Const(1000));
+	aim_anim = clonk->PlayAnimation(hand, CLONK_ANIM_SLOT_Arms, Anim_Const(clonk->GetAnimationLength(hand)/2), Anim_Const(1000));
 
 	var handLR;
 	if(clonk->GetHandPosByItemPos(clonk->GetItemPos(this)) == 0)
@@ -81,7 +117,7 @@ private func StartUsage(object clonk)
 	clonk->SetTurnType(1, 1);
 }
 
-private func EndUsage(object clonk)
+func EndUsage(object clonk)
 {
 	carry_bone = nil;
 	aim_anim = nil;
@@ -103,8 +139,7 @@ private func EndUsage(object clonk)
 	StopWeaponHitCheckEffect(clonk);
 }
 
-// Update the shield angle
-private func UpdateShieldAngle(object clonk, int x, int y)
+func UpdateShieldAngle(object clonk, int x, int y)
 {
 	var angle=Normalize(Angle(0,0, x,y),-180);
 	angle=BoundBy(angle,-150,150);
@@ -124,25 +159,22 @@ private func UpdateShieldAngle(object clonk, int x, int y)
 	clonk->ReplaceAction("Walk", [Format("ShieldWalkUp.%s",handLR), Format("ShieldWalkDown.%s",handLR), weight]);
 	clonk->ReplaceAction("Run", [Format("ShieldWalkUp.%s",handLR), Format("ShieldWalkDown.%s",handLR), weight]);
 
-	if(!GetEffect("IntShieldSuspend", clonk))
-	{
-		if(angle > 0) clonk->SetTurnForced(DIR_Right);
-		else clonk->SetTurnForced(DIR_Left);
+	if(angle > 0) clonk->SetTurnForced(DIR_Right);
+	else clonk->SetTurnForced(DIR_Left);
 	
-		clonk->SetAnimationPosition(aim_anim,  Anim_Const(Abs(angle) * 11111/1000));
-		AdjustSolidMaskHelper();
-	}
+	clonk->SetAnimationPosition(aim_anim,  Anim_Const(Abs(angle) * 11111/1000));
+	AdjustSolidMaskHelper();
 }
 
 // Adjust solid mask of shield
 // if the shield is held up, it has a solid mask on which other clonks can climb onto
-private func AdjustSolidMaskHelper()
+func AdjustSolidMaskHelper()
 {
 	if(aim_anim && Contained() && Abs(iAngle) <= 20)
 	{
 		if(!solid_mask_helper)
 		{
-			solid_mask_helper=CreateObject(Shield_SolidMask, 0, 0, NO_OWNER);
+			solid_mask_helper=CreateObjectAbove(Shield_SolidMask, 0, 0, NO_OWNER);
 			solid_mask_helper->SetAction("Attach", Contained());
 		}
 	}
@@ -165,40 +197,6 @@ private func AdjustSolidMaskHelper()
 	solid_mask_helper->SetVertexXY(0, -x, -y);
 }
 
-/* other callbacks */
-
-func Hit()
-{
-	Sound("DullMetalHit?");
-}
-
-func OnWeaponHitCheckStop()
-{
-	return;
-}
-
-func HitByWeapon(by, iDamage)
-{
-	var object_angle = Angle(GetX(),GetY(),by->GetX(), by->GetY());
-	var shield_angle = iAngle;
-	// angle difference: 0..180
-	var angle_diff = Abs(Normalize(shield_angle-object_angle,-180));
-	if (angle_diff > 45) return 0;
-
-	Sound("ShieldMetalHit?");
-	
-	// bash him hard!
-	ApplyWeaponBash(by, 100, iAngle);
-	
-	// uber advantage in melee combat
-	AddEffect("ShieldBlockWeaponCooldown", by, 1, 30, this);
-	
-	// shield factor
-	return 100;
-}
-
-/* main shield effect */
-
 func FxShieldStopControlStart(object target, effect, temp)
 {
 	target->PushActionSpeed("Walk", 84);
@@ -216,9 +214,10 @@ func FxShieldStopControlTimer(object target, effect)
 	// suspend usage if not walking
 	if(!target->IsWalking())
 	{
-		AddEffect("IntShieldSuspend", target, 1, 5, this);
-		EndUsage(target);
+		target->PauseUse(this);
+		return -1;
 	}
+	return 1;
 }
 
 func FxShieldStopControlQueryCatchBlow(object target, effect, object obj)
@@ -238,7 +237,7 @@ func FxShieldStopControlQueryCatchBlow(object target, effect, object obj)
 	// angle difference: 0..180
 	var angle_diff = Abs(Normalize(shield_angle-object_angle,-180));
 
-	// objects hits if the angle difference is greater than 45°
+	// objects hits if the angle difference is greater than 45 degrees
 	if (angle_diff > 45) return false;
 	
 	// projectile bounces off
@@ -252,59 +251,44 @@ func FxShieldStopControlQueryCatchBlow(object target, effect, object obj)
 	// dont collect blocked objects
 	AddEffect("NoCollection", obj, 1, 30);
 	
-	Sound("ShieldMetalHit?");
+	Sound("Objects::Weapons::Shield::MetalHit?");
 	
 	return true;
 }
 
-/* Suspend effect */
+/*-- Production --*/
 
-func FxIntShieldSuspendTimer(object target, effect)
-{
-	if(target->IsWalking() && CanStrikeWithWeapon(target))
-	{
-		StartUsage(target);
-		return -1;
-	}
-}
+public func IsWeapon() { return true; }
+public func IsArmoryProduct() { return true; }
 
-/* Colour by owner */
-public func Entrance(object container)
-{
-	if(container->GetOwner() != NO_OWNER) SetColor(GetPlayerColor(container->GetOwner()));
-}
-
-/* Shield animation */
+/*-- Display --*/
 
 public func GetCarryMode() { return CARRY_HandBack; }
 public func GetCarrySpecial(clonk) { return carry_bone; }
 public func GetCarryTransform(clonk, sec, back)
 {
-	if(aim_anim && !sec) return Trans_Mul(Trans_Rotate(180,0,0,1),Trans_Rotate(90,0,0,1));
-	if(aim_anim && sec) return Trans_Mul(Trans_Rotate(180,1,0,0), Trans_Rotate(90,0,0,1));
+	if(aim_anim && !sec) return Trans_Mul(Trans_Rotate(180,0,1,0),Trans_Rotate(90,0,1,0));
+	if(aim_anim && sec) return Trans_Mul(Trans_Rotate(180,0,0,1), Trans_Rotate(90,0,1,1));
 
 	if(mTrans != nil) return mTrans;
 	if(!sec)
 	{
-		if(back) return Trans_Mul(Trans_Rotate(-90, 0, 0, 1),Trans_Translate(0,0,400));
+		if(back) return Trans_Mul(Trans_Rotate(-90, 0, 1, 0),Trans_Translate(0,-400,0));
 		return nil;
 	}
 	
-	if(back) return Trans_Mul(Trans_Mul(Trans_Rotate(90, 0, 0, 1),Trans_Rotate(180, 0, 1)),Trans_Translate(0,0,400));
-	return Trans_Rotate(180,1,0,0);
+	if(back) return Trans_Mul(Trans_Mul(Trans_Rotate(90, 0, 1, 0),Trans_Rotate(180, 1, 0, 0)),Trans_Translate(0,-400,1000));
+	return Trans_Rotate(180,0,0,1);
 }
 
-public func IsWeapon() { return true; }
-public func IsArmoryProduct() { return true; }
-
-/* Definition */
-
-func Definition(def) {
+func Definition(def)
+{
 	SetProperty("PictureTransformation",Trans_Mul(Trans_Translate(1000,-500),Trans_Rotate(20,1,1,-1),Trans_Scale(1200)),def);
 }
 
+/*-- Properties --*/
+
 local Name = "$Name$";
 local Description = "$Description$";
-local UsageHelp = "$UsageHelp$";
-local Collectible = 1;
-local Rebuy = true;
+local Collectible = true;
+local Components = {Wood = 1, Metal = 1};

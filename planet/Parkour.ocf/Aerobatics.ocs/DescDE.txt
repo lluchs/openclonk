@@ -1,0 +1,10 @@
+Aerobatik
+
+Hoch oben in den Wolken wartet eine Herausforderung auf dich! Gehe von Insel zu Insel: Spring, jag dich in die Luft, flieg, nutze die Katapulte, baue Brücken...verwende deine Fantasie! Der Erste, der am Ziel ankommt, gewinnt die Runde.
+
+Ziel: Wettrennen
+
+Tipps:
+- Du kannst Objekte an den Spawnpunkten bekommen, es respawnt, wenn es verwendet wurde.
+- Stärkere Werkzeuge können beim Erfinderlabor produziert werden, wenn du die nötigen Rohstoffe findest.
+- Die Verwendung des Windbeutels ist begrenzt, die Anzahl verfügbarer Windstöße wird im HUD gezeigt.

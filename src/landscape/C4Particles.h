@@ -1,7 +1,7 @@
 /*
  * OpenClonk, http://www.openclonk.org
  *
- * Copyright (c) 2013, The OpenClonk Team and contributors
+ * Copyright (c) 2013-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -13,11 +13,17 @@
  * for the above references.
  */
 
-#include <C4FacetEx.h>
+#include "C4ForbidLibraryCompilation.h"
+#include "graphics/C4FacetEx.h"
+#include "lib/C4Random.h"
 
-#include <StdScheduler.h>
-#include <boost/noncopyable.hpp>
+#include "platform/StdScheduler.h"
 
+#include <pcg/pcg_random.hpp>
+#ifndef USE_CONSOLE
+#include <GL/glew.h>
+#endif
+#include "graphics/C4Shader.h"
 
 #ifndef INC_C4Particles
 #define INC_C4Particles
@@ -28,6 +34,8 @@ enum C4ParticleValueProviderID
 	C4PV_Linear,
 	C4PV_Random,
 	C4PV_KeyFrames,
+	C4PV_Sin,
+	C4PV_Cos,
 	C4PV_Direction,
 	C4PV_Step,
 	C4PV_Speed,
@@ -100,7 +108,7 @@ typedef bool (C4ParticleProperties::*C4ParticleCollisionCallback) (C4Particle*);
 // the value providers are used to change the attributes of a particle over the lifetime
 class C4ParticleValueProvider
 {
-protected:
+private:
 	float startValue, endValue;
 
 	// used by Random
@@ -111,15 +119,18 @@ protected:
 		int rerollInterval; // for Random
 		float delay; // for Step
 		float speedFactor; // for Speed & Wind & Gravity
+		float parameterValue; // for Sin
 	};
 
 	union
 	{
 		int alreadyRolled; // for Random
 		int smoothing; // for KeyFrames
-		float maxValue; // for Step
+		float maxValue; // for Step & Sin
 	};
-	
+
+	pcg32 rng; // for Random
+
 	size_t keyFrameCount;
 	std::vector<float> keyFrames;
 
@@ -143,36 +154,40 @@ protected:
 	int typeOfValueToChange;
 
 public:
-	void UpdatePointerValue(C4Particle *particle, C4ParticleValueProvider *parent);
-	void UpdateChildren(C4Particle *particle);
-	void FloatifyParameterValue(float C4ParticleValueProvider::*value, float denominator, size_t keyFrameIndex = 0);
-	void SetParameterValue(int type, const C4Value &value, float C4ParticleValueProvider::*floatVal, int C4ParticleValueProvider::*intVal = 0, size_t keyFrameIndex = 0);
-
 	bool IsConstant() const { return isConstant; }
 	bool IsRandom() const { return valueFunction == &C4ParticleValueProvider::Random; }
-	C4ParticleValueProvider() : startValue(0.f), endValue(0.f), currentValue(0.f), rerollInterval(0), smoothing(0), valueFunction(0), keyFrameCount(0), isConstant(true), floatValueToChange(0), typeOfValueToChange(VAL_TYPE_FLOAT) { }
+	C4ParticleValueProvider() :
+		startValue(0.f), endValue(0.f), currentValue(0.f), rerollInterval(0), smoothing(0), keyFrameCount(0), valueFunction(nullptr), isConstant(true), floatValueToChange(nullptr), typeOfValueToChange(VAL_TYPE_FLOAT)
+	{ }
 	~C4ParticleValueProvider()
 	{
-		for (std::vector<C4ParticleValueProvider*>::iterator iter = childrenValueProviders.begin(); iter != childrenValueProviders.end(); ++iter)
-			delete *iter;
+		for (auto &child : childrenValueProviders)
+			delete child;
 	}
 	C4ParticleValueProvider(const C4ParticleValueProvider &other) { *this = other; }
 	C4ParticleValueProvider & operator= (const C4ParticleValueProvider &other);
-	void RollRandom();
 
 	// divides by denominator
 	void Floatify(float denominator);
 
-	void SetType(C4ParticleValueProviderID what = C4PV_Const);
 	void Set(const C4Value &value);
 	void Set(const C4ValueArray &fromArray);
 	void Set(float to); // constant
 	float GetValue(C4Particle *forParticle);
 
+private:
+	void UpdatePointerValue(C4Particle *particle, C4ParticleValueProvider *parent);
+	void UpdateChildren(C4Particle *particle);
+	void FloatifyParameterValue(float C4ParticleValueProvider::*value, float denominator, size_t keyFrameIndex = 0);
+	void SetParameterValue(int type, const C4Value &value, float C4ParticleValueProvider::*floatVal, int C4ParticleValueProvider::*intVal = nullptr, size_t keyFrameIndex = 0);
+
+	void SetType(C4ParticleValueProviderID what = C4PV_Const);
 	float Linear(C4Particle *forParticle);
 	float Const(C4Particle *forParticle);
 	float Random(C4Particle *forParticle);
 	float KeyFrames(C4Particle *forParticle);
+	float Sin(C4Particle *forParticle);
+	float Cos(C4Particle *forParticle);
 	float Direction(C4Particle *forParticle);
 	float Step(C4Particle *forParticle);
 	float Speed(C4Particle *forParticle);
@@ -193,7 +208,7 @@ public:
 	C4ParticleValueProvider colorR, colorG, colorB, colorAlpha;
 	C4ParticleValueProvider rotation;
 	C4ParticleValueProvider phase;
-	C4ParticleValueProvider collisionVertex;
+	C4ParticleValueProvider collisionVertex, collisionDensity;
 
 	float bouncyness;
 	C4ParticleCollisionCallback collisionCallback;
@@ -322,8 +337,7 @@ public:
 };
 
 // a chunk contains all of the single particles that can be drawn with one draw call (~"have certain similar attributes")
-// this is noncopyable to make sure that the OpenGL buffers are never freed multiple times
-class C4ParticleChunk : public boost::noncopyable
+class C4ParticleChunk
 {
 private:
 	C4ParticleDef *sourceDefinition;
@@ -339,17 +353,20 @@ private:
 
 	// OpenGL optimizations
 	GLuint drawingDataVertexBufferObject;
-	GLuint drawingDataVertexArraysObject;
+	unsigned int drawingDataVertexArraysObject;
 	void ClearBufferObjects();
 
 	// delete the particle at indexTo. If possible, replace it with the particle at indexFrom to keep the particles tighly packed
 	void DeleteAndReplaceParticle(size_t indexToReplace, size_t indexFrom);
 
 public:
-	C4ParticleChunk() : sourceDefinition(0), blitMode(0), attachment(C4ATTACH_None), particleCount(0), drawingDataVertexBufferObject(0), drawingDataVertexArraysObject(0)
+	C4ParticleChunk() : sourceDefinition(nullptr), blitMode(0), attachment(C4ATTACH_None), particleCount(0), drawingDataVertexBufferObject(0), drawingDataVertexArraysObject(0)
 	{
 
 	}
+	// this is noncopyable to make sure that the OpenGL buffers are never freed multiple times
+	C4ParticleChunk(const C4ParticleChunk&) = delete;
+	C4ParticleChunk& operator=(const C4ParticleChunk&) = delete;
 	~C4ParticleChunk()
 	{
 		Clear();
@@ -357,8 +374,9 @@ public:
 	// removes all particles
 	void Clear();
 	bool Exec(C4Object *obj, float timeDelta);
-	void Draw(C4TargetFacet cgo, C4Object *obj);
+	void Draw(C4TargetFacet cgo, C4Object *obj, C4ShaderCall& call, int texUnit, const StdProjectionMatrix& modelview);
 	bool IsOfType(C4ParticleDef *def, uint32_t _blitMode, uint32_t attachment) const;
+	bool IsEmpty() const { return !particleCount; }
 
 	// before adding a particle, you should ReserveSpace for it
 	C4Particle *AddNewParticle();
@@ -370,7 +388,7 @@ public:
 
 // this class must not be copied, because deleting the contained CStdCSec twice would be fatal
 // a particle list belongs to a game-world entity (objects or global particles) and contains the chunks associated with that entity
-class C4ParticleList : public boost::noncopyable
+class C4ParticleList
 {
 private:
 	std::list<C4ParticleChunk*> particleChunks;
@@ -384,10 +402,13 @@ private:
 	CStdCSec accessMutex;
 
 public:
-	C4ParticleList(C4Object *obj = 0) : targetObject(obj), lastAccessedChunk(0)
+	C4ParticleList(C4Object *obj = nullptr) : targetObject(obj), lastAccessedChunk(nullptr)
 	{
 
 	}
+	// non-copyable
+	C4ParticleList(const C4ParticleList&) = delete;
+	C4ParticleList& operator=(const C4ParticleList&) = delete;
 	
 	~C4ParticleList() { Clear(); }
 
@@ -412,9 +433,9 @@ private:
 	// pointers to the last and first element of linked list of particle definitions
 	C4ParticleDef *first, *last;
 public:
-	C4ParticleSystemDefinitionList() : first(0), last(0) {}
+	C4ParticleSystemDefinitionList() : first(nullptr), last(nullptr) {}
 	void Clear();
-	C4ParticleDef *GetDef(const char *name, C4ParticleDef *exclude=0);
+	C4ParticleDef *GetDef(const char *name, C4ParticleDef *exclude=nullptr);
 
 	friend class C4ParticleDef;
 };
@@ -426,7 +447,7 @@ class C4ParticleSystem
 	class CalculationThread : public StdThread
 	{
 	protected:
-		virtual void Execute();
+		void Execute() override;
 	public:
 		CalculationThread() { StdThread::Start(); }
 	};
@@ -434,15 +455,14 @@ class C4ParticleSystem
 
 private:
 	// contains an array with indices for vertices, separated by a primitive restart index
-	std::vector<uint32_t> primitiveRestartIndices;
-	// these are fallbacks for if primitiveRestartIndex is not supported by the graphics card
-	std::vector<GLsizei> multiDrawElementsCountArray;
-	std::vector<uint32_t *> multiDrawElementsIndexArray;
+	GLuint ibo;
+	size_t ibo_size;
 	std::list<C4ParticleList> particleLists;
+	void PreparePrimitiveRestartIndices(uint32_t forSize);
 
-	CalculationThread calculationThread;
 	CStdCSec particleListAccessMutex;
 	CStdEvent frameCounterAdvancedEvent;
+	CalculationThread calculationThread;
 
 	int currentSimulationTime; // in game time
 
@@ -464,13 +484,12 @@ public:
 		frameCounterAdvancedEvent.Set();
 #endif
 	}
-	void DoInit();
 	// resets the internal state of the particle system and unloads all definitions
 	void Clear();
 	void DrawGlobalParticles(C4TargetFacet cgo)
 	{
 #ifndef USE_CONSOLE
-		if (globalParticles) globalParticles->Draw(cgo, 0);
+		if (globalParticles) globalParticles->Draw(cgo, nullptr);
 #endif
 	} 
 
@@ -479,32 +498,24 @@ public:
 #ifndef USE_CONSOLE
 		return globalParticles;
 #else
-		return 0;
+		return nullptr;
 #endif
 	}
 
-	C4ParticleList *GetNewParticleList(C4Object *forTarget = 0);
+	C4ParticleList *GetNewParticleList(C4Object *forTarget = nullptr);
 	// releases up to 2 lists
-	void ReleaseParticleList(C4ParticleList *first, C4ParticleList *second = 0);
+	void ReleaseParticleList(C4ParticleList *first, C4ParticleList *second = nullptr);
 
 	// interface for particle definitions
 	C4ParticleSystemDefinitionList definitions;
 
 #ifndef USE_CONSOLE
-	// on some graphics card, glPrimitiveRestartIndex might not be supported
-	bool usePrimitiveRestartIndexWorkaround;
-	GLsizei *GetMultiDrawElementsCountArray() { return &multiDrawElementsCountArray[0]; } 
-	GLvoid **GetMultiDrawElementsIndexArray() { return reinterpret_cast<GLvoid**> (&multiDrawElementsIndexArray[0]); }
-
-	// if true, OpenGL buffer objects will not be used (instead the slower direct calls will be made)
-	bool useBufferObjectWorkaround;
-
-	// usually, the following methods are used for drawing
-	void PreparePrimitiveRestartIndices(uint32_t forSize);
-	void *GetPrimitiveRestartArray() { return (void*)&primitiveRestartIndices[0]; }
+	// Returns the IBO ID that contains the PRI data.
+	// This makes sure that the IBO contains enough indices for at least 'forParticleAmount' particles.
+	GLuint GetIBO(size_t forParticleAmount);
 
 	// creates a new particle
-	void Create(C4ParticleDef *of_def, C4ParticleValueProvider &x, C4ParticleValueProvider &y, C4ParticleValueProvider &speedX, C4ParticleValueProvider &speedY, C4ParticleValueProvider &lifetime, C4PropList *properties, int amount = 1, C4Object *object=NULL);
+	void Create(C4ParticleDef *of_def, C4ParticleValueProvider &x, C4ParticleValueProvider &y, C4ParticleValueProvider &speedX, C4ParticleValueProvider &speedY, C4ParticleValueProvider &lifetime, C4PropList *properties, int amount = 1, C4Object *object=nullptr);
 
 #endif
 	

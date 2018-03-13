@@ -190,7 +190,7 @@ private func CreateStream(int x0, int y0)
 	}
 	// Create stream data struct
 	var stream_debug;
-	if (storm_debug) stream_debug = CreateObject(Storm_DebugDisplay,0,0,NO_OWNER);
+	if (storm_debug) stream_debug = CreateObjectAbove(Storm_DebugDisplay,0,0,NO_OWNER);
 	var new_stream = {
 		Prototype = StormStream,
 		"x0" = x0, "y0" = y0, // "a"=a because Guenther said so
@@ -399,7 +399,7 @@ func GetWindEx(int x, int y)
 	var idx = MapXYToIdx(x, y);
 	if (idx<0) return 0; // outside landscape
 	// check storm density map
-	return BoundBy(map[idx]*strength/10, 0,100);
+	return -BoundBy(map[idx]*strength/10, 0,100);
 }
 
 global func GetWind(int x, int y)

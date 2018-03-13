@@ -3,13 +3,16 @@
 #include Library_Structure
 #include Library_Ownable
 #include Library_Producer
+#include Library_LampPost
 
 local animWork;
 local meshAttach;
 
+public func LampPosition(id def) { return [GetCalcDir()*11,2]; }
+
 func Initialize()
 {
-	animWork = PlayAnimation("Working", 1, Anim_Const(0), Anim_Const(1000));
+	animWork = PlayAnimation("Working", 1, Anim_Const(0));
 	return _inherited(...);
 }
 
@@ -19,6 +22,8 @@ func Construction(object creator)
 	return _inherited(creator, ...);
 }
 
+public func IsHammerBuildable() { return true; }
+
 /*-- Production --*/
 
 public func IsProduct(id product_id)
@@ -26,13 +31,8 @@ public func IsProduct(id product_id)
 	return product_id->~IsLoomProduct();
 }
 
-private func ProductionTime(id toProduce) { return 140; }
-private func PowerNeed() { return 100; }
-
-public func NeedRawMaterial(id rawmat_id)
-{
-	return true;
-}
+private func ProductionTime(id product) { return _inherited(product, ...) ?? 140; }
+public func PowerNeed() { return 40; }
 
 private func FxIntWorkAnimTimer(object target, proplist effect, int timer)
 {
@@ -57,30 +57,31 @@ local workEffect;
 public func OnProductionStart(id product)
 {
 	workEffect = AddEffect("IntWorkAnim", this, 1,1,this);
-	return _inherited(...);
+	return _inherited(product, ...);
 }
 
 public func OnProductionHold(id product)
 {
 	workEffect.paused = true;
-	return _inherited(...);
+	return _inherited(product, ...);
 }
 
 public func OnProductionContinued(id product)
 {
 	workEffect.paused = false;
-	return _inherited(...);
+	return _inherited(product, ...);
 }
 
 public func OnProductionFinish(id product)
 {
 	RemoveEffect(nil, this, workEffect);
-	return _inherited(...);
+	return _inherited(product, ...);
 }
 
 func Definition(def){
-	SetProperty("MeshTransformation", Trans_Rotate(70, 0,1,0), def);
+	SetProperty("MeshTransformation", Trans_Rotate(25, 0,1,0), def);
 	SetProperty("PictureTransformation", Trans_Rotate(65,0,1,0), def);
+	return _inherited(def, ...);
 }
 
 local ActMap = {
@@ -99,5 +100,8 @@ local ActMap = {
 
 local Name = "$Name$";
 local Description ="$Description$";
+local ContainBlast = true;
 local BlastIncinerate = 100;
+local FireproofContainer = true;
 local HitPoints = 70;
+local Components = {Wood = 3, Metal = 1, Rock = 1};

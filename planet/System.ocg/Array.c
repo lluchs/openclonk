@@ -1,6 +1,12 @@
-/* Global Array helper functions */
+/**
+	Array.c
+	Global array helper functions.
 
-// concatenates two arrays and returns a new array
+	@author Zapper, Sven2		
+*/
+
+
+// Concatenates two arrays and returns a new array.
 global func Concatenate(array first, array second)
 {
 	var len_first = GetLength(first);
@@ -10,7 +16,7 @@ global func Concatenate(array first, array second)
 	return result;
 }
 
-// returns a new array that contains the values of the first array minus the values of the second array
+// Returns a new array that contains the values of the first array minus the values of the second array.
 global func Subtract(array subject, array subtract)
 {
 	var diff = [];
@@ -31,12 +37,12 @@ global func Subtract(array subject, array subtract)
 	return diff;
 }
 
-// removes nil values from an array, returns the amount of values removed
+// Removes nil values from an array, returns the amount of values removed.
 global func RemoveHoles(array leerdammer)
 {
 	var move = 0;
 	var len = GetLength(leerdammer);
-	for(var i = 0; i < len; ++i)
+	for (var i = 0; i < len; ++i)
 	{
 		if(leerdammer[i] == nil)
 		{
@@ -50,16 +56,16 @@ global func RemoveHoles(array leerdammer)
 	return move;
 }
 
-// removes duplicate entries - returns the number of entries removed
+// Removes duplicate entries - returns the number of entries removed.
 global func RemoveDuplicates(array arr)
 {
 	var working = [];
 	var cnt = 0;
 	
 	var len = GetLength(arr);
-	for(var i = 0; i < len; ++i)
+	for (var i = 0; i < len; ++i)
 	{
-		if(IsValueInArray(working, arr[i]))
+		if (IsValueInArray(working, arr[i]))
 		{
 			++cnt;
 			continue;
@@ -67,58 +73,73 @@ global func RemoveDuplicates(array arr)
 		working[GetLength(working)] = arr[i];
 	}
 	SetLength(arr, GetLength(working));
-	for(var i = GetLength(working); --i >= 0;)
+	for (var i = GetLength(working); --i >= 0;)
 		arr[i] = working[i];
 	return cnt;
 }
 
-
-
-// tests whether a value is in an array
+// Tests whether a value is in an array.
 global func IsValueInArray(array arr, /*any*/ value)
 {
 	return GetIndexOf(arr, value) != -1;
 }
 
-// removes a value from an array
+// Removes a value from an array.
 global func RemoveArrayValue(array arr, /*any*/ value, bool unstable)
 {
 	var i = GetIndexOf(arr, value);
-	if(i == -1)
+	if (i == -1)
 		return false;
-	if(unstable == true)
+	if (unstable == true)
 		return RemoveArrayIndexUnstable(arr, i);
-	else return RemoveArrayIndex(arr, i);
+	return RemoveArrayIndex(arr, i);
 }
 
-
-// randomly shuffles an array
+// Randomly shuffles an array.
 global func ShuffleArray(array arr)
 {
 	var len = GetLength(arr);
 	var working = arr[:];
   
-	while(--len >= 0)
+	while (--len >= 0)
 	{
-		var i = Random(len);
+		var i = Random(len + 1);
 		arr[len] = working[i];
 		working[i] = working[len];
 	}
-  
-	return true;
+	return;
 }
 
-//deletes an index from an array, does not change the order of items in the array
+// Takes array of format [[x1,y1], [x2,y2], ...] and returns array [[x1,x2,...],[y1,y2,...]]
+global func TransposeArray(array v)
+{
+	var result = [], i = 0;
+	for (var vc in v)
+	{
+		var j = 0;
+		for (var c in vc)
+		{
+			if (!result[j]) 
+				result[j] = CreateArray(GetLength(v));
+			result[j][i] = c;
+			++j;
+		}
+		++i;
+	}
+	return result;
+}
+
+// Deletes an index from an array, does not change the order of items in the array.
 global func RemoveArrayIndex(array arr, int index, bool unstable)
 {
-	if(unstable == true)
+	if (unstable == true)
 		return RemoveArrayIndexUnstable(arr, index);
 	// move all elements right of index to the left
 	arr[index:] = arr[index+1:];
 	return true;
 }
 
-// deletes an array item - might change the order of elements, but is faster
+// Deletes an array item - might change the order of elements, but is faster.
 global func RemoveArrayIndexUnstable(array arr, int index)
 {
 	arr[index] = arr[-1];
@@ -126,39 +147,105 @@ global func RemoveArrayIndexUnstable(array arr, int index)
 	return true;
 }
 
-//inserts an element at the end of an array
+// Inserts an element at the end of an array.
 global func PushBack(array arr, /*any*/ value)
 {
 	arr[GetLength(arr)] = value;
 	return true;
 }
 
-// inserts an element at the beginning of an array
+// Inserts an element at the beginning of an array.
 global func PushFront(array arr, /*any*/ value)
 {
-	// move elements one to the right
+	// Move elements one to the right.
 	arr[1:] = arr;
-	
 	arr[0] = value;
 	return true;
 }
 
-// removes the last element from an array and returns it
+// Removes the last element from an array and returns it.
 global func PopBack(array arr)
 {
-	if(GetLength(arr) == 0)
+	if (GetLength(arr) == 0)
 		return nil;
 	var o = arr[-1];
 	arr[:] = arr[:-1];
 	return o;
 }
 
-// removes the first element from an array and returns it
+// Removes the first element from an array and returns it.
 global func PopFront(array arr)
 {
-	if(!GetLength(arr))
+	if (GetLength(arr) == 0)
 		return nil;
 	var o = arr[0];
 	arr[:] = arr[1:];
 	return o;
+}
+
+// Returns a random element from an array.
+global func RandomElement(array arr)
+{
+	return arr[Random(GetLength(arr))];
+}
+
+// Move array of indexes before given element. Called from editor on item move.
+global func MoveArrayItems(array arr, array source_indices, int insert_before)
+{
+	if (!arr) return false;
+	var len = GetLength(arr), off = 0, val;
+	// make sure source indices are sorted
+	if (len > 1)
+	{
+		source_indices = source_indices[:]; 
+		SortArray(source_indices);
+	}
+	for (var idx in source_indices)
+	{
+		if (idx < 0) idx += (1-(idx+1)/len)*len; // resolve negative indices
+		if (idx >= len) continue;
+		if (idx < insert_before) 
+		{
+			// Move element forward
+			idx += off; --off; // Adjust for other elements already moved
+			val = arr[idx];
+			while (++idx < insert_before) arr[idx-1] = arr[idx];
+			arr[insert_before - 1] = val;
+		}
+		else
+		{
+			// Move element backward
+			val = arr[idx];
+			while (idx-- >= insert_before) arr[idx+1] = arr[idx];
+			arr[insert_before] = val;
+			++insert_before;
+		}
+	}
+	return true;
+}
+
+// Deletes multiple indexes from an array, does not change the order of items in the array.
+global func RemoveArrayIndices(array arr, array indices)
+{
+	indices = indices[:];
+	SortArray(indices, true);
+	for (var idx in indices)
+		if (idx < GetLength(arr))
+			RemoveArrayIndex(arr, idx);
+	return true;
+}
+
+// Performs a left fold.
+//
+// Examples:
+//  - Reduce([1, 2, 3, 4], Min) == 1
+//  - func Add(int a, int b) { return a + b; }
+//    Reduce([1, 2, 3, 4], Add, 100) == 110
+global func Reduce(array arr, func fn, initial)
+{
+	var i = 0;
+	var result = initial ?? arr[i++];
+	while (i < GetLength(arr))
+		result = Call(fn, result, arr[i++]);
+	return result;
 }

@@ -3,7 +3,7 @@
  *
  * Copyright (c) 1998-2000, Matthes Bender
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -17,11 +17,12 @@
 
 /* A piece of a DirectDraw surface */
 
-#include <C4Include.h>
-#include <C4Facet.h>
-#include <C4GraphicsResource.h>
+#include "C4Include.h"
+#include "graphics/C4Draw.h"
+#include "graphics/C4Facet.h"
+#include "graphics/C4GraphicsResource.h"
 
-#include <StdAdaptors.h>
+#include "lib/StdAdaptors.h"
 
 #ifdef WITH_GLIB
 #include <glib.h>
@@ -29,7 +30,7 @@
 
 void C4Facet::Default()
 {
-	Set(NULL,0,0,0,0);
+	Set(nullptr,0,0,0,0);
 }
 
 void C4Facet::Set(C4Surface * nsfc, float nx, float ny, float nwdt, float nhgt)
@@ -403,7 +404,7 @@ void C4Facet::DrawEnergyLevelEx(int32_t iLevel, int32_t iRange, const C4Facet &g
 	// draw energy level using graphics
 	if (!pDraw || !gfx.Surface) return;
 	int32_t h=gfx.Hgt;
-	int32_t yBar = Hgt - BoundBy<int32_t>(iLevel,0,iRange) * Hgt / Max<int32_t>(iRange,1);
+	int32_t yBar = Hgt - Clamp<int32_t>(iLevel,0,iRange) * Hgt / std::max<int32_t>(iRange,1);
 	int32_t iY = 0, vidx=0;
 	C4Facet gfx_draw = gfx;
 	bool filled = false;
@@ -460,13 +461,6 @@ void C4Facet::Set(C4Surface &rSfc)
 	Set(&rSfc,0,0,rSfc.Wdt,rSfc.Hgt);
 }
 
-void C4Facet::DrawTile(C4Surface * sfcTarget, int32_t iX, int32_t iY, int32_t iWdt, int32_t iHgt)
-{
-	if (!pDraw || !Surface || !Wdt || !Hgt) return;
-	// Blits whole source surface, not surface facet area
-	pDraw->BlitSurfaceTile(Surface,sfcTarget,iX,iY,iWdt,iHgt,0,0,true);
-}
-
 void C4Facet::Expand(int32_t iLeft, int32_t iRight, int32_t iTop, int32_t iBottom)
 {
 	X-=iLeft; Wdt+=iLeft;
@@ -487,14 +481,14 @@ bool C4Facet::GetPhaseNum(int32_t &rX, int32_t &rY)
 
 void C4DrawTransform::CompileFunc(StdCompiler *pComp)
 {
-	bool fCompiler = pComp->isCompiler();
+	bool deserializing = pComp->isDeserializer();
 	int i;
 	// hacky. StdCompiler doesn't allow floats to be safed directly.
 	for (i = 0; i < 6; i++)
 	{
 		if (i) pComp->Separator();
 		StdStrBuf val;
-		if (!fCompiler)
+		if (!deserializing)
 		{
 #ifdef WITH_GLIB
 			val.SetLength(G_ASCII_DTOSTR_BUF_SIZE);
@@ -505,7 +499,7 @@ void C4DrawTransform::CompileFunc(StdCompiler *pComp)
 #endif
 		}
 		pComp->Value(mkParAdapt(val, StdCompiler::RCT_Idtf));
-		if (fCompiler && pComp->hasNaming())
+		if (deserializing && pComp->hasNaming())
 			if (pComp->Separator(StdCompiler::SEP_PART))
 			{
 				StdStrBuf val2;
@@ -513,14 +507,14 @@ void C4DrawTransform::CompileFunc(StdCompiler *pComp)
 				val.AppendChar('.'); val.Append(val2);
 			}
 #ifdef WITH_GLIB
-		mat[i] = g_ascii_strtod (val.getData(), NULL);
+		mat[i] = g_ascii_strtod (val.getData(), nullptr);
 #else
-		if (fCompiler) sscanf(val.getData(), "%g", &mat[i]);
+		if (deserializing) sscanf(val.getData(), "%g", &mat[i]);
 #endif
 	}
 	pComp->Separator();
 	pComp->Value(FlipDir);
-	if (!fCompiler && mat[6] == 0 && mat[7] == 0 && mat[8] == 1) return;
+	if (!deserializing && mat[6] == 0 && mat[7] == 0 && mat[8] == 1) return;
 	// because of backwards-compatibility, the last row comes after flipdir
 	for (i = 6; i < 9; ++i)
 	{
@@ -530,16 +524,16 @@ void C4DrawTransform::CompileFunc(StdCompiler *pComp)
 		}
 		else
 		{
-			StdStrBuf val; if (!fCompiler) val.Format("%g", mat[i]);
+			StdStrBuf val; if (!deserializing) val.Format("%g", mat[i]);
 			pComp->Value(mkParAdapt(val, StdCompiler::RCT_Idtf));
-			if (fCompiler && pComp->hasNaming())
+			if (deserializing && pComp->hasNaming())
 				if (pComp->Separator(StdCompiler::SEP_PART))
 				{
 					StdStrBuf val2;
 					pComp->Value(mkParAdapt(val2, StdCompiler::RCT_Idtf));
 					val.AppendChar('.'); val.Append(val2);
 				}
-			if (fCompiler) sscanf(val.getData(), "%g", &mat[i]);
+			if (deserializing) sscanf(val.getData(), "%g", &mat[i]);
 		}
 	}
 }
@@ -564,7 +558,7 @@ C4Facet C4Facet::GetFraction(int32_t percentWdt, int32_t percentHgt, int32_t ali
 	// Simple spec for square fractions
 	if (percentHgt == 0) percentHgt = percentWdt;
 	// Alignment
-	int iX = X, iY = Y, iWdt = Max(Wdt*percentWdt/100, 1.0f), iHgt = Max(Hgt*percentHgt/100, 1.0f);
+	int iX = X, iY = Y, iWdt = std::max(Wdt*percentWdt/100, 1.0f), iHgt = std::max(Hgt*percentHgt/100, 1.0f);
 	if (alignX & C4FCT_Right) iX += Wdt - iWdt;
 	if (alignX & C4FCT_Center)  iX += Wdt/2 - iWdt/2;
 	if (alignY & C4FCT_Bottom) iY += Hgt - iHgt;

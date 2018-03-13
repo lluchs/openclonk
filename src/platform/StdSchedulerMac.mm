@@ -1,6 +1,20 @@
-#include <C4Include.h>
-#include <StdScheduler.h>
-#ifdef USE_COCOA
+/*
+ * OpenClonk, http://www.openclonk.org
+ *
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
+ *
+ * Distributed under the terms of the ISC license; see accompanying file
+ * "COPYING" for details.
+ *
+ * "Clonk" is a registered trademark of Matthes Bender, used with permission.
+ * See accompanying file "TRADEMARK" for details.
+ *
+ * To redistribute this file separately, substitute the full license texts
+ * for the above references.
+ */
+
+#include "C4Include.h"
+#include "platform/StdScheduler.h"
 #import <Cocoa/Cocoa.h>
 
 using namespace std;
@@ -203,8 +217,6 @@ static NSMutableDictionary* additionsDictionary;
 	[super registerAt:_additions];
 	auto loop = _additions.runLoop;
 	timer = [NSTimer timerWithTimeInterval:proc->TimerInterval()/1000.0 target:self selector:@selector(run:) userInfo:nil repeats:YES];
-	if ([timer respondsToSelector:@selector(setTolerance:)])
-		[timer setTolerance:0.0];
 	[loop addTimer:timer forMode:NSDefaultRunLoopMode];
 }
 - (void) unregisterFrom:(SCHAdditions*) _additions
@@ -283,4 +295,3 @@ void StdScheduler::Changed(StdSchedulerProc* pProc)
 {
 	[[[SCHAdditions requestAdditionsForScheduler:this] additionForProc:pProc] changed];
 }
-#endif

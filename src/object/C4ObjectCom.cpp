@@ -3,7 +3,7 @@
  *
  * Copyright (c) 1998-2000, Matthes Bender
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -17,25 +17,24 @@
 
 /* Lots of handler functions for object action */
 
-#include <C4Include.h>
-#include <C4ObjectCom.h>
+#include "C4Include.h"
+#include "object/C4ObjectCom.h"
 
-#include <C4Effect.h>
-#include <C4Object.h>
-#include <C4Physics.h>
-#include <C4Command.h>
-#include <C4Random.h>
-#include <C4GameMessage.h>
-#include <C4ObjectMenu.h>
-#include <C4Player.h>
-#include <C4GraphicsResource.h>
-#include <C4Material.h>
-#include <C4Game.h>
-#include <C4PlayerList.h>
-#include <C4GameObjects.h>
+#include "game/C4Physics.h"
+#include "graphics/C4GraphicsResource.h"
+#include "gui/C4GameMessage.h"
+#include "landscape/C4Material.h"
+#include "lib/C4Random.h"
+#include "object/C4Command.h"
+#include "object/C4Def.h"
+#include "object/C4GameObjects.h"
+#include "object/C4Object.h"
+#include "object/C4ObjectMenu.h"
+#include "player/C4Player.h"
+#include "player/C4PlayerList.h"
+#include "script/C4Effect.h"
 
 bool SimFlightHitsLiquid(C4Real fcx, C4Real fcy, C4Real xdir, C4Real ydir);
-bool CreateConstructionSite(int32_t ctx, int32_t bty, C4ID strid, int32_t owner, C4Object *pByObj);
 
 bool ObjectActionWalk(C4Object *cObj)
 {
@@ -54,12 +53,12 @@ bool ObjectActionJump(C4Object *cObj, C4Real xdir, C4Real ydir, bool fByCom)
 {
 	// scripted jump?
 	assert(cObj);
-	C4AulParSet pars(C4VInt(fixtoi(xdir, 100)), C4VInt(fixtoi(ydir, 100)), C4VBool(fByCom));
+	C4AulParSet pars(fixtoi(xdir, 100), fixtoi(ydir, 100), fByCom);
 	if (!!cObj->Call(PSF_OnActionJump, &pars)) return true;
 	// hardcoded jump by action
 	if (!cObj->SetActionByName("Jump")) return false;
 	cObj->xdir=xdir; cObj->ydir=ydir;
-	cObj->Mobile=1;
+	cObj->Mobile=true;
 	// unstick from ground, because jump command may be issued in an Action-callback,
 	// where attach-values have already been determined for that frame
 	cObj->Action.t_attach&=~CNAT_Bottom;
@@ -70,7 +69,7 @@ bool ObjectActionDive(C4Object *cObj, C4Real xdir, C4Real ydir)
 {
 	if (!cObj->SetActionByName("Dive")) return false;
 	cObj->xdir=xdir; cObj->ydir=ydir;
-	cObj->Mobile=1;
+	cObj->Mobile=true;
 	// unstick from ground, because jump command may be issued in an Action-callback,
 	// where attach-values have already been determined for that frame
 	cObj->Action.t_attach&=~CNAT_Bottom;
@@ -173,29 +172,9 @@ bool ObjectActionCornerScale(C4Object *cObj)
 	if (!cObj->SetActionByName("KneelUp"))
 		cObj->SetActionByName("Walk");
 	cObj->xdir=cObj->ydir=0;
-	//if (cObj->Action.Dir==DIR_Left) cObj->Action.ComDir=COMD_Left; else cObj->Action.ComDir=COMD_Right;
 	if (cObj->Action.Dir==DIR_Left) cObj->fix_x-=itofix(iRangeX);
 	else cObj->fix_x+=itofix(iRangeX);
 	cObj->fix_y-=itofix(iRangeY);
-	return true;
-}
-
-bool ObjectComMovement(C4Object *cObj, int32_t comdir)
-{
-	cObj->Action.ComDir=comdir;
-
-	PlayerObjectCommand(cObj->Owner,C4CMD_Follow,cObj);
-	// direkt turnaround if standing still
-	if (!cObj->xdir && (cObj->GetProcedure() == DFA_WALK || cObj->GetProcedure() == DFA_HANGLE))
-		switch (comdir)
-		{
-		case COMD_Left: case COMD_UpLeft: case COMD_DownLeft:
-			cObj->SetDir(DIR_Left);
-			break;
-		case COMD_Right: case COMD_UpRight: case COMD_DownRight:
-			cObj->SetDir(DIR_Right);
-			break;
-		}
 	return true;
 }
 
@@ -212,9 +191,9 @@ bool ObjectComGrab(C4Object *cObj, C4Object *pTarget)
 	if (!pTarget) return false;
 	if (cObj->GetProcedure()!=DFA_WALK) return false;
 	if (!ObjectActionPush(cObj,pTarget)) return false;
-	cObj->Call(PSF_Grab, &C4AulParSet(C4VObj(pTarget), C4VBool(true)));
+	cObj->Call(PSF_Grab, &C4AulParSet(pTarget, true));
 	if (pTarget->Status && cObj->Status)
-		pTarget->Call(PSF_Grabbed, &C4AulParSet(C4VObj(cObj), C4VBool(true)));
+		pTarget->Call(PSF_Grabbed, &C4AulParSet(cObj, true));
 	return true;
 }
 
@@ -227,12 +206,12 @@ bool ObjectComUnGrab(C4Object *cObj)
 		if (ObjectActionStand(cObj))
 		{
 			if (!cObj->CloseMenu(false)) return false;
-			cObj->Call(PSF_Grab, &C4AulParSet(C4VObj(pTarget), C4VBool(false)));
+			cObj->Call(PSF_Grab, &C4AulParSet(pTarget, false));
 			// clear action target
-			cObj->Action.Target = NULL;
+			cObj->Action.Target = nullptr;
 			if (pTarget && pTarget->Status && cObj->Status)
 			{
-				pTarget->Call(PSF_Grabbed, &C4AulParSet(C4VObj(cObj), C4VBool(false)));
+				pTarget->Call(PSF_Grabbed, &C4AulParSet(cObj, false));
 			}
 			return true;
 		}
@@ -253,11 +232,6 @@ bool ObjectComJump(C4Object *cObj) // by ObjectComUp, ExecCMDFMoveTo, FnJump
 
 	if (cObj->Action.ComDir==COMD_Left || cObj->Action.ComDir==COMD_UpLeft)  TXDir=-iPhysicalWalk;
 	else if (cObj->Action.ComDir==COMD_Right || cObj->Action.ComDir==COMD_UpRight) TXDir=+iPhysicalWalk;
-	else
-	{
-		if (cObj->Action.Dir==DIR_Left)  TXDir=-iPhysicalWalk;
-		if (cObj->Action.Dir==DIR_Right) TXDir=+iPhysicalWalk;
-	}
 	C4Real x = cObj->fix_x, y = cObj->fix_y;
 	// find bottom-most vertex, correct starting position for simulation
 	int32_t iBtmVtx = cObj->Shape.GetBottomVertex();
@@ -274,42 +248,6 @@ bool ObjectComJump(C4Object *cObj) // by ObjectComUp, ExecCMDFMoveTo, FnJump
 bool ObjectComLetGo(C4Object *cObj, int32_t xdirf)
 { // by ACTSCALE, ACTHANGLE or ExecCMDFMoveTo
 	return ObjectActionJump(cObj,itofix(xdirf),Fix0,true);
-}
-
-bool ObjectComEnter(C4Object *cObj) // by pusher
-{
-	if (!cObj) return false;
-
-	// NoPushEnter
-	if (cObj->Def->NoPushEnter) return false;
-
-	// Check object entrance, try command enter
-	C4Object *pTarget;
-	DWORD ocf=OCF_Entrance;
-	if ((pTarget=::Objects.AtObject(cObj->GetX(),cObj->GetY(),ocf,cObj)))
-		if (ocf & OCF_Entrance)
-			{ cObj->SetCommand(C4CMD_Enter,pTarget); return true; }
-
-	return false;
-}
-
-
-bool ObjectComUp(C4Object *cObj) // by DFA_WALK or DFA_SWIM
-{
-	if (!cObj) return false;
-
-	// Check object entrance, try command enter
-	C4Object *pTarget;
-	DWORD ocf=OCF_Entrance;
-	if ((pTarget=::Objects.AtObject(cObj->GetX(),cObj->GetY(),ocf,cObj)))
-		if (ocf & OCF_Entrance)
-			return PlayerObjectCommand(cObj->Owner,C4CMD_Enter,pTarget);
-
-	// Try jump
-	if (cObj->GetProcedure()==DFA_WALK)
-		return PlayerObjectCommand(cObj->Owner,C4CMD_Jump);
-
-	return false;
 }
 
 bool ObjectComDig(C4Object *cObj) // by DFA_WALK
@@ -334,10 +272,6 @@ bool ObjectComPut(C4Object *cObj, C4Object *pTarget, C4Object *pThing)
 	if (pTarget!=cObj->Contained)
 		if (!(pTarget->Def->GrabPutGet & C4D_Grab_Put))
 		{
-			// Was meant to be a drop anyway - probably obsolete as controls are being revised
-			//if (ValidPlr(cObj->Owner))
-			//  if (Game.Players.Get(cObj->Owner)->LastComDownDouble)
-			//    return ObjectComDrop(cObj, pThing);
 			// No grab put: fail
 			return false;
 		}
@@ -349,7 +283,7 @@ bool ObjectComPut(C4Object *cObj, C4Object *pTarget, C4Object *pThing)
 	// Put call to object script
 	cObj->Call(PSF_Put);
 	// Target collection call
-	pTarget->Call(PSF_Collection,&C4AulParSet(C4VObj(pThing), C4VBool(true)));
+	pTarget->Call(PSF_Collection,&C4AulParSet(pThing, true));
 	// Success
 	return true;
 }
@@ -398,8 +332,6 @@ bool ObjectComDrop(C4Object *cObj, C4Object *pThing)
 	// Exit object
 	pThing->Exit(cObj->GetX() + (cObj->Shape.x + cObj->Shape.Wdt * right) * !!tdir * iOutposReduction,
 	             cObj->GetY()+cObj->Shape.y+cObj->Shape.Hgt-(pThing->Shape.y+pThing->Shape.Hgt),0,pthrow*tdir,Fix0,Fix0);
-	// NoCollectDelay
-	cObj->NoCollectDelay=2;
 	// Update OCF
 	cObj->SetOCF();
 	// Ungrab
@@ -446,7 +378,7 @@ bool ObjectComPunch(C4Object *cObj, C4Object *pTarget, int32_t punch)
 {
 	if (!cObj || !pTarget) return false;
 	if (!punch) return true;
-	bool fBlowStopped = !!pTarget->Call(PSF_QueryCatchBlow,&C4AulParSet(C4VObj(cObj)));
+	bool fBlowStopped = !!pTarget->Call(PSF_QueryCatchBlow,&C4AulParSet(cObj));
 	if (fBlowStopped && punch>1) punch=punch/2; // half damage for caught blow, so shield+armor help in fistfight and vs monsters
 	pTarget->DoEnergy(-punch, false, C4FxCall_EngGetPunched, cObj->Controller);
 	int32_t tdir=+1; if (cObj->Action.Dir==DIR_Left) tdir=-1;
@@ -457,16 +389,14 @@ bool ObjectComPunch(C4Object *cObj, C4Object *pTarget, int32_t punch)
 	if (punch>=10)
 		if (ObjectActionTumble(pTarget,pTarget->Action.Dir,C4REAL100(150)*tdir,itofix(-2)))
 		{
-			pTarget->Call(PSF_CatchBlow,&C4AulParSet(C4VInt(punch),
-			              C4VObj(cObj)));
+			pTarget->Call(PSF_CatchBlow,&C4AulParSet(punch, cObj));
 			return true;
 		}
 
 	// Regular punch
 	if (ObjectActionGetPunched(pTarget,C4REAL100(250)*tdir,Fix0))
 	{
-		pTarget->Call(PSF_CatchBlow,&C4AulParSet(C4VInt(punch),
-		              C4VObj(cObj)));
+		pTarget->Call(PSF_CatchBlow,&C4AulParSet(punch, cObj));
 		return true;
 	}
 
@@ -476,7 +406,7 @@ bool ObjectComPunch(C4Object *cObj, C4Object *pTarget, int32_t punch)
 bool ObjectComCancelAttach(C4Object *cObj)
 {
 	if (cObj->GetProcedure()==DFA_ATTACH)
-		return cObj->SetAction(0);
+		return cObj->SetAction(nullptr);
 	return false;
 }
 
@@ -500,31 +430,3 @@ bool ComDirLike(int32_t iComDir, int32_t iSample)
 	return false;
 }
 
-bool PlayerObjectCommand(int32_t plr, int32_t cmdf, C4Object *pTarget, int32_t tx, int32_t ty)
-{
-	C4Player *pPlr=::Players.Get(plr);
-	if (!pPlr) return false;
-	int32_t iAddMode = C4P_Command_Set;
-	// Adjust for old-style keyboard throw/drop control: add & in range
-	if (cmdf==C4CMD_Throw || cmdf==C4CMD_Drop) iAddMode = C4P_Command_Add | C4P_Command_Range;
-	if (cmdf==C4CMD_Throw)
-	{
-		bool fConvertToDrop = false;
-		// Drop on down-down-throw (classic) - obsolete?
-		/*if (pPlr->LastComDownDouble)
-		  {
-		  fConvertToDrop = true;
-		  // Dropping one object automatically reenables LastComDownDouble to
-		  // allow easy dropping of multiple objects. Also set LastCom for
-		  // script compatibility (custom scripted dropping) and to prevent
-		  // unwanted ThrowDouble for mass dropping
-		  pPlr->LastCom = COM_Down | COM_Double;
-		  pPlr->LastComDownDouble = C4DoubleClick;
-		  }
-		// Jump'n'Run: Drop on combined Down/Left/Right+Throw
-		if (pPlr->PrefControlStyle && (pPlr->PressedComs & (1 << COM_Down))) fConvertToDrop = true;*/
-		if (fConvertToDrop) return pPlr->ObjectCommand(C4CMD_Drop,pTarget,tx,ty,NULL,C4VNull,iAddMode);
-	}
-	// Route to player
-	return pPlr->ObjectCommand(cmdf,pTarget,tx,ty,NULL,C4VNull,iAddMode);
-}

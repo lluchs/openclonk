@@ -2,7 +2,7 @@
  * OpenClonk, http://www.openclonk.org
  *
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -19,9 +19,8 @@
 #ifndef INC_C4Log
 #define INC_C4Log
 
-#include <StdBuf.h>
-
 bool OpenLog();
+bool OpenExtraLogs();
 bool CloseLog();
 
 bool Log(const char *szMessage);
@@ -30,6 +29,8 @@ bool LogF(const char *strMessage, ...) GNUC_FORMAT_ATTRIBUTE;
 bool LogSilentF(const char *strMessage, ...) GNUC_FORMAT_ATTRIBUTE;
 bool DebugLog(const char *strMessage);
 bool DebugLogF(const char *strMessage ...) GNUC_FORMAT_ATTRIBUTE;
+bool ShaderLog(const char *strMessage);
+bool ShaderLogF(const char *strMessage ...) GNUC_FORMAT_ATTRIBUTE;
 
 bool LogFatal(const char *szMessage); // log message and store it as a fatal error
 void ResetFatalError();               // clear any fatal error message

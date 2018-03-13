@@ -3,7 +3,7 @@
  *
  * Copyright (c) 1998-2000, Matthes Bender
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -17,32 +17,37 @@
 
 /* Structures for object and player info components */
 
-#include <C4Include.h>
-#include <C4InfoCore.h>
+#include "C4Include.h"
+#include "object/C4InfoCore.h"
 
-#include <C4Def.h>
-#include <C4DefList.h>
-#include <C4Random.h>
-#include <C4RankSystem.h>
-#include <C4Group.h>
-#include <C4Components.h>
-#include <C4Game.h>
-#include <C4GameObjects.h>
-
-#include <C4Random.h>
+#include "c4group/C4Components.h"
+#include "c4group/C4Group.h"
+#include "lib/C4Markup.h"
+#include "lib/C4Random.h"
+#include "object/C4Def.h"
+#include "object/C4DefList.h"
+#include "object/C4GameObjects.h"
+#include "player/C4RankSystem.h"
 
 
 //------------------------------- Player Info ----------------------------------------
 
 C4PlayerInfoCore::C4PlayerInfoCore()
 {
-	ZeroMem(this,sizeof(C4PlayerInfoCore));
 	Default();
 }
 
 void C4PlayerInfoCore::Default(C4RankSystem *pRanks)
 {
-	ZeroMem(this,sizeof(C4PlayerInfoCore));
+	*Comment='\0';
+	*RankName='\0';
+	TotalScore=0;
+	Rounds=RoundsWon=RoundsLost=0;
+	TotalPlayingTime=0;
+	*LeagueName='\0';
+	LastRound.Default();
+	ExtraData = C4ValueMapData();
+	PrefControl.Clear();
 	Rank=0;
 	SCopy("Neuling",PrefName);
 	if (pRanks) SCopy(pRanks->GetRankName(Rank,false).getData(),RankName);
@@ -51,8 +56,7 @@ void C4PlayerInfoCore::Default(C4RankSystem *pRanks)
 	PrefColor=0;
 	PrefColorDw=0xff;
 	PrefColor2Dw=0;
-	OldPrefControl=C4P_Control_Keyboard1;
-	PrefPosition=0;
+	OldPrefControl=0;
 	PrefMouse=1;
 	OldPrefControlStyle = 0;
 	OldPrefAutoContextMenu = 0;
@@ -68,7 +72,6 @@ DWORD C4PlayerInfoCore::GetPrefColorValue(int32_t iPrefColor)
 	                   };
 	if (Inside<int32_t>(iPrefColor, 0, 11))
 		return valRGB[iPrefColor];
-	//return RGB(valRGB[iPrefColor] >> 16, valRGB[iPrefColor] >> 8, valRGB[iPrefColor] >> 0);
 	return 0xFFAAAAAA;
 }
 
@@ -135,7 +138,7 @@ void C4PlayerInfoCore::CompileFunc(StdCompiler *pComp)
 	pComp->Value(mkNamingAdapt(toC4CStr(PrefName),"Name",                 "Neuling"));
 	pComp->Value(mkNamingAdapt(toC4CStr(Comment), "Comment",              ""));
 	pComp->Value(mkNamingAdapt(Rank,              "Rank",                 0));
-	pComp->Value(mkNamingAdapt(toC4CStr(RankName),"RankName",             /*pRanks ? pRanks->Name(Rank,false) :*/ LoadResStr("IDS_MSG_RANK"))); // TODO: check if this would be desirable
+	pComp->Value(mkNamingAdapt(toC4CStr(RankName),"RankName",            LoadResStr("IDS_MSG_RANK"))); // TODO: check if this would be desirable
 	pComp->Value(mkNamingAdapt(TotalScore,        "Score",                0));
 	pComp->Value(mkNamingAdapt(Rounds,            "Rounds",               0));
 	pComp->Value(mkNamingAdapt(RoundsWon,         "RoundsWon",            0));
@@ -143,7 +146,7 @@ void C4PlayerInfoCore::CompileFunc(StdCompiler *pComp)
 	pComp->Value(mkNamingAdapt(TotalPlayingTime,  "TotalPlayingTime",     0));
 	pComp->Value(mkNamingAdapt(mkParAdapt(ExtraData, &numbers), "ExtraData", C4ValueMapData()));
 	pComp->Value(mkNamingAdapt(numbers,           "ExtraDataValues"));
-	if (pComp->isCompiler())
+	if (pComp->isDeserializer())
 	{
 		numbers.Denumerate();
 		ExtraData.Denumerate(&numbers);
@@ -155,9 +158,8 @@ void C4PlayerInfoCore::CompileFunc(StdCompiler *pComp)
 	pComp->Value(mkNamingAdapt(PrefColor,                "Color",            0));
 	pComp->Value(mkNamingAdapt(PrefColorDw,              "ColorDw",          0xffu));
 	pComp->Value(mkNamingAdapt(PrefColor2Dw,             "AlternateColorDw", 0u));
-	pComp->Value(mkNamingAdapt(PrefPosition,             "Position",         0));
 	pComp->Value(mkNamingAdapt(PrefMouse,                "Mouse",            1));
-	pComp->Value(mkNamingAdapt(OldPrefControl,           "Control",          C4P_Control_Keyboard2));
+	pComp->Value(mkNamingAdapt(OldPrefControl,           "Control",          1));
 	pComp->Value(mkNamingAdapt(OldPrefControlStyle,      "AutoStopControl",  0));
 	pComp->Value(mkNamingAdapt(OldPrefAutoContextMenu,   "AutoContextMenu",  -1)); // compiling default is -1  (if this is detected, AutoContextMenus will be defaulted by control style)
 	pComp->Value(mkNamingAdapt(PrefControl,              "ControlSet",       StdStrBuf()));
@@ -166,6 +168,7 @@ void C4PlayerInfoCore::CompileFunc(StdCompiler *pComp)
 
 	pComp->Value(mkNamingAdapt(LastRound,                "LastRound"));
 
+	pComp->Value(mkNamingAdapt(Achievements,                "Achievements"));
 }
 
 //------------------------------- Object Info ----------------------------------------
@@ -181,7 +184,7 @@ void C4ObjectInfoCore::Default(C4ID n_id,
 {
 
 	// Def
-	C4Def *pDef=NULL;
+	C4Def *pDef=nullptr;
 	if (pDefs) pDef = pDefs->ID2Def(n_id);
 
 	// Defaults
@@ -323,7 +326,7 @@ void C4ObjectInfoCore::CompileFunc(StdCompiler *pComp)
 	pComp->Value(mkNamingAdapt(Age,                     "Age",              0));
 	pComp->Value(mkNamingAdapt(mkParAdapt(ExtraData, &numbers), "ExtraData", C4ValueMapData()));
 	pComp->Value(mkNamingAdapt(numbers,                 "ExtraDataValues"));
-	if (pComp->isCompiler())
+	if (pComp->isDeserializer())
 	{
 		numbers.Denumerate();
 		ExtraData.Denumerate(&numbers);
@@ -349,7 +352,7 @@ bool C4ObjectInfoCore::Decompile(char **ppOutput, size_t *ipSize)
 	      &Buf,
 	      "ObjectInfo"))
 	{
-		if (ppOutput) *ppOutput = NULL;
+		if (ppOutput) *ppOutput = nullptr;
 		if (ipSize) *ipSize = 0;
 		return false;
 	}
@@ -361,14 +364,9 @@ bool C4ObjectInfoCore::Decompile(char **ppOutput, size_t *ipSize)
 
 //------------------------------- Round Info ------------------------------------------
 
-C4RoundResult::C4RoundResult()
-{
-	Default();
-}
-
 void C4RoundResult::Default()
 {
-	ZeroMem(this,sizeof(C4RoundResult));
+	InplaceReconstruct(this);
 }
 
 void C4RoundResult::CompileFunc(StdCompiler *pComp)

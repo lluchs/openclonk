@@ -1,35 +1,22 @@
-autom4te.cache
 *~
 *.bak
 .deps
 deps
 *.o
 /openclonk
+/openclonk-server
 /netpuncher
 /c4group
 /c4script
-.dirstamp
 *.a
 *.c4p
 planet/Records.c4f
 *.lib
 *.dll
-stamp-h1
 config.h
-config.log
-config.status
 C4Version.h
 Makefile
 C4Include.h.gch
-Makefile.in
-aclocal.m4
-autotools/config.guess
-autotools/config.sub
-autotools/compile
-autotools/depcomp
-autotools/install-sh
-autotools/missing
-configure
 intermediate
 build*
 CMakeScripts
@@ -42,6 +29,9 @@ CPackSourceConfig.cmake
 *.rule
 editor-icons.h
 oc-icon.h
+NativeToolsExport.cmake
+engine-resource.c
+tests/CTestTestfile.cmake
 
 # Documentation
 *.pyc
@@ -55,6 +45,7 @@ docs/Functions.txt
 
 # Visual studio files
 openclonk.opensdf
+openclonk.manifest
 deps/
 planet/Release
 planet/RelWithDebInfo
@@ -67,6 +58,10 @@ planet/fmod.dll
 planet/cmake_install.cmake
 planet/clonk.sln
 planet/clonk.ilk
+*.ipdb
+*.iobj
+openclonk.VC.db
+openclonk.VC.VC.opendb
 
 build
 planet/clonk.app
@@ -127,6 +122,7 @@ openclonk.layout
 openclonk.sdf
 openclonk.cbp
 tests/openclonk_unittest.cbp
+tests/openclonk_unittest.sln
 
 # MacOSX saved searches
 *.savedSearch
@@ -135,11 +131,20 @@ planet/openclonk.sln
 WindowsGamesExplorer.xml
 
 # Mape
-mape
+./mape
+/mape
 mape-icons.h
+mape-resource.c
 
-
-tests/openclonk_unittest.sln
 
 # Packed groups created directly in root path
 /*.oc*
+
+# QMake stuff
+*_automoc.cpp
+moc_*.cpp
+qrc_resource.cpp
+ui_C4ConsoleQt*.h
+resource.qrc.depends
+*.exp
+qt.conf

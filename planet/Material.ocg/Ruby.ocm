@@ -1,0 +1,16 @@
+[Material]
+Name=Ruby
+Shape=Rough
+Density=70
+Friction=15
+BlastFree=1
+Blast2Object=Ruby
+Blast2ObjectRatio=100
+MaxAirSpeed=100
+MaxSlide=1
+Placement=21
+TextureOverlay=ruby
+LightEmit=0,0,128
+LightSpot=208,96,96
+LightAngle=204
+MinShapeOverlap=30

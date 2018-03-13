@@ -2,7 +2,7 @@
  * OpenClonk, http://www.openclonk.org
  *
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -16,16 +16,13 @@
 // generic user interface
 // tab control
 
-#include <C4Include.h>
-#include <C4Gui.h>
+#include "C4Include.h"
+#include "gui/C4Gui.h"
 
-#include <C4FacetEx.h>
-#include <C4Game.h>
-#include <C4FullScreen.h>
-#include <C4LoaderScreen.h>
-#include <C4Application.h>
-#include <C4MouseControl.h>
-#include <C4GraphicsResource.h>
+#include "graphics/C4Draw.h"
+#include "graphics/C4FacetEx.h"
+#include "graphics/C4GraphicsResource.h"
+#include "gui/C4MouseControl.h"
 
 namespace C4GUI
 {
@@ -170,9 +167,9 @@ namespace C4GUI
 // ----------------------------------------------------
 // Tabular
 
-	Tabular::Tabular(C4Rect &rtBounds, TabPosition eTabPos) : Control(rtBounds), pActiveSheet(NULL), eTabPos(eTabPos), iMaxTabWidth(0),
+	Tabular::Tabular(C4Rect &rtBounds, TabPosition eTabPos) : Control(rtBounds), pActiveSheet(nullptr), eTabPos(eTabPos), iMaxTabWidth(0),
 			iCaptionLengthTotal(0), iCaptionScrollPos(0), fScrollingLeft(false), fScrollingRight(false), fScrollingLeftDown(false),
-			fScrollingRightDown(false), iSheetMargin(4), fDrawSelf(true), pfctBack(NULL), pfctClip(NULL), pfctIcons(NULL), pSheetCaptionFont(NULL)
+			fScrollingRightDown(false), iSheetMargin(4), fDrawSelf(true), pfctBack(nullptr), pfctClip(nullptr), pfctIcons(nullptr), pSheetCaptionFont(nullptr)
 	{
 		// calc client rect
 		UpdateOwnPos();
@@ -182,19 +179,19 @@ namespace C4GUI
 			// Ctrl+(Shift-)Tab works with dialog focus only (assumes max one tabular per dialog)
 			// Arrow keys work if control is focused only
 			C4CustomKey::CodeList Keys;
-			Keys.push_back(C4KeyCodeEx(K_UP));
+			Keys.emplace_back(K_UP);
 			if (Config.Controls.GamepadGuiControl)
 			{
-				Keys.push_back(C4KeyCodeEx(KEY_Gamepad(0, KEY_JOY_Up)));
+				ControllerKeys::Up(Keys);
 			}
 			pKeySelUp = new C4KeyBinding(Keys, "GUITabularSelUp", KEYSCOPE_Gui,
 			                             new ControlKeyCB<Tabular>(*this, &Tabular::KeySelUp), C4CustomKey::PRIO_Ctrl);
 
 			Keys.clear();
-			Keys.push_back(C4KeyCodeEx(K_DOWN));
+			Keys.emplace_back(K_DOWN);
 			if (Config.Controls.GamepadGuiControl)
 			{
-				Keys.push_back(C4KeyCodeEx(KEY_Gamepad(0, KEY_JOY_Down)));
+				ControllerKeys::Down(Keys);
 			}
 			pKeySelDown = new C4KeyBinding(Keys, "GUITabularSelDown", KEYSCOPE_Gui,
 			                               new ControlKeyCB<Tabular>(*this, &Tabular::KeySelDown), C4CustomKey::PRIO_Ctrl);
@@ -208,7 +205,7 @@ namespace C4GUI
 		}
 		else
 		{
-			pKeySelUp = pKeySelDown = pKeySelUp2 = pKeySelDown2 = pKeyCloseTab = NULL;
+			pKeySelUp = pKeySelDown = pKeySelUp2 = pKeySelDown2 = pKeyCloseTab = nullptr;
 		}
 		SheetsChanged();
 	}
@@ -258,14 +255,14 @@ namespace C4GUI
 
 	void Tabular::SelectionChanged(bool fByUser)
 	{
-		Control *pFocusCtrl = NULL;
+		Control *pFocusCtrl = nullptr;
 		Dialog *pDlg = GetDlg();
 		if (pDlg) pFocusCtrl = pDlg->GetFocus();
 		// any selection?
 		if (pActiveSheet)
 		{
 			// effect
-			if (fByUser) GUISound("Command");
+			if (fByUser) GUISound("UI::Select");
 			// update in sheet
 			pActiveSheet->OnShown(fByUser);
 		}
@@ -294,7 +291,7 @@ namespace C4GUI
 				int32_t iTabWidth, iTabHeight;
 				pSheet->GetCaptionSize(&iTabWidth, &iTabHeight, HasLargeCaptions(), pSheet == pActiveSheet, pfctClip, pfctIcons, pSheetCaptionFont);
 				iTabWidth += (eTabPos == tbLeft) ? 20 : iSheetSpacing;
-				iMaxTabWidth = Max(iTabWidth, iMaxTabWidth);
+				iMaxTabWidth = std::max(iTabWidth, iMaxTabWidth);
 				if (eTabPos == tbLeft)
 				{
 					iTotalHgt += iTabHeight;
@@ -362,7 +359,7 @@ namespace C4GUI
 		// change scrolling within max range
 		int32_t iAvailableTabSpace = rcBounds.Wdt;
 		int32_t iScrollPinSize = GetTopSize();
-		iCaptionScrollPos = BoundBy<int32_t>(iCaptionScrollPos + iDir*iAvailableTabSpace/2, 0, iCaptionLengthTotal - iAvailableTabSpace + iScrollPinSize);
+		iCaptionScrollPos = Clamp<int32_t>(iCaptionScrollPos + iDir*iAvailableTabSpace/2, 0, iCaptionLengthTotal - iAvailableTabSpace + iScrollPinSize);
 		UpdateScrolling();
 	}
 
@@ -397,7 +394,6 @@ namespace C4GUI
 		// scrolling in captions
 		int32_t iScrollSize = GetTopSize();
 		if (fScrollingLeft) d -= iCaptionScrollPos + iScrollSize;
-		//DrawBar(cgo, ::GraphicsResource.fctCaptionLeft, ::GraphicsResource.fctCaptionBar, ::GraphicsResource.fctCaptionRight);
 		// tabs
 		for (Sheet *pSheet = (Sheet *) GetFirst(); pSheet; pSheet = (Sheet *) pSheet->GetNext())
 		{
@@ -426,8 +422,9 @@ namespace C4GUI
 					vtx[6] = d+iTabWidth; vtx[7] = y0;
 				}
 				DWORD dwClr = (pSheet == pActiveSheet) ? C4GUI_ActiveTabBGColor : C4GUI_StandardBGColor;
-				pDraw->DrawQuadDw(cgo.Surface, vtx, dwClr, dwClr, dwClr, dwClr);
+				pDraw->DrawQuadDw(cgo.Surface, vtx, dwClr, dwClr, dwClr, dwClr, nullptr);
 				// draw caption frame
+				// TODO: Switch to PerformMultiLines
 				pDraw->DrawLineDw(cgo.Surface, (float)vtx[0]-1     , (float)vtx[1]      , (float)vtx[2]-1    ,(float)vtx[3]        , C4GUI_BorderColorA1);
 				pDraw->DrawLineDw(cgo.Surface, (float)vtx[2]-1     , (float)vtx[3]      , (float)vtx[4]-fLeft,(float)vtx[5]        , C4GUI_BorderColorA1);
 				pDraw->DrawLineDw(cgo.Surface, (float)vtx[4]       , (float)vtx[5]      , (float)vtx[6]      ,(float)vtx[7]        , C4GUI_BorderColorA1);
@@ -444,7 +441,7 @@ namespace C4GUI
 				ad0=d; ad1=d+(fLeft ? iTabHeight : iTabWidth);
 				aCptTxX = iCptTextX; aCptTxY = iCptTextY;
 				// draw active caption
-				if (!fGfx) pSheet->DrawCaption(cgo, iCptTextX, iCptTextY, iMaxTabWidth, fLeft, true, HasDrawFocus(), NULL, NULL, NULL);
+				if (!fGfx) pSheet->DrawCaption(cgo, iCptTextX, iCptTextY, iMaxTabWidth, fLeft, true, HasDrawFocus(), nullptr, nullptr, nullptr);
 			}
 			else
 			{
@@ -498,7 +495,7 @@ namespace C4GUI
 					if (iButton == C4MC_Button_LeftDown && fScrollingRight && Inside(iX, rcBounds.Wdt-iScrollSize,rcBounds.Wdt))
 					{
 						fProcessed = fScrollingRightDown = true;
-						GUISound("Command");
+						GUISound("UI::Select");
 						DoCaptionScroll(+1);
 					}
 					else if (fScrollingLeft)
@@ -506,7 +503,7 @@ namespace C4GUI
 						if (iButton == C4MC_Button_LeftDown && Inside(iX, d,d+iScrollSize))
 						{
 							fProcessed = fScrollingLeftDown = true;
-							GUISound("Command");
+							GUISound("UI::Select");
 							DoCaptionScroll(-1);
 						}
 						d -= iCaptionScrollPos + iScrollSize;
@@ -568,7 +565,7 @@ namespace C4GUI
 		if (fScrollingLeftDown || fScrollingRightDown)
 		{
 			// stop scrolling
-			GUISound("Command");
+			GUISound("UI::Select");
 			fScrollingLeftDown = fScrollingRightDown = false;
 		}
 	}

@@ -2,7 +2,7 @@
  * OpenClonk, http://www.openclonk.org
  *
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -16,15 +16,12 @@
 // generic user interface
 // that which can be pressed
 
-#include <C4Include.h>
-#include <C4Gui.h>
+#include "C4Include.h"
+#include "gui/C4Gui.h"
 
-#include <C4FullScreen.h>
-#include <C4LoaderScreen.h>
-#include <C4Application.h>
-#include <C4MouseControl.h>
-#include <C4GraphicsResource.h>
-#include <C4Draw.h>
+#include "graphics/C4Draw.h"
+#include "graphics/C4GraphicsResource.h"
+#include "gui/C4MouseControl.h"
 
 namespace C4GUI
 {
@@ -34,15 +31,15 @@ namespace C4GUI
 // Button
 
 	Button::Button(const char *szBtnText, const C4Rect &rtBounds)
-			: Control(rtBounds), pCustomGfx(NULL), pCustomGfxDown(NULL), fDown(false), fMouseOver(false), fEnabled(true),
-			  dwCustomFontClr(0), pCustomFont(NULL)
+			: Control(rtBounds), pCustomGfx(nullptr), pCustomGfxDown(nullptr), fDown(false), fMouseOver(false), fEnabled(true),
+			  dwCustomFontClr(0), pCustomFont(nullptr)
 	{
 		// key callbacks
 		C4CustomKey::CodeList keys;
-		keys.push_back(C4KeyCodeEx(K_SPACE));
-		keys.push_back(C4KeyCodeEx(K_RETURN));
+		keys.emplace_back(K_SPACE);
+		keys.emplace_back(K_RETURN);
 		if (Config.Controls.GamepadGuiControl)
-			keys.push_back(C4KeyCodeEx(KEY_Gamepad(0, KEY_JOY_AnyLowButton)));
+			ControllerKeys::Ok(keys);
 		pKeyButton = new C4KeyBinding(keys, "GUIButtonPress", KEYSCOPE_Gui,
 		                              new ControlKeyCB<Button>(*this, &Button::KeyButtonDown, &Button::KeyButtonUp), C4CustomKey::PRIO_Ctrl);
 		sText = "";
@@ -110,8 +107,6 @@ namespace C4GUI
 		    ::GraphicsResource.CaptionFont) :
 				   ::GraphicsResource.TitleFont);
 		iTextHgt = rUseFont.GetLineHeight();
-		//CStdFont &rShadowFont = GetRes()->MiniFont;
-		//pDraw->TextOut(Text, rShadowFont, (float) iTextHgt/rShadowFont.GetLineHeight(), cgo.Surface, (x0+x1)/2 + iTxtOff, (y0+y1-iTextHgt)/2 + iTxtOff, C4GUI_ButtonFontShadowClr, ACenter, true);
 		pDraw->TextOut(sText.getData(), rUseFont, 1.0f, cgo.Surface, (x0+x1)/2 + iTxtOff, (y0+y1-iTextHgt)/2 + iTxtOff, C4GUI_ButtonFontClr, ACenter, true);
 	}
 
@@ -192,7 +187,7 @@ namespace C4GUI
 		// already down?
 		if (fDown) return;
 		// play sound
-		GUISound("ArrowHit");
+		GUISound("UI::Tick");
 		// set down
 		fDown = true;
 	}
@@ -202,7 +197,7 @@ namespace C4GUI
 		// already up?
 		if (!fDown) return;
 		// play sound
-		GUISound(fPress ? "Click" : "ArrowHit");
+		GUISound(fPress ? "UI::Click" : "UI::Tick");
 		// set up
 		fDown = false;
 	}
@@ -240,17 +235,24 @@ namespace C4GUI
 		}
 	}
 
-	IconButton::IconButton(Icons eUseIcon, const C4Rect &rtBounds, char caHotkey)
+	IconButton::IconButton(Icons eUseIcon, const C4Rect &rtBounds, char caHotkey, const char *tooltip_text)
 			: Button("", rtBounds), dwClr(0u), fHasClr(false), fHighlight(false)
 	{
 		// ctor
 		cHotkey = caHotkey;
 		SetIcon(eUseIcon);
+		// set tooltip and expand hotkey
+		if (tooltip_text)
+		{
+			StdStrBuf tooltip_text_buf(tooltip_text);
+			if (!cHotkey) ExpandHotkeyMarkup(tooltip_text_buf, cHotkey, true);
+			SetToolTip(tooltip_text_buf.getData(), true);
+		}
 	}
 
 	void IconButton::SetIcon(Icons eUseIcon)
 	{
-		if (eUseIcon>=0) fctIcon = Icon::GetIconFacet(eUseIcon); else fctIcon.Surface=NULL;
+		if (eUseIcon>=0) fctIcon = Icon::GetIconFacet(eUseIcon); else fctIcon.Surface=nullptr;
 	}
 
 
@@ -300,7 +302,7 @@ namespace C4GUI
 // FacetButton
 
 	FacetButton::FacetButton(const C4Facet &rBaseFct, const C4Facet &rHighlightFct, const FLOAT_RECT &rtfBounds, char cHotkey)
-			: Button("", C4Rect(rtfBounds)), fctBase(rBaseFct), fctHighlight(rHighlightFct), dwTextClrInact(0x7f000000), dwTextClrAct(0xff000000), rcfDrawBounds(rtfBounds), pFont(NULL), fFontZoom(1.0f)
+			: Button("", C4Rect(rtfBounds)), fctBase(rBaseFct), fctHighlight(rHighlightFct), dwTextClrInact(0x7f000000), dwTextClrAct(0xff000000), rcfDrawBounds(rtfBounds), pFont(nullptr), fFontZoom(1.0f)
 	{
 		// ctor
 		this->cHotkey = cHotkey;

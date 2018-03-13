@@ -2,7 +2,7 @@
  * OpenClonk, http://www.openclonk.org
  *
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -15,23 +15,30 @@
  */
 // links aul scripts; i.e. resolves includes & appends, etc
 
-#include <C4Include.h>
-#include <C4Aul.h>
+#include "C4Include.h"
+#include "script/C4Aul.h"
 
-#include <C4Def.h>
-#include <C4DefList.h>
-#include <C4Material.h>
-#include <C4Game.h>
-#include <C4GameObjects.h>
+#include "game/C4Game.h"
+#include "landscape/C4Material.h"
+#include "object/C4Def.h"
+#include "object/C4DefList.h"
+#include "object/C4GameObjects.h"
+#include "script/C4Effect.h"
 
-bool C4AulScript::ResolveIncludes(C4DefList *rDefs)
+void C4ScriptHost::DoAppend(C4Def *def)
 {
-	return false;
-}
+	if (std::find(def->Script.SourceScripts.begin(), def->Script.SourceScripts.end(), this) == def->Script.SourceScripts.end())
+	{
+		def->Script.SourceScripts.push_back(this);
+		if (!Includes.empty())
+		{
+			Warn("#appendto contains #include");
+			// Try to fullfil #include, but it won't work properly: #appendtos
+			// are always appended, but #includes are prepended to the script.
+			def->Script.Includes.insert(def->Script.Includes.end(), Includes.begin(), Includes.end());
+		}
 
-bool C4AulScript::ResolveAppends(C4DefList *rDefs)
-{
-	return false;
+	}
 }
 
 // ResolveAppends and ResolveIncludes must be called both
@@ -40,22 +47,21 @@ bool C4ScriptHost::ResolveAppends(C4DefList *rDefs)
 {
 	// resolve local appends
 	if (State != ASS_PREPARSED) return false;
-	for (std::list<StdCopyStrBuf>::iterator a = Appends.begin(); a != Appends.end(); ++a)
+	for (auto & Append : Appends)
 	{
-		if (*a != "*")
+		if (Append != "*" || !rDefs)
 		{
-			C4Def *Def = rDefs->GetByName(*a);
+			C4Def *Def = rDefs ? rDefs->GetByName(Append) : nullptr;
 			if (Def)
 			{
-				if (std::find(Def->Script.SourceScripts.begin(), Def->Script.SourceScripts.end(), GetScriptHost()) == Def->Script.SourceScripts.end())
-					Def->Script.SourceScripts.push_back(GetScriptHost());
+				DoAppend(Def);
 			}
 			else
 			{
 				// save id in buffer because AulWarn will use the buffer of C4IdText
 				// to get the id of the object in which the error occurs...
 				// (stupid static buffers...)
-				Warn("#appendto %s not found", a->getData());
+				Warn("#appendto %s not found", Append.getData());
 			}
 		}
 		else
@@ -67,8 +73,7 @@ bool C4ScriptHost::ResolveAppends(C4DefList *rDefs)
 				if (!pDef) break;
 				if (pDef == GetPropList()) continue;
 				// append
-				if (std::find(pDef->Script.SourceScripts.begin(), pDef->Script.SourceScripts.end(), GetScriptHost()) == pDef->Script.SourceScripts.end())
-					pDef->Script.SourceScripts.push_back(GetScriptHost());
+				DoAppend(pDef);
 			}
 		}
 	}
@@ -84,7 +89,7 @@ bool C4ScriptHost::ResolveIncludes(C4DefList *rDefs)
 	// catch circular includes
 	if (Resolving)
 	{
-		C4AulParseError(this, "Circular include chain detected - ignoring all includes!").show();
+		Engine->GetErrorHandler()->OnError(C4AulParseError(this, "Circular include chain detected - ignoring all includes!").what());
 		IncludesResolved = true;
 		State = ASS_LINKED;
 		return false;
@@ -93,7 +98,7 @@ bool C4ScriptHost::ResolveIncludes(C4DefList *rDefs)
 	// append all includes to local script
 	for (std::list<StdCopyStrBuf>::reverse_iterator i = Includes.rbegin(); i != Includes.rend(); ++i)
 	{
-		C4Def *Def = rDefs->GetByName(*i);
+		C4Def *Def = rDefs ? rDefs->GetByName(*i) : nullptr;
 		if (Def)
 		{
 			// resolve #includes in included script first (#include-chains :( )
@@ -103,8 +108,8 @@ bool C4ScriptHost::ResolveIncludes(C4DefList *rDefs)
 
 			for (std::list<C4ScriptHost *>::reverse_iterator s = Def->Script.SourceScripts.rbegin(); s != Def->Script.SourceScripts.rend(); ++s)
 			{
-				if (std::find(GetScriptHost()->SourceScripts.begin(), GetScriptHost()->SourceScripts.end(), *s) == GetScriptHost()->SourceScripts.end())
-					GetScriptHost()->SourceScripts.push_front(*s);
+				if (std::find(SourceScripts.begin(), SourceScripts.end(), *s) == SourceScripts.end())
+					SourceScripts.push_front(*s);
 			}
 		}
 		else
@@ -122,11 +127,6 @@ bool C4ScriptHost::ResolveIncludes(C4DefList *rDefs)
 	return true;
 }
 
-void C4AulScript::UnLink()
-{
-
-}
-
 void C4ScriptHost::UnLink()
 {
 	C4PropList * p = GetPropList();
@@ -136,6 +136,9 @@ void C4ScriptHost::UnLink()
 		p->SetProperty(P_Prototype, C4VPropList(Engine->GetPropList()));
 	}
 
+	// Delete cyclic references of owned proplists
+	DeleteOwnedPropLists();
+
 	// includes will have to be re-resolved now
 	IncludesResolved = false;
 
@@ -144,68 +147,57 @@ void C4ScriptHost::UnLink()
 
 void C4AulScriptEngine::UnLink()
 {
+	warnCnt = errCnt = lineCnt = 0;
+
+	// Make everything writeable
+	GetPropList()->ThawRecursively();
+	for (C4ScriptHost *s = Child0; s; s = s->Next)
+		s->GetPropList()->ThawRecursively();
+
 	// unlink scripts
-	for (C4AulScript *s = Child0; s; s = s->Next)
+	for (C4ScriptHost *s = Child0; s; s = s->Next)
 		s->UnLink();
-	GetPropList()->Thaw();
-	if (State > ASS_PREPARSED) State = ASS_PREPARSED;
 	// Do not clear global variables and constants, because they are registered by the
 	// preparser or other parts. Note that keeping those fields means that you cannot delete a global
 	// variable or constant at runtime by removing it from the script.
-	//GlobalNamedNames.Reset();
-	//GlobalConstNames.Reset();
-}
-
-bool C4AulScript::ReloadScript(const char *szPath, const char *szLanguage)
-{
-	return false;
 }
 
 void C4AulScriptEngine::Link(C4DefList *rDefs)
 {
 	try
 	{
-
 		// resolve appends
-		for (C4AulScript *s = Child0; s; s = s->Next)
+		for (C4ScriptHost *s = Child0; s; s = s->Next)
 			s->ResolveAppends(rDefs);
 
 		// resolve includes
-		for (C4AulScript *s = Child0; s; s = s->Next)
+		for (C4ScriptHost *s = Child0; s; s = s->Next)
 			s->ResolveIncludes(rDefs);
 
 		// parse the scripts to byte code
-		for (C4AulScript *s = Child0; s; s = s->Next)
+		for (C4ScriptHost *s = Child0; s; s = s->Next)
 			s->Parse();
 
-		// engine is always parsed (for global funcs)
-		State = ASS_PARSED;
-
-		// update material pointers
-		::MaterialMap.UpdateScriptPointers();
-
-		rDefs->CallEveryDefinition();
+		if (rDefs)
+		{
+			rDefs->SortByPriority();
+			rDefs->CallEveryDefinition();
+		}
 
 		// Done modifying the proplists now
-		for (C4AulScript *s = Child0; s; s = s->Next)
-			s->GetPropList()->Freeze();
-		GetPropList()->Freeze();
+		for (C4ScriptHost *s = Child0; s; s = s->Next)
+			s->GetPropList()->FreezeAndMakeStaticRecursively(&s->ownedPropLists);
 
-		// display state
-		LogF("C4AulScriptEngine linked - %d line%s, %d warning%s, %d error%s",
-		     lineCnt, (lineCnt != 1 ? "s" : ""), warnCnt, (warnCnt != 1 ? "s" : ""), errCnt, (errCnt != 1 ? "s" : ""));
-
-		// reset counters
-		warnCnt = errCnt = lineCnt = 0;
+		GetPropList()->FreezeAndMakeStaticRecursively(&OwnedPropLists);
 	}
-	catch (C4AulError *err)
+	catch (C4AulError &err)
 	{
 		// error??! show it!
-		err->show();
-		delete err;
+		ErrorHandler->OnError(err.what());
 	}
 
-
+	// Set name list for globals (FIXME: is this necessary?)
+	ScriptEngine.GlobalNamed.SetNameList(&ScriptEngine.GlobalNamedNames);
 }
 
 
@@ -220,24 +212,21 @@ void C4AulScriptEngine::ReLink(C4DefList *rDefs)
 	// re-link
 	Link(rDefs);
 
-	// update effect pointers
-	::Objects.UpdateScriptPointers();
+	// display state
+	LogF("C4AulScriptEngine linked - %d line%s, %d warning%s, %d error%s",
+		lineCnt, (lineCnt != 1 ? "s" : ""), warnCnt, (warnCnt != 1 ? "s" : ""), errCnt, (errCnt != 1 ? "s" : ""));
 
-	// update material pointers
-	::MaterialMap.UpdateScriptPointers();
+	// adjust global effects
+	if (pGlobalEffects) pGlobalEffects->ReAssignAllCallbackFunctions();
+	if (GameScript.pScenarioEffects) GameScript.pScenarioEffects->ReAssignAllCallbackFunctions();
 }
 
-bool C4AulScriptEngine::ReloadScript(const char *szScript, C4DefList *pDefs, const char *szLanguage)
+bool C4AulScriptEngine::ReloadScript(const char *szScript, const char *szLanguage)
 {
-	C4AulScript * s;
+	C4ScriptHost * s;
 	for (s = Child0; s; s = s->Next)
 		if (s->ReloadScript(szScript, szLanguage))
 			break;
-	if (!s)
-		return false;
-	// relink
-	ReLink(pDefs);
-	// ok
-	return true;
+	return !!s;
 }
 

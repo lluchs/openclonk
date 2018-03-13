@@ -2,7 +2,7 @@
  * OpenClonk, http://www.openclonk.org
  *
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -15,20 +15,20 @@
  */
 // the ingame-lobby
 
-#include <C4Include.h>
-#include <C4GameLobby.h>
+#include "C4Include.h"
+#include "C4ForbidLibraryCompilation.h"
+#include "gui/C4GameLobby.h"
 
-#include "C4FullScreen.h"
-#include "C4Network2Dialogs.h"
-#include "C4GameOptions.h"
-#include "C4GameDialogs.h"
-#include "C4RTF.h"
-#include "C4ChatDlg.h"
-#include "C4PlayerInfoListBox.h"
-#include <C4MessageInput.h>
-#include <C4Game.h>
-#include <C4Network2.h>
-#include "C4GraphicsResource.h"
+#include "c4group/C4Components.h"
+#include "control/C4GameControl.h"
+#include "game/C4Application.h"
+#include "graphics/C4GraphicsResource.h"
+#include "gui/C4ChatDlg.h"
+#include "gui/C4GameOptions.h"
+#include "gui/C4MessageInput.h"
+#include "gui/C4PlayerInfoListBox.h"
+#include "network/C4Network2.h"
+#include "network/C4Network2Dialogs.h"
 
 namespace C4GameLobby
 {
@@ -50,18 +50,24 @@ namespace C4GameLobby
 	}
 
 
+// ----------- C4PacketSetScenarioParameter ---------------------------------------------
+
+	void C4PacketSetScenarioParameter::CompileFunc(StdCompiler *pComp)
+	{
+		pComp->Value(mkNamingAdapt(mkParAdapt(ID, StdCompiler::RCT_Idtf), "ID", StdCopyStrBuf()));
+		pComp->Value(mkNamingAdapt(Value, "Value", 0));
+	}
+
+
 // ----------- ScenDescs ---------------------------------------------
 
 	ScenDesc::ScenDesc(const C4Rect &rcBounds, bool fActive) : C4GUI::Window(), fDescFinished(false)
 	{
 		// build components
-		//CStdFont &rTitleFont = ::GraphicsResource.CaptionFont;
 		SetBounds(rcBounds);
 		C4GUI::ComponentAligner caMain(GetClientRect(), 0,0, true);
-		//AddElement(pTitle = new C4GUI::Label("", caMain.GetFromTop(rTitleFont.GetLineHeight()), ALeft, C4GUI_CaptionFontClr, &rTitleFont, true));
 		AddElement(pDescBox = new C4GUI::TextWindow(caMain.GetAll(), 0, 0, 0, 100, 4096, "", true));
-		pDescBox->SetDecoration(false, false, NULL, true);
-		//pDescBox->SetToolTip(LoadResStr("IDS_MSG_SCENARIODESC")); annoying when scrolling through desc...
+		pDescBox->SetDecoration(false, false, nullptr, true);
 		// initial update to set current data
 		if (fActive) Activate();
 	}
@@ -83,17 +89,10 @@ namespace C4GameLobby
 			}
 			else
 			{
-				StdStrBuf sDesc;
 				// load desc
 				C4ComponentHost DefDesc;
 				if (C4Language::LoadComponentHost(&DefDesc, ScenarioFile, C4CFN_ScenarioDesc, Config.General.LanguageEx))
-				{
-					C4RTFFile rtf;
-					rtf.Load(StdBuf(DefDesc.GetData(), SLen(DefDesc.GetData())));
-					sDesc.Take(rtf.GetPlainText());
-				}
-				if (!!sDesc)
-					pDescBox->AddTextLine(sDesc.getData(), &rTextFont, C4GUI_MessageFontClr, false, true, &rTitleFont);
+					pDescBox->AddTextLine(DefDesc.GetData(), &rTextFont, C4GUI_MessageFontClr, false, true, &rTitleFont);
 				else
 					pDescBox->AddTextLine(Game.ScenarioTitle.getData(), &rTitleFont, C4GUI_CaptionFontClr, false, true);
 			}
@@ -132,8 +131,8 @@ namespace C4GameLobby
 			                          (const char *) LoadResStr("IDS_DLG_LOBBY"):
 			                          FormatString("%s - %s", Game.ScenarioTitle.getData(), LoadResStr("IDS_DLG_LOBBY")).getData(),
 			                          Game.ScenarioTitle.getData()),
-			pPlayerList(NULL), pResList(NULL), pChatBox(NULL), pRightTabLbl(NULL), pRightTab(NULL),
-			pEdt(NULL), btnRun(NULL), btnPlayers(NULL), btnResources(NULL), btnTeams(NULL), btnChat(NULL)
+			pPlayerList(nullptr), pResList(nullptr), pChatBox(nullptr), pRightTabLbl(nullptr), pRightTab(nullptr),
+			pEdt(nullptr), btnRun(nullptr), btnPlayers(nullptr), btnResources(nullptr), btnTeams(nullptr), btnChat(nullptr)
 	{
 		// key bindings
 		pKeyHistoryUp  = new C4KeyBinding(C4KeyCodeEx(K_UP  ), "LobbyChatHistoryUp"  , KEYSCOPE_Gui, new C4GUI::DlgKeyCBEx<MainDlg, bool>(*this, true , &MainDlg::KeyHistoryUpDown), C4CustomKey::PRIO_CtrlOverride);
@@ -142,7 +141,7 @@ namespace C4GameLobby
 		Application.Add(this);
 		// indents / sizes
 		int32_t iDefBtnHeight = 32;
-		int32_t iIndentX1, iIndentX2, iIndentX3/*, iIndentX4*/;
+		int32_t iIndentX1, iIndentX2, iIndentX3;
 		int32_t iIndentY1, iIndentY2, iIndentY3, iIndentY4;
 		int32_t iClientListWdt;
 		if (GetClientRect().Wdt > 500)
@@ -190,12 +189,17 @@ namespace C4GameLobby
 		C4GUI::CallbackButton<MainDlg> *btnExit;
 		btnExit = new C4GUI::CallbackButton<MainDlg>(LoadResStr("IDS_DLG_EXIT"), caBottom.GetFromLeft(100), &MainDlg::OnExitBtn);
 		if (fHost)
+		{
 			btnRun = new C4GUI::CallbackButton<MainDlg>(LoadResStr("IDS_DLG_GAMEGO"), caBottom.GetFromRight(100), &MainDlg::OnRunBtn);
+			checkReady = nullptr;
+		}
 		else
-			// 2do: Ready-checkbox
+		{
+			checkReady = new C4GUI::CheckBox(caBottom.GetFromRight(90), LoadResStr("IDS_DLG_READY"), false);
+			checkReady->SetOnChecked(new C4GUI::CallbackHandler<MainDlg>(this, &MainDlg::OnReadyCheck));
 			caBottom.GetFromRight(90);
-		//C4GUI::CallbackButton<MainDlg> *btnTest = new C4GUI::CallbackButton<MainDlg>("test", caBottom.GetFromRight(90), &MainDlg::OnTestBtn);
-		pGameOptionButtons = new C4GameOptionButtons(caBottom.GetCentered(caBottom.GetInnerWidth(), Min<int32_t>(C4GUI_IconExHgt, caBottom.GetHeight())), true, fHost, true);
+		}
+		pGameOptionButtons = new C4GameOptionButtons(caBottom.GetCentered(caBottom.GetInnerWidth(), std::min<int32_t>(C4GUI_IconExHgt, caBottom.GetHeight())), true, fHost, true);
 
 		// players / resources sidebar
 		C4GUI::ComponentAligner caRight(caMain.GetFromRight(iClientListWdt), iIndentX3,iIndentY4);
@@ -210,7 +214,7 @@ namespace C4GameLobby
 		pPlayerSheet->AddElement(pPlayerList);
 		pResList = new C4Network2ResDlg(pResSheet->GetContainedClientRect(), false);
 		pResSheet->AddElement(pResList);
-		pOptionsList = new C4GameOptionsList(pResSheet->GetContainedClientRect(), false, false);
+		pOptionsList = new C4GameOptionsList(pResSheet->GetContainedClientRect(), false, C4GameOptionsList::GOLS_Lobby);
 		pOptionsSheet->AddElement(pOptionsList);
 		pScenarioInfo = new ScenDesc(pResSheet->GetContainedClientRect(), false);
 		pScenarioSheet->AddElement(pScenarioInfo);
@@ -220,15 +224,16 @@ namespace C4GameLobby
 		bool fHasTeams = Game.Teams.IsMultiTeams();
 		bool fHasChat = C4ChatDlg::IsChatActive();
 		int32_t iBtnNum = 4+fHasTeams+fHasChat;
-		//btnAddPlayer = new C4GUI::CallbackButton<MainDlg, C4GUI::IconButton>(C4GUI::Ico_AddPlr, pRightTabLbl->GetToprightCornerRect(16,16,4,4,2+fHasTeams), pPlayerSheet->GetHotkey(), &MainDlg::OnTabTeams);
 		if (fHasTeams)
-			btnTeams = new C4GUI::CallbackButton<MainDlg, C4GUI::IconButton>(C4GUI::Ico_Team, pRightTabLbl->GetToprightCornerRect(16,16,4,4,--iBtnNum), pPlayerSheet->GetHotkey(), &MainDlg::OnTabTeams);
-		btnPlayers = new C4GUI::CallbackButton<MainDlg, C4GUI::IconButton>(C4GUI::Ico_Player, pRightTabLbl->GetToprightCornerRect(16,16,4,4,--iBtnNum), pPlayerSheet->GetHotkey(), &MainDlg::OnTabPlayers);
-		btnResources = new C4GUI::CallbackButton<MainDlg, C4GUI::IconButton>(C4GUI::Ico_Resource, pRightTabLbl->GetToprightCornerRect(16,16,4,4,--iBtnNum), pResSheet->GetHotkey(), &MainDlg::OnTabRes);
-		btnOptions = new C4GUI::CallbackButton<MainDlg, C4GUI::IconButton>(C4GUI::Ico_Options, pRightTabLbl->GetToprightCornerRect(16,16,4,4,--iBtnNum), pOptionsSheet->GetHotkey(), &MainDlg::OnTabOptions);
-		btnScenario = new C4GUI::CallbackButton<MainDlg, C4GUI::IconButton>(C4GUI::Ico_Gfx, pRightTabLbl->GetToprightCornerRect(16,16,4,4,--iBtnNum), pOptionsSheet->GetHotkey(), &MainDlg::OnTabScenario);
+		{
+			btnTeams = new C4GUI::CallbackButton<MainDlg, C4GUI::IconButton>(C4GUI::Ico_Team, pRightTabLbl->GetToprightCornerRect(16, 16, 4, 4, --iBtnNum), LoadResStr("IDS_DLG_PLAYERSBYTEAM"), &MainDlg::OnTabTeams);
+		}
+		btnPlayers = new C4GUI::CallbackButton<MainDlg, C4GUI::IconButton>(C4GUI::Ico_Player, pRightTabLbl->GetToprightCornerRect(16,16,4,4,--iBtnNum), LoadResStr("IDS_DLG_PLAYERS"), &MainDlg::OnTabPlayers);
+		btnResources = new C4GUI::CallbackButton<MainDlg, C4GUI::IconButton>(C4GUI::Ico_Resource, pRightTabLbl->GetToprightCornerRect(16,16,4,4,--iBtnNum), LoadResStr("IDS_DLG_RESOURCES"), &MainDlg::OnTabRes);
+		btnOptions = new C4GUI::CallbackButton<MainDlg, C4GUI::IconButton>(C4GUI::Ico_Options, pRightTabLbl->GetToprightCornerRect(16,16,4,4,--iBtnNum), LoadResStr("IDS_DLG_OPTIONS"), &MainDlg::OnTabOptions);
+		btnScenario = new C4GUI::CallbackButton<MainDlg, C4GUI::IconButton>(C4GUI::Ico_Gfx, pRightTabLbl->GetToprightCornerRect(16,16,4,4,--iBtnNum), LoadResStr("IDS_DLG_SCENARIO"), &MainDlg::OnTabScenario);
 		if (fHasChat)
-			btnChat = new C4GUI::CallbackButton<MainDlg, C4GUI::IconButton>(C4GUI::Ico_Ex_Chat, pRightTabLbl->GetToprightCornerRect(16,16,4,4,--iBtnNum), 0 /* 2do*/, &MainDlg::OnBtnChat);
+			btnChat = new C4GUI::CallbackButton<MainDlg, C4GUI::IconButton>(C4GUI::Ico_Ex_Chat, pRightTabLbl->GetToprightCornerRect(16,16,4,4,--iBtnNum), LoadResStr("IDS_CTL_CHAT"), &MainDlg::OnBtnChat);
 
 		// update labels and tooltips for player list
 		UpdateRightTab();
@@ -243,14 +248,11 @@ namespace C4GameLobby
 		pLbl->SetClickFocusControl(pEdt);
 		// log box
 		pChatBox = new C4GUI::TextWindow(caCenter.GetAll());
-		//pPaintBox = new PaintBox();
 		// add components in tab-order
-		//AddElement(pPaintBox); pPaintBox->SetToolTip("Paintbox :D");
 		AddElement(pChatBox);
 		AddElement(pLbl); AddElement(pEdt); // chat
 
 		AddElement(pRightTabLbl);
-		//(new C4GUI::ContextButton(pRightTabLbl, true))->SetToolTip("[.!] Switches between player and resource view"); // right tab label+ctx menu
 		if (btnTeams) AddElement(btnTeams);
 		AddElement(btnPlayers);
 		AddElement(btnResources);
@@ -268,7 +270,8 @@ namespace C4GameLobby
 		}
 		else
 		{
-			// 2do: Ready-checkbox
+			AddElement(checkReady);
+			checkReady->SetToolTip(LoadResStr("IDS_DLGTIP_READY"));
 		}
 		// set initial focus
 		SetFocus(pEdt, false);
@@ -294,11 +297,10 @@ namespace C4GameLobby
 		Close(false);
 	}
 
-	void MainDlg::OnTestBtn(C4GUI::Control *btn)
+	void MainDlg::OnReadyCheck(C4GUI::Element *pCheckBox)
 	{
-		pPlayerList->SetMode(C4PlayerInfoListBox::PILBM_Evaluation);
-		pPlayerList->SetTeamFilter(1);
-		//pPlayerList->SetCustomFont(&::GraphicsResource.FontTooltip, 0xff000000);
+		bool rIsOn = static_cast<C4GUI::CheckBox *>(pCheckBox)->GetChecked();
+		::Control.DoInput(CID_ClientUpdate, new C4ControlClientUpdate(::Game.Clients.getLocalID(), CUT_SetReady, rIsOn), CDT_Direct);
 	}
 
 	void MainDlg::SetCountdownState(CountdownState eToState, int32_t iTimer)
@@ -308,19 +310,18 @@ namespace C4GameLobby
 		// changing away from countdown?
 		if (eCountdownState == CDS_Countdown)
 		{
-			StopSoundEffect("Elevator", NULL);
-			if (eToState != CDS_Start) StartSoundEffect("Pshshsh");
+			StopSoundEffect("Structures::Elevator::Moving", nullptr);
+			if (eToState != CDS_Start) StartSoundEffect("Liquids::Pshshsh");
 		}
 		// change to game start?
 		if (eToState == CDS_Start)
 		{
 			// announce it!
-			StartSoundEffect("Blast3");
+			StartSoundEffect("Fire::Blast3");
 		}
 		else if (eToState == CDS_Countdown)
 		{
-			StartSoundEffect("Fuse");
-			StartSoundEffect("Elevator", true);
+			StartSoundEffect("Fire::Fuse");
 		}
 		if (eToState == CDS_Countdown || eToState == CDS_LongCountdown)
 		{
@@ -371,7 +372,7 @@ namespace C4GameLobby
 		{
 			// first countdown message
 			OnLog(Pkt.GetCountdownMsg(!fWasCountdown).getData(), C4GUI_LogFontClr2);
-			StartSoundEffect("Command");
+			StartSoundEffect("UI::Tick");
 		}
 	}
 
@@ -406,12 +407,34 @@ namespace C4GameLobby
 	{
 		// network savegame resumes: Warn if not all players have been associated
 		if (Game.C4S.Head.SaveGame)
+		{
 			if (Game.PlayerInfos.FindUnassociatedRestoreInfo(Game.RestorePlayerInfos))
 			{
 				StdStrBuf sMsg; sMsg.Ref(LoadResStr("IDS_MSG_NOTALLSAVEGAMEPLAYERSHAVE"));
 				if (!GetScreen()->ShowMessageModal(sMsg.getData(), LoadResStr("IDS_MSG_FREESAVEGAMEPLRS"), C4GUI::MessageDialog::btnYesNo, C4GUI::Ico_SavegamePlayer, &Config.Startup.HideMsgPlrNoTakeOver))
 					return;
 			}
+
+			// warning about desync bug #1965
+			int i=0; C4ClientPlayerInfos *pkInfo;
+			while ((pkInfo = Game.PlayerInfos.GetIndexedInfo(i++))) {
+				C4PlayerInfo *pPlrInfo; int32_t iInfo=0;
+				while ((pPlrInfo = pkInfo->GetPlayerInfo(iInfo++)))
+					if (!pPlrInfo->GetAssociatedSavegamePlayerID())
+					{
+						bool ignore = GetScreen()->ShowMessageModal(
+							LoadResStr("IDS_DLG_NETRESUME"),
+							LoadResStr("IDS_MSG_FREESAVEGAMEPLRS"),
+							C4GUI::MessageDialog::btnYesNo,
+							C4GUI::Ico_Error
+						);
+						if (ignore)
+							break;
+						else
+							return;
+					}
+			}
+		}
 		// validate countdown time
 		iCountdownTime = ValidatedCountdownTime(iCountdownTime);
 		// either direct start...
@@ -431,7 +454,7 @@ namespace C4GameLobby
 		if (!szInputText || !*szInputText)
 		{
 			// do some error sound then
-			C4GUI::GUISound("Error");
+			C4GUI::GUISound("UI::Error");
 		}
 		else
 		{
@@ -473,7 +496,7 @@ namespace C4GameLobby
 		// besides, this releases the lobby from doing any host/client-specializations
 #define GETPKT(type, name) \
     assert(pPacket); const type &name = \
-      /*dynamic_cast*/ static_cast<const type &>(*pPacket);
+      static_cast<const type &>(*pPacket);
 		switch (cStatus)
 		{
 		case PID_LobbyCountdown: // initiate or abort countdown
@@ -483,6 +506,13 @@ namespace C4GameLobby
 			OnCountdownPacket(Pkt);
 		}
 		break;
+		case PID_SetScenarioParameter: // set a scenario parameter value
+			{
+				GETPKT(C4PacketSetScenarioParameter, Pkt);
+				::Game.Parameters.ScenarioParameters.SetValue(Pkt.GetID(), Pkt.GetValue(), false);
+				// reflect updated value immediately on clients
+				if (pRightTab->GetActiveSheetIndex() == SheetIdx_Options) if (pOptionsList) pOptionsList->Update();
+			}
 		};
 #undef GETPKT
 	}
@@ -525,7 +555,7 @@ namespace C4GameLobby
 	{
 		if (pChatBox)
 		{
-			StartSoundEffect("Error");
+			StartSoundEffect("UI::Error");
 			pChatBox->AddTextLine(szErrMsg, &::GraphicsResource.TextFont, C4GUI_ErrorFontClr, true, true);
 			pChatBox->ScrollToBottom();
 		}
@@ -581,7 +611,7 @@ namespace C4GameLobby
 			return;
 		}
 		// join!
-		::Network.Players.JoinLocalPlayer(Config.AtRelativePath(szFilename), true);
+		::Network.Players.JoinLocalPlayer(Config.AtRelativePath(szFilename));
 	}
 
 	void MainDlg::OnTabPlayers(C4GUI::Control *btn)
@@ -735,7 +765,7 @@ namespace C4GameLobby
 	void Countdown::OnSec1Timer()
 	{
 		// count down
-		iStartTimer = Max<int32_t>(iStartTimer - 1, 0);
+		iStartTimer = std::max<int32_t>(iStartTimer - 1, 0);
 		// only send "important" start timer numbers to all clients
 		if (iStartTimer <= AlmostStartCountdownTime || // last seconds
 		    (iStartTimer <= 600 && !(iStartTimer % 10)) || // last minute: 10s interval
@@ -756,14 +786,17 @@ namespace C4GameLobby
 		// countdown done
 		if (!iStartTimer)
 		{
+#ifdef USE_CONSOLE
 			// Dedicated server: if there are not enough players for this game, abort and quit the application
-			if (!::Network.GetLobby() && (Game.PlayerInfos.GetPlayerCount() < Game.C4S.GetMinPlayer()))
+			if (Game.PlayerInfos.GetPlayerCount() < Game.C4S.GetMinPlayer()
+				|| ::Network.Clients.Count() <= 2)
 			{
 				Log(LoadResStr("IDS_MSG_NOTENOUGHPLAYERSFORTHISRO")); // it would also be nice to send this message to all clients...
 				Application.Quit();
 			}
 			// Start the game
 			else
+#endif // USE_CONSOLE
 				::Network.Start();
 		}
 	}

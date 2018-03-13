@@ -1,29 +1,28 @@
 /*
  * OpenClonk, http://www.openclonk.org
  *
- * Copyright (c) 2013 Oliver Schneider
+ * Copyright (c) 2013, The OpenClonk Team and contributors
  *
- * Permission to use, copy, modify, and/or distribute this software for any
- * purpose with or without fee is hereby granted, provided that the above
- * copyright notice and this permission notice appear in all copies.
- * See isc_license.txt for full license and disclaimer.
+ * Distributed under the terms of the ISC license; see accompanying file
+ * "COPYING" for details.
  *
- * "Clonk" is a registered trademark of Matthes Bender.
- * See clonk_trademark_license.txt for full license.
+ * "Clonk" is a registered trademark of Matthes Bender, used with permission.
+ * See accompanying file "TRADEMARK" for details.
+ *
+ * To redistribute this file separately, substitute the full license texts
+ * for the above references.
  */
 
 #include <C4Include.h>
 #include "script/C4Aul.h"
+#include "script/C4AulExec.h"
 
 #include <gtest/gtest.h>
 
 TEST(DirectExecTest, SanityTests)
 {
-	C4AulScript * pScript = new C4AulScript();
-	ASSERT_TRUE(pScript);
-	C4Value rVal(pScript->DirectExec(nullptr, "5*8", "unit test script", false, nullptr));
+	C4Value rVal(AulExec.DirectExec(nullptr, "5*8", "unit test script", false, nullptr));
 	EXPECT_EQ(rVal, C4Value(5*8));
-	delete pScript;
 }
 
 template<typename T>
@@ -52,11 +51,7 @@ public:
 		EXPECT_EQ(Script, rhs.Script);
 		EXPECT_EQ(Resolving, rhs.Resolving);
 		EXPECT_EQ(IncludesResolved, rhs.IncludesResolved);
-		EXPECT_EQ(LocalNamed.iSize, rhs.LocalNamed.iSize);
-		if (LocalNamed.iSize == rhs.LocalNamed.iSize)
-			EXPECT_TRUE(std::equal(LocalNamed.pNames, LocalNamed.pNames+LocalNamed.iSize, rhs.LocalNamed.pNames));
 		EXPECT_EQ(LocalValues, rhs.LocalValues);
-		EXPECT_EQ(SourceScripts, rhs.SourceScripts);
 
 		// C4AulScript
 		EXPECT_EQ(ScriptName, rhs.ScriptName);
@@ -79,12 +74,12 @@ public:
 TEST(DirectExecTest, HostUnmodifedByParseTest)
 {
 	TestHost host;
-	TestHost host2 = host;
+	TestHost host2;
 	host.test_equality(host2);
 	char szScript[] = "8*5";
-	C4AulScriptFunc *pFunc = new C4AulScriptFunc(&host, host.GetScriptHost(), 0, szScript);
+	C4AulScriptFunc *pFunc = new C4AulScriptFunc(host.GetPropList(), nullptr, nullptr, szScript);
 	host.test_equality(host2);
-	pFunc->ParseFn();
+	pFunc->ParseDirectExecStatement(&::ScriptEngine);
 	host.test_equality(host2);
 	delete pFunc;
 }

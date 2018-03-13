@@ -3,7 +3,7 @@
  *
  * Copyright (c) 1998-2000, Matthes Bender
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -31,8 +31,6 @@
 
 #ifndef INC_C4Real
 #define INC_C4Real
-
-#include <math.h>
 
 // activate to switch to classic fixed-point math
 #define C4REAL_USE_FIXNUM 1
@@ -77,8 +75,8 @@ public:
 
 public:
 	// constructors
-	inline C4Fixed () { /*val=0;*/ } // why initialize?
-	inline C4Fixed (const C4Fixed &rCpy): val(rCpy.val) { }
+	inline C4Fixed () = default;
+	inline C4Fixed (const C4Fixed &) = default;
 
 	// Conversion must be done by the conversion routines itofix, fixtoi, ftofix and fixtof
 	// in order to be backward compatible, so everything is private.
@@ -126,7 +124,7 @@ public:
 	inline C4Fixed &operator = (int32_t x) { return *this = C4Fixed(x); }
 
 	// test value
-	inline operator bool () const { return !! val; }
+	explicit operator bool () const { return val != 0; }
 	inline bool operator ! () const { return ! val; }
 
 	// arithmetic operations
@@ -203,13 +201,6 @@ public:
 	inline C4Fixed operator * (float iVal2) const { return C4Fixed(*this) *= iVal2; }
 	inline C4Fixed operator / (float iVal2) const { return C4Fixed(*this) /= iVal2; }
 
-#if defined(_MSC_VER) && _MSC_VER <= 1200
-	inline C4Fixed operator + (int iVal2) const { return operator + (int32_t(iVal2)); }
-	inline C4Fixed operator - (int iVal2) const { return operator - (int32_t(iVal2)); }
-	inline C4Fixed operator * (int iVal2) const { return operator * (int32_t(iVal2)); }
-	inline C4Fixed operator / (int iVal2) const { return operator / (int32_t(iVal2)); }
-#endif
-
 	inline bool operator == (int32_t iVal2) const { return operator == (C4Fixed(iVal2)); }
 	inline bool operator < (int32_t iVal2) const { return operator < (C4Fixed(iVal2)); }
 	inline bool operator > (int32_t iVal2) const { return operator > (C4Fixed(iVal2)); }
@@ -223,15 +214,6 @@ public:
 	inline bool operator <= (float iVal2) const { return operator <= (C4Fixed(iVal2)); }
 	inline bool operator >= (float iVal2) const { return operator >= (C4Fixed(iVal2)); }
 	inline bool operator != (float iVal2) const { return operator != (C4Fixed(iVal2)); }
-
-#if defined(_MSC_VER) && _MSC_VER <= 1200
-	inline bool operator == (int iVal2) const { return operator == (C4Fixed(int32_t(iVal2))); }
-	inline bool operator < (int iVal2) const { return operator < (C4Fixed(int32_t(iVal2))); }
-	inline bool operator > (int iVal2) const { return operator > (C4Fixed(int32_t(iVal2))); }
-	inline bool operator <= (int iVal2) const { return operator <= (C4Fixed(int32_t(iVal2))); }
-	inline bool operator >= (int iVal2) const { return operator >= (C4Fixed(int32_t(iVal2))); }
-	inline bool operator != (int iVal2) const { return operator != (C4Fixed(int32_t(iVal2))); }
-#endif
 
 #ifdef C4REAL_USE_FIXNUM
 	C4Fixed sin_deg() const
@@ -284,7 +266,6 @@ inline C4Fixed itofix(int32_t x, int32_t prec) { return C4Fixed(x, prec); }
 inline C4Real Sin(const C4Real &fAngle) { return fAngle.sin_deg(); }
 inline C4Real Cos(const C4Real &fAngle) { return fAngle.cos_deg(); }
 inline C4Real C4REAL100(int x) { return itofix(x, 100); }
-//inline C4Real C4REAL256(int x) { return itofix(x, 256); }
 inline C4Real C4REAL256(int x) { C4Fixed r; r.val = x * FIXED_FPF / 256; return r; }
 inline C4Real C4REAL10(int x) { return itofix(x, 10); }
 

@@ -3,7 +3,7 @@
  *
  * Copyright (c) 1998-2000, Matthes Bender
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -22,12 +22,14 @@
 #ifdef HAVE_DBGHELP
 
 // Dump generation on crash
-#include <C4Version.h>
-#include <C4windowswrapper.h>
+#include "C4Version.h"
+#include "platform/C4windowswrapper.h"
 #include <dbghelp.h>
-#include <fcntl.h>
-#include <string.h>
 #include <tlhelp32.h>
+#include <cinttypes>
+#if defined(__CRT_WIDE) || (defined(_MSC_VER) && _MSC_VER >= 1900)
+#define USE_WIDE_ASSERT
+#endif
 
 static bool FirstCrash = true;
 
@@ -59,7 +61,9 @@ namespace {
 #define LOG_DYNAMIC_TEXT(...) write(fd, DumpBuffer, LOG_SNPRINTF(DumpBuffer, DumpBufferSize-1, __VA_ARGS__))
 
 // Figure out which kind of format string will output a pointer in hex
-#if defined(_MSC_VER) || defined(__MINGW32__)
+#if defined(PRIdPTR)
+#	define POINTER_FORMAT_SUFFIX PRIdPTR
+#elif defined(_MSC_VER)
 #	define POINTER_FORMAT_SUFFIX "Ix"
 #elif defined(__GNUC__)
 #	define POINTER_FORMAT_SUFFIX "zx"
@@ -72,6 +76,10 @@ namespace {
 #	define POINTER_FORMAT "0x%08" POINTER_FORMAT_SUFFIX
 #else
 #	define POINTER_FORMAT "0x%" POINTER_FORMAT_SUFFIX
+#endif
+
+#ifndef STATUS_ASSERTION_FAILURE
+#	define STATUS_ASSERTION_FAILURE ((DWORD)0xC0000420L)
 #endif
 
 		LOG_STATIC_TEXT("**********************************************************************\n");
@@ -101,9 +109,6 @@ namespace {
 		LOG_EXCEPTION(EXCEPTION_PRIV_INSTRUCTION,         "The thread tried to execute an instruction whose operation is not allowed in the current machine mode.");
 		LOG_EXCEPTION(EXCEPTION_STACK_OVERFLOW,           "The thread used up its stack.");
 		LOG_EXCEPTION(EXCEPTION_GUARD_PAGE,               "The thread accessed memory allocated with the PAGE_GUARD modifier.");
-#ifndef STATUS_ASSERTION_FAILURE
-#	define STATUS_ASSERTION_FAILURE ((DWORD)0xC0000420L)
-#endif
 		LOG_EXCEPTION(STATUS_ASSERTION_FAILURE,           "The thread specified a pre- or postcondition that did not hold.");
 #undef LOG_EXCEPTION
 		default:
@@ -154,13 +159,17 @@ namespace {
 				LOG_STATIC_TEXT("Additional information for the exception was not provided.\n");
 				break;
 			}
-#ifdef __CRT_WIDE
+#ifdef USE_WIDE_ASSERT
 #	define ASSERTION_INFO_FORMAT "%ls"
+#	define ASSERTION_INFO_TYPE wchar_t *
 #else
 #	define ASSERTION_INFO_FORMAT "%s"
+#	define ASSERTION_INFO_TYPE char *
 #endif
 			LOG_DYNAMIC_TEXT("Additional information for the exception:\n    Assertion that failed: " ASSERTION_INFO_FORMAT "\n    File: " ASSERTION_INFO_FORMAT "\n    Line: %d\n",
-				exc->ExceptionRecord->ExceptionInformation[0], exc->ExceptionRecord->ExceptionInformation[1], exc->ExceptionRecord->ExceptionInformation[2]);
+				reinterpret_cast<ASSERTION_INFO_TYPE>(exc->ExceptionRecord->ExceptionInformation[0]),
+				reinterpret_cast<ASSERTION_INFO_TYPE>(exc->ExceptionRecord->ExceptionInformation[1]),
+				(int) exc->ExceptionRecord->ExceptionInformation[2]);
 			break;
 		}
 
@@ -256,10 +265,10 @@ namespace {
 		// Initialize DbgHelp.dll symbol functions
 		SymSetOptions(SYMOPT_UNDNAME | SYMOPT_DEFERRED_LOADS | SYMOPT_LOAD_LINES);
 		HANDLE process = GetCurrentProcess();
-		if (SymInitialize(process, 0, true))
+		if (SymInitialize(process, nullptr, true))
 		{
 			LOG_STATIC_TEXT("\nStack trace:\n");
-			STACKFRAME64 frame = {0};
+			auto frame = STACKFRAME64();
 			DWORD image_type;
 			CONTEXT context = *exc->ContextRecord;
 			// Setup frame info
@@ -286,7 +295,7 @@ namespace {
 			IMAGEHLP_LINE64 *line = reinterpret_cast<IMAGEHLP_LINE64*>(SymbolBuffer);
 			static_assert(DumpBufferSize >= sizeof(*line), "IMAGEHLP_LINE64 too large to fit into buffer");
 			int frame_number = 0;
-			while (StackWalk64(image_type, process, GetCurrentThread(), &frame, &context, 0, SymFunctionTableAccess64, SymGetModuleBase64, 0))
+			while (StackWalk64(image_type, process, GetCurrentThread(), &frame, &context, nullptr, SymFunctionTableAccess64, SymGetModuleBase64, nullptr))
 			{
 				LOG_DYNAMIC_TEXT("#%3d ", frame_number);
 				module->SizeOfStruct = sizeof(*module);
@@ -305,11 +314,11 @@ namespace {
 				}
 				else if (image_base > 0)
 				{
-					LOG_DYNAMIC_TEXT("+%#lx", static_cast<size_t>(frame.AddrPC.Offset - image_base));
+					LOG_DYNAMIC_TEXT("+%#lx", static_cast<long>(frame.AddrPC.Offset - image_base));
 				}
 				else
 				{
-					LOG_DYNAMIC_TEXT("%#lx", static_cast<size_t>(frame.AddrPC.Offset));
+					LOG_DYNAMIC_TEXT("%#lx", static_cast<long>(frame.AddrPC.Offset));
 				}
 				DWORD disp;
 				line->SizeOfStruct = sizeof(*line);
@@ -414,19 +423,20 @@ LONG WINAPI GenerateDump(EXCEPTION_POINTERS* pExceptionPointers)
 
 	if (filename[0] != L'\0')
 	{
-		file = CreateFile(filename, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_DELETE, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
+		file = CreateFile(filename, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_DELETE, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
 		// If we can't create a *new* file to dump into, don't dump at all.
 		if (file == INVALID_HANDLE_VALUE)
 			filename[0] = L'\0';
 	}
 
 	// Write dump (human readable format)
-	SafeTextDump(pExceptionPointers, GetLogFD(), filename);
+	if (GetLogFD() != -1)
+		SafeTextDump(pExceptionPointers, GetLogFD(), filename);
 
 	if (file != INVALID_HANDLE_VALUE)
 	{
-		MINIDUMP_USER_STREAM_INFORMATION user_stream_info = {0};
-		MINIDUMP_USER_STREAM user_stream = {0};
+		auto user_stream_info = MINIDUMP_USER_STREAM_INFORMATION();
+		auto user_stream = MINIDUMP_USER_STREAM();
 		char build_id[] = OC_BUILD_ID;
 		if (OC_BUILD_ID[0] != '\0')
 		{
@@ -442,7 +452,7 @@ LONG WINAPI GenerateDump(EXCEPTION_POINTERS* pExceptionPointers)
 		ExpParam.ExceptionPointers = pExceptionPointers;
 		ExpParam.ClientPointers = true;
 		MiniDumpWriteDump(GetCurrentProcess(), GetCurrentProcessId(),
-							file, MiniDumpNormal, &ExpParam, &user_stream_info, NULL);
+							file, MiniDumpNormal, &ExpParam, &user_stream_info, nullptr);
 		CloseHandle(file);
 	}
 
@@ -457,7 +467,7 @@ namespace {
 	// replaces the trampoline with the original prologue, and calls the handler.
 	// If the standard handler returns control to assertion_handler(), it will then
 	// restore the hook.
-#ifdef __CRT_WIDE
+#ifdef USE_WIDE_ASSERT
 	typedef void (__cdecl *ASSERT_FUNC)(const wchar_t *, const wchar_t *, unsigned);
 	const ASSERT_FUNC assert_func = 
 		&_wassert;
@@ -512,7 +522,7 @@ namespace {
 
 	struct dump_thread_t {
 		HANDLE thread;
-#ifdef __CRT_WIDE
+#ifdef USE_WIDE_ASSERT
 		const wchar_t
 #else
 		const char
@@ -530,7 +540,7 @@ namespace {
 			return FALSE;
 
 		// Get thread info
-		CONTEXT ctx = {0};
+		auto ctx = CONTEXT();
 #ifndef CONTEXT_ALL
 #define CONTEXT_ALL (CONTEXT_CONTROL | CONTEXT_INTEGER | CONTEXT_SEGMENTS | \
 	CONTEXT_FLOATING_POINT | CONTEXT_DEBUG_REGISTERS | CONTEXT_EXTENDED_REGISTERS)
@@ -539,7 +549,7 @@ namespace {
 		BOOL result = GetThreadContext(data->thread, &ctx);
 
 		// Setup a fake exception to log
-		EXCEPTION_RECORD erec = {0};
+		auto erec = EXCEPTION_RECORD();
 		erec.ExceptionCode = STATUS_ASSERTION_FAILURE;
 		erec.ExceptionFlags = 0L;
 		erec.ExceptionInformation[0] = (ULONG_PTR)data->expression;
@@ -561,7 +571,8 @@ namespace {
 		eptr.ExceptionRecord = &erec;
 
 		// Log
-		SafeTextDump(&eptr, GetLogFD(), nullptr);
+		if (GetLogFD() != -1)
+			SafeTextDump(&eptr, GetLogFD(), nullptr);
 
 		// Continue caller
 		if (ResumeThread(data->thread) == -1)
@@ -570,7 +581,7 @@ namespace {
 	}
 
 	// Replacement assertion handler
-#ifdef __CRT_WIDE
+#ifdef USE_WIDE_ASSERT
 	void __cdecl assertion_handler(const wchar_t *expression, const wchar_t *file, unsigned line)
 #else
 	void __cdecl assertion_handler(const char *expression, const char *file, int line)
@@ -583,7 +594,7 @@ namespace {
 			this_thread,
 			expression, file, line
 		};
-		HANDLE ctx_thread = CreateThread(NULL, 0L, &dump_thread, &dump_thread_data, 0L, NULL);
+		HANDLE ctx_thread = CreateThread(nullptr, 0L, &dump_thread, &dump_thread_data, 0L, nullptr);
 		WaitForSingleObject(ctx_thread, INFINITE);
 		CloseHandle(this_thread);
 		CloseHandle(ctx_thread);
@@ -627,8 +638,9 @@ void InstallCrashHandler()
 	SetUnhandledExceptionFilter(GenerateDump);
 
 #ifndef NDEBUG
-	// Hook _wassert/_assert
-	HookAssert(&assertion_handler);
+	// Hook _wassert/_assert, unless we're running under a debugger
+	if (!IsDebuggerPresent())
+		HookAssert(&assertion_handler);
 #endif
 }
 

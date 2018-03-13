@@ -1,23 +1,47 @@
-material GoldenChest
+material MetalChest 
 {
-	receive_shadows on
-	technique
-	{
-		pass
-		{
-			ambient 0.500000 0.500000 0.500000 1.000000
-			diffuse 0.640000 0.640000 0.640000 1.000000
-			specular 0.500000 0.500000 0.500000 1.000000 12.500000
-			emissive 0.000000 0.000000 0.000000 1.000000
-			texture_unit
-			{
-				texture goldenchest.jpg
-				tex_address_mode wrap
-				filtering trilinear
-			}
-		}
-	}
+    receive_shadows on
+    technique
+    {
+        pass
+        {
+            ambient 0.8 0.8 0.8 1.0
+            diffuse 0.8 0.8 0.8 1.0
+            specular 0.5 0.5 0.5 1.0 12.0
+            emissive 0.0 0.0 0.0 1.0
+
+            texture_unit 
+            {
+                texture MetalChest_UV.jpg
+                tex_address_mode wrap
+                filtering trilinear
+            }
+        }
+    }
 }
+
+material GoldenChest 
+{
+    receive_shadows on
+    technique
+    {
+        pass
+        {
+            ambient 0.9 0.9 0.9 1.0
+            diffuse 0.9 0.9 0.9 1.0
+            specular 0.5 0.5 0.5 1.0 12.0
+            emissive 0.0 0.0 0.0 1.0
+
+            texture_unit 
+            {
+                texture GoldenChest_UV.jpg
+                tex_address_mode wrap
+                filtering trilinear
+            }
+        }
+    }
+}
+
 material AncientColumn
 {
 	receive_shadows on
@@ -66,6 +90,59 @@ material FlyAmanitaMushroom
             }
         }
     }
+}
+
+material FrozenCaveMushroom
+{
+    receive_shadows on 
+
+    technique
+    {
+        pass FrozenCaveMushroom
+        {
+            ambient 0.800000011920929 0.800000011920929 0.800000011920929 1.0
+            diffuse 1.0 1.0 1.0 1.0
+            specular 0.0 0.0 0.0 1.0 12.5
+            emissive 0.0 0.0 0.0 1.0
+
+            alpha_to_coverage off
+            cull_hardware clockwise
+            depth_write on
+            scene_blend one zero
+
+            texture_unit 
+            {
+                texture FrozenCaveMushroom.jpg
+                tex_address_mode wrap
+                scale 1.0 1.0
+                colour_op modulate
+            }
+        }
+    }
+}
+
+material GoldenCannon
+{
+	receive_shadows on
+	technique
+	{
+		pass
+		{
+			cull_hardware none
+			scene_blend alpha_blend
+		
+			ambient 0.500000 0.500000 0.500000 1.000000
+			diffuse 0.800000 0.799920 0.799920 1.000000
+			specular 0.000000 0.000000 0.000000 1.000000 2.250000
+			emissive 0.000000 0.000000 0.000000 1.000000
+			texture_unit
+			{
+				texture GoldenCannon.png
+				tex_address_mode wrap
+				filtering trilinear
+			}
+		}
+	}
 }
 
 material RuinedLorry
@@ -158,10 +235,124 @@ material IdolGrayColor
 	{
 		pass
 		{
-			ambient 0.5 0.5 0.5 1.000000
-			diffuse 0.4 0.37 0.35 1.000000
-			specular 0.266613 0.266613 0.266613 1.000000 12.500000
+			ambient 0.9 0.9 0.9 1.0
+			diffuse 0.9 0.9 0.9 1.0
+			specular 0.9 0.9 0.9 1.0 12.5
+			emissive 0.0 0.0 0.0 1.0
+
+			texture_unit 
+			{
+				texture StoneIdol_UV.jpg
+				tex_address_mode wrap
+				filtering trilinear
+			}
+		}
+	}
+}
+
+material CrashedAirplane
+{
+	receive_shadows on
+	technique
+	{
+		pass
+		{
+			cull_hardware none
+			scene_blend alpha_blend
+			ambient 0.500000 0.500000 0.500000 1.000000
+			diffuse 0.800000 0.800000 0.800000 1.000000
+			specular 0.000000 0.000000 0.000000 1.000000 3.500000
 			emissive 0.000000 0.000000 0.000000 1.000000
+
+			texture_unit Overlay
+			{
+				texture CrashedPaint.png
+				tex_address_mode wrap
+				filtering trilinear
+				colour_op_ex modulate src_texture src_player_colour
+				// take alpha from texture only, ignore player alpha
+				alpha_op_ex source1 src_texture src_player_colour
+			}
+			texture_unit Plane
+			{
+				texture Crashedairplane.jpg
+				tex_address_mode wrap
+				filtering trilinear
+				colour_op_ex blend_current_alpha src_current src_texture
+				// Don't blend alpha, to make sure we have full intensity at the base/overlay border region
+				alpha_op_ex add src_current src_texture
+			}
+			texture_unit Light
+			{
+				// apply lighting
+				colour_op_ex modulate src_current src_diffuse
+				alpha_op_ex modulate src_current src_diffuse
+			}
+		}
+	}
+}
+
+material LaserSword
+{
+	receive_shadows on
+	technique
+	{
+		pass
+		{
+			ambient 0.500000 0.500000 0.500000 1.000000
+			diffuse 0.702745 0.702745 0.702745 1.000000
+			specular 0.000000 0.000000 0.000000 1.000000 12.500000
+			emissive 0.000000 0.000000 0.000000 1.000000
+			texture_unit
+			{
+				texture LaserSword.jpg
+				tex_address_mode wrap
+				filtering trilinear
+			}
+		}
+	}
+}
+
+material OgreSword
+{
+	receive_shadows on
+	technique
+	{
+		pass
+		{
+			scene_blend alpha_blend
+			
+			ambient 0.500000 0.500000 0.500000 1.000000
+			diffuse 0.702745 0.702745 0.702745 1.000000
+			specular 0.000000 0.000000 0.000000 1.000000 12.500000
+			emissive 0.000000 0.000000 0.000000 1.000000
+			texture_unit
+			{
+				texture OgreSword.png
+				tex_address_mode wrap
+				filtering trilinear
+			}
+		}
+	}
+}
+
+material NukePowderKeg
+{
+	receive_shadows on
+	technique
+	{
+		pass
+		{
+			ambient 0.500000 0.500000 0.500000 1.000000
+			diffuse 0.800000 0.800000 0.800000 1.000000
+			specular 0.000000 0.000000 0.000000 1.000000 12.500000
+			emissive 0.000000 0.000000 0.000000 1.000000
+			texture_unit
+			{
+				texture NukePowderKeg.png
+				tex_address_mode wrap
+				filtering trilinear
+			}
 		}
 	}
 }

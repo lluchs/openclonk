@@ -3,11 +3,11 @@
 global func BlueExplode(int level)
 {
 	// Shake the viewport.
-	ShakeViewPort(level, GetX(), GetY());
+	ShakeViewport(level, GetX(), GetY());
 
 	// Sound must be created before object removal, for it to be played at the right position.
 	var grade = BoundBy(level / 10 - 1, 1, 3);
-	Sound(Format("Blast%d", grade), false);
+	Sound(Format("Fire::Blast%d", grade), false);
 
 	// Explosion parameters.
 	var x = GetX(), y = GetY();
@@ -32,7 +32,7 @@ global func DoBlueExplosion(int x, int y, int level, object inobj, int cause_plr
 	var container = inobj;
 	while (container)
 	{
-		if (container->GetID()->GetDefContainBlast())
+		if (container.ContainBlast)
 			break;
 		else
 			container = container->Contained();
@@ -42,10 +42,10 @@ global func DoBlueExplosion(int x, int y, int level, object inobj, int cause_plr
 	if (!container)
 	{
 		// Incinerate oil.
-		if (!IncinerateLandscape(x, y))
-			if (!IncinerateLandscape(x, y - 10))
-				if (!IncinerateLandscape(x - 5, y - 5))
-					IncinerateLandscape(x + 5, y - 5);
+		if (!IncinerateLandscape(x, y, cause_plr))
+			if (!IncinerateLandscape(x, y - 10, cause_plr))
+				if (!IncinerateLandscape(x - 5, y - 5, cause_plr))
+					IncinerateLandscape(x + 5, y - 5, cause_plr);
 		// Graphic effects.
 		BlueExplosionEffect(level, x, y);
 	}
@@ -54,7 +54,7 @@ global func DoBlueExplosion(int x, int y, int level, object inobj, int cause_plr
 	if (inobj != container)
 		BlastObjectsBlue(x + GetX(), y + GetY(), level, container, cause_plr, layer);
 	
-	// Landschaft zerstören. Nach BlastObjects, damit neu freigesprengte Materialien nicht betroffen sind
+	// Landschaft zerstÃ¶ren. Nach BlastObjects, damit neu freigesprengte Materialien nicht betroffen sind
 	if (!container)
 		BlastFree(x, y, level, cause_plr);
 

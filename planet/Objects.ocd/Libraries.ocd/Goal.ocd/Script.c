@@ -1,12 +1,13 @@
-/*--
+/**
 	Goal control
-	Author: Sven2
-	
-	Include this to all C4D_Goal objects
-	Functions to be overloaded:
-		bool IsFullfilled(); - is the goal fulfilled?
---*/
+	Include this to all C4D_Goal objects. Functions to be overloaded:
+	 * bool IsFullfilled(); - is the goal fulfilled?
+	 * string GetDescription(int plr); - description of the goal
+		
+	@author Sven2
+*/
 
+local EditorPlacementLimit = 1; // Goals are to be placed only once (unless overloaded by the goal)
 
 local mission_password; // mission password to be gained when the goal is fulfilled
 
@@ -14,7 +15,7 @@ local mission_password; // mission password to be gained when the goal is fulfil
 func Initialize()
 {
 	// Do not create Library_Goal itself
-	if (GetID()==Library_Goal)
+	if (GetID() == Library_Goal)
 	{
 		Log("WARNING: Abstract Library_Goal object should not be created; object removed.");
 		return RemoveObject();
@@ -53,15 +54,18 @@ protected func FxIntGoalCheckTimer(object trg, effect, int time)
 	// Check current goal object
 	if (curr_goal && (curr_goal->GetCategory() & C4D_Goal))
 	{
-		curr_goal->NotifyHUD();
 		if (!curr_goal->~IsFulfilled())
+		{
+			curr_goal->NotifyHUD(); // The HUD has to be updated only if the goal is not fulfilled: in the other case a new goal will be chosen and that goal then updates the HUD
 			return true;
+		}
 	}
 	// Current goal is fulfilled/destroyed - check all others
 	var goal_count = 0;
 	for (curr_goal in FindObjects(Find_Category(C4D_Goal)))
 	{
 		++goal_count;
+		// The first unfulfilled goal is chosen
 		if (!curr_goal->~IsFulfilled())
 		{
 			effect.curr_goal = curr_goal;
@@ -69,11 +73,12 @@ protected func FxIntGoalCheckTimer(object trg, effect, int time)
 			return true;
 		}
 	}
-	// No goal object? Kill timer
-	if (!goal_count)
-		return FX_Execute_Kill;
-	// Game over :(
-	AllGoalsFulfilled();
+	// There were goal objects, and all goals are fulfilled
+	if (goal_count)
+	{
+		AllGoalsFulfilled(); // Game over :(
+	}
+	// Kill Timer
 	return FX_Execute_Kill;
 }
 
@@ -86,7 +91,7 @@ protected func AllGoalsFulfilled()
 	// Custom scenario goal evaluation?
 	if (GameCall("OnGoalsFulfilled")) return true;
 	// We're done. Play some sound and schedule game over call
-	Sound("Fanfare", true);
+	Sound("UI::Fanfare", true);
 	AddEffect("IntGoalDone", nil, 1, 30, nil, Library_Goal);
 }
 
@@ -100,16 +105,19 @@ public func NotifyHUD()
 	// create hud objects for all players
 	for (var i = 0; i < GetPlayerCount(); ++i)
 	{
-		var plr = GetPlayerByIndex(i);
-		var HUD = FindObject(Find_ID(GUI_Controller), Find_Owner(plr));
-		if (HUD)
-			HUD->OnGoalUpdate(this);
+		NotifyPlayerHUD(GetPlayerByIndex(i));
 	}
 }
 
-protected func InitializePlayer(int plr)
+protected func InitializePlayer(int plr, ...)
 {
-	var HUD = FindObject(Find_ID(GUI_Controller), Find_Owner(plr));
+	NotifyPlayerHUD(plr);
+	_inherited(plr, ...);
+}
+
+private func NotifyPlayerHUD(int plr)
+{
+	var HUD = FindObject(Find_ID(Library_HUDController->GetGUIControllerID()), Find_Owner(plr));
 	if (HUD)
 		HUD->OnGoalUpdate(this);
 }
@@ -128,20 +136,38 @@ public func IsFulfilled() { return true; }
 // Overload: return the current description for this goal.
 public func GetDescription(int plr)
 {
-	return "WARNING: GetDescription(int plr) not overloaded by goal";
+	return this.Description ?? "WARNING: GetDescription(int plr) not overloaded by goal";
 }
 
 protected func Activate(plr)
 {
 	if (IsFulfilled())
-		return(MessageWindow("$MsgGoalFulfilled$", plr));
-	return MessageWindow(GetProperty("Description"), plr);
+		return MessageWindow("$MsgGoalFulfilled$", plr);
+	return MessageWindow(this->GetDescription(plr), plr);
 }
 
-// Scenario sacing
+// Scenario saving.
 func SaveScenarioObject(props)
 {
 	if (!inherited(props, ...)) return false;
 	if (mission_password) props->AddCall("MissionAccess", this, "SetMissionAccess", Format("%v", mission_password));
 	return true;
 }
+
+
+/* Graphics storage */
+// workaround so goals with different graphics are correctly displayed in the HUD
+
+local goal_custom_graphics;
+
+func SetGraphics(string new_gfx, ...)
+{
+	goal_custom_graphics = new_gfx;
+	return inherited(new_gfx, ...);
+}
+
+func GetGraphics(int plr) { return goal_custom_graphics; }
+
+public func IsGoal() { return true; }
+
+local Visibility = VIS_Editor;

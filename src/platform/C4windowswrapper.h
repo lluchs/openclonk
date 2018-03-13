@@ -1,7 +1,7 @@
 /*
  * OpenClonk, http://www.openclonk.org
  *
- * Copyright (c) 2010-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2010-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -28,7 +28,7 @@
 #undef DrawText
 
 // implemented in StdBuf.cpp
-StdStrBuf::wchar_t_holder GetWideChar(const char * utf8);
+StdStrBuf::wchar_t_holder GetWideChar(const char * utf8, bool double_null_terminate = false);
 StdBuf GetWideCharBuf(const char * utf8);
 
 #define ADDL2(s) L##s

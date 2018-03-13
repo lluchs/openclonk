@@ -1,42 +1,40 @@
 /*
  * OpenClonk, http://www.openclonk.org
  *
- * Copyright (c) 2006  Julian Raschke
- * Copyright (c) 2008-2009  Günther Brammer
  * Copyright (c) 2005-2009, RedWolf Design GmbH, http://www.clonk.de
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
- * Portions might be copyrighted by other authors who have contributed
- * to OpenClonk.
+ * Distributed under the terms of the ISC license; see accompanying file
+ * "COPYING" for details.
  *
- * Permission to use, copy, modify, and/or distribute this software for any
- * purpose with or without fee is hereby granted, provided that the above
- * copyright notice and this permission notice appear in all copies.
- * See isc_license.txt for full license and disclaimer.
+ * "Clonk" is a registered trademark of Matthes Bender, used with permission.
+ * See accompanying file "TRADEMARK" for details.
  *
- * "Clonk" is a registered trademark of Matthes Bender.
- * See clonk_trademark_license.txt for full license.
+ * To redistribute this file separately, substitute the full license texts
+ * for the above references.
  */
 
 // based on SDL implementation
 
+#include "C4ForbidLibraryCompilation.h"
 #include <GL/glew.h>
-#include <string>
 
-#include <C4Include.h>
-#include <C4Window.h>
-#include <C4Draw.h>
+#include "C4Include.h"
+#include "platform/C4Window.h"
+#include "graphics/C4Draw.h"
 
+#include "platform/C4App.h"
 #import <Cocoa/Cocoa.h>
-#import "C4WindowController.h"
-#import "C4DrawGLMac.h"
 
-#include "C4App.h"
+#ifndef USE_CONSOLE
+#import "platform/C4WindowController.h"
+#import "graphics/C4DrawGLMac.h"
 
-bool C4AbstractApp::Copy(const StdStrBuf & text, bool fClipboard)
+bool C4AbstractApp::Copy(const std::string &text, bool fClipboard)
 {
 	NSPasteboard* pasteboard = [NSPasteboard generalPasteboard];
 	[pasteboard declareTypes:[NSArray arrayWithObject:NSStringPboardType] owner:nil];
-	NSString* string = [NSString stringWithCString:text.getData() encoding:NSUTF8StringEncoding];
+	NSString* string = [NSString stringWithCString:text.c_str() encoding:NSUTF8StringEncoding];
 	if (![pasteboard setString:string forType:NSStringPboardType])
 	{
 		Log("Writing to Cocoa pasteboard failed");
@@ -45,15 +43,15 @@ bool C4AbstractApp::Copy(const StdStrBuf & text, bool fClipboard)
 	return true;
 }
 
-StdStrBuf C4AbstractApp::Paste(bool fClipboard)
+std::string C4AbstractApp::Paste(bool fClipboard)
 {
 	if (fClipboard)
 	{
 		NSPasteboard* pasteboard = [NSPasteboard generalPasteboard];
 		const char* chars = [[pasteboard stringForType:NSStringPboardType] cStringUsingEncoding:NSUTF8StringEncoding];
-		return StdStrBuf(chars);
+		return chars;
 	}
-	return StdStrBuf(0);
+	return std::string();
 }
 
 bool C4AbstractApp::IsClipboardFull(bool fClipboard)
@@ -154,12 +152,7 @@ void C4AbstractApp::RestoreVideoMode()
 {
 }
 
-StdStrBuf C4AbstractApp::GetGameDataPath()
-{
-	return StdCopyStrBuf([[[NSBundle mainBundle] resourcePath] fileSystemRepresentation]);
-}
-
-bool C4AbstractApp::SetVideoMode(unsigned int iXRes, unsigned int iYRes, unsigned int iColorDepth, unsigned int iRefreshRate, unsigned int iMonitor, bool fFullScreen)
+bool C4AbstractApp::SetVideoMode(int iXRes, int iYRes, unsigned int iRefreshRate, unsigned int iMonitor, bool fFullScreen)
 {
 	fFullScreen &= !lionAndBeyond(); // Always false for Lion since then Lion's true(tm) Fullscreen is used
 	C4WindowController* controller = pWindow->objectiveCObject<C4WindowController>();
@@ -193,38 +186,8 @@ bool C4AbstractApp::SetVideoMode(unsigned int iXRes, unsigned int iYRes, unsigne
 	return true;
 }
 
-bool C4AbstractApp::ApplyGammaRamp(struct _GAMMARAMP &ramp, bool fForce)
-{
-	CGGammaValue r[256];
-	CGGammaValue g[256];
-	CGGammaValue b[256];
-	for (int i = 0; i < 256; i++)
-	{
-		r[i] = static_cast<float>(ramp.red[i])/65535.0;
-		g[i] = static_cast<float>(ramp.green[i])/65535.0;
-		b[i] = static_cast<float>(ramp.blue[i])/65535.0;
-	}
-	CGSetDisplayTransferByTable(C4OpenGLView.displayID, 256, r, g, b);
-	return true;
-}
-
-bool C4AbstractApp::SaveDefaultGammaRamp(struct _GAMMARAMP &ramp)
-{
-	CGGammaValue r[256];
-	CGGammaValue g[256];
-	CGGammaValue b[256];
-	uint32_t count;
-	CGGetDisplayTransferByTable(C4OpenGLView.displayID, 256, r, g, b, &count);
-	for (int i = 0; i < 256; i++)
-	{
-		ramp.red[i]   = r[i]*65535;
-		ramp.green[i] = g[i]*65535;
-		ramp.blue[i]  = b[i]*65535;
-	}
-	return true;
-}
-
-#endif
+#endif // USE_COCOA
+#endif // USE_CONSOLE
 
 bool IsGermanSystem()
 {
@@ -248,4 +211,9 @@ bool EraseItemSafe(const char* szFilename)
 		destination: @""
 		files: [NSArray arrayWithObject: [filename lastPathComponent]]
 		tag: 0];
+}
+
+std::string C4AbstractApp::GetGameDataPath()
+{
+	return [[[NSBundle mainBundle] resourcePath] fileSystemRepresentation];
 }

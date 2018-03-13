@@ -3,7 +3,7 @@
  *
  * Copyright (c) 1998-2000, Matthes Bender
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -17,13 +17,13 @@
 
 /* Basic classes for rectangles and vertex outlines */
 
-#include <C4Include.h>
-#include <C4Shape.h>
+#include "C4Include.h"
+#include "object/C4Shape.h"
 
-#include <C4Physics.h>
-#include <C4Material.h>
-#include <C4Landscape.h>
-#include <C4Record.h>
+#include "control/C4Record.h"
+#include "game/C4Physics.h"
+#include "landscape/C4Landscape.h"
+#include "landscape/C4Material.h"
 
 bool C4Shape::AddVertex(int32_t iX, int32_t iY)
 {
@@ -35,19 +35,7 @@ bool C4Shape::AddVertex(int32_t iX, int32_t iY)
 
 void C4Shape::Default()
 {
-	ZeroMem(this,sizeof (C4Shape));
-	AttachMat=MNone;
-	ContactDensity=C4M_Solid;
-}
-
-C4Shape::C4Shape()
-{
-	Default();
-}
-
-void C4Shape::Clear()
-{
-	ZeroMem(this, sizeof (C4Shape));
+	InplaceReconstruct(this);
 }
 
 void C4Shape::Rotate(C4Real Angle, bool bUpdateVertices)
@@ -56,7 +44,7 @@ void C4Shape::Rotate(C4Real Angle, bool bUpdateVertices)
 	int32_t i = 0;
 	if (Config.General.DebugRec)
 	{
-		rc.x=x; rc.y=y; rc.wdt=Wdt; rc.hgt=Hgt; rc.r=Angle;
+		rc.x=x; rc.y=y; rc.wdt=Wdt; rc.hgt=Hgt; rc.r=fixtoi(Angle);
 		for (; i<4; ++i)
 			{ rc.VtxX[i]=VtxX[i]; rc.VtxY[i]=VtxY[i]; }
 		AddDbgRec(RCT_RotVtx1, &rc, sizeof(rc));
@@ -135,7 +123,6 @@ void C4Shape::Stretch(int32_t iCon, bool bUpdateVertices)
 	y=y*iCon/FullCon;
 	Wdt=Wdt*iCon/FullCon;
 	Hgt=Hgt*iCon/FullCon;
-	FireTop=FireTop*iCon/FullCon;
 	if (bUpdateVertices)
 		for (cnt=0; cnt<VtxNum; cnt++)
 		{
@@ -149,7 +136,6 @@ void C4Shape::Jolt(int32_t iCon, bool bUpdateVertices)
 	int32_t cnt;
 	y=y*iCon/FullCon;
 	Hgt=Hgt*iCon/FullCon;
-	FireTop=FireTop*iCon/FullCon;
 	if (bUpdateVertices)
 		for (cnt=0; cnt<VtxNum; cnt++)
 			VtxY[cnt]=VtxY[cnt]*iCon/FullCon;
@@ -187,6 +173,11 @@ void C4Shape::GetVertexOutline(C4Rect &rRect)
 
 }
 
+inline bool C4Shape::CheckTouchableMaterial(int32_t x, int32_t y, int32_t vtx_i, int32_t ydir, const C4DensityProvider &rDensityProvider) {
+	return rDensityProvider.GetDensity(x,y) >= ContactDensity &&
+	       ((ydir > 0 && !(CNAT_PhaseHalfVehicle & VtxCNAT[vtx_i])) || !IsMCHalfVehicle(::Landscape.GetPix(x,y)));
+}
+
 // Adjust given position to one pixel before contact
 // at vertices matching CNAT request.
 bool C4Shape::Attach(int32_t &cx, int32_t &cy, BYTE cnat_pos)
@@ -219,13 +210,13 @@ bool C4Shape::Attach(int32_t &cx, int32_t &cy, BYTE cnat_pos)
 			{
 				// get new vertex pos
 				int32_t ax = testx + VtxX[i], ay = testy + VtxY[i];
-				if (GBackDensity(ax, ay) >= ContactDensity)
+				if (CheckTouchableMaterial(ax, ay, i))
 				{
 					found = false;
 					break;
 				}
 				// can attach here?
-				if (GBackDensity(ax + xcd, ay + ycd) >= ContactDensity)
+				if (CheckTouchableMaterial(ax + xcd, ay + ycd, i, ycd))
 				{
 					found = true;
 					any_contact = true;
@@ -323,6 +314,7 @@ out:
 bool C4Shape::InsertVertex(int32_t iPos, int32_t tx, int32_t ty)
 {
 	if (VtxNum+1>C4D_MaxVertex) return false;
+	if (iPos < 0 || iPos > VtxNum) return false;
 	// Insert vertex before iPos
 	for (int32_t cnt=VtxNum; cnt>iPos; cnt--)
 		{ VtxX[cnt]=VtxX[cnt-1]; VtxY[cnt]=VtxY[cnt-1]; }
@@ -348,14 +340,14 @@ bool C4Shape::CheckContact(int32_t cx, int32_t cy)
 
 	for (int32_t cvtx=0; cvtx<VtxNum; cvtx++)
 		if (!(VtxCNAT[cvtx] & CNAT_NoCollision))
-			if (GBackDensity(cx+VtxX[cvtx],cy+VtxY[cvtx]) >= ContactDensity)
+			if (CheckTouchableMaterial(cx+VtxX[cvtx],cy+VtxY[cvtx], cvtx))
 				return true;
 
 
 	return false;
 }
 
-bool C4Shape::ContactCheck(int32_t cx, int32_t cy, uint32_t *border_hack_contacts)
+bool C4Shape::ContactCheck(int32_t cx, int32_t cy, uint32_t *border_hack_contacts, bool collide_halfvehic)
 {
 	// Check all vertices at given object position.
 	// Set ContactCNAT and ContactCount.
@@ -377,25 +369,25 @@ bool C4Shape::ContactCheck(int32_t cx, int32_t cy, uint32_t *border_hack_contact
 			int32_t y = cy+VtxY[cvtx];
 			VtxContactMat[cvtx]=GBackMat(x,y);
 
-			if (GBackDensity(x,y) >= ContactDensity)
+			if (CheckTouchableMaterial(x, y, cvtx, collide_halfvehic? 1:0))
 			{
 				ContactCNAT |= VtxCNAT[cvtx];
 				VtxContactCNAT[cvtx]|=CNAT_Center;
 				ContactCount++;
 				// Vertex center contact, now check top,bottom,left,right
-				if (GBackDensity(x,y-1) >= ContactDensity)
+				if (CheckTouchableMaterial(x,y-1,cvtx, collide_halfvehic ? 1 : 0))
 					VtxContactCNAT[cvtx]|=CNAT_Top;
-				if (GBackDensity(x,y+1) >= ContactDensity)
+				if (CheckTouchableMaterial(x,y+1,cvtx, collide_halfvehic ? 1 : 0))
 					VtxContactCNAT[cvtx]|=CNAT_Bottom;
-				if (GBackDensity(x-1,y) >= ContactDensity)
+				if (CheckTouchableMaterial(x-1,y,cvtx, collide_halfvehic ? 1 : 0))
 					VtxContactCNAT[cvtx]|=CNAT_Left;
-				if (GBackDensity(x+1,y) >= ContactDensity)
+				if (CheckTouchableMaterial(x+1,y,cvtx, collide_halfvehic ? 1 : 0))
 					VtxContactCNAT[cvtx]|=CNAT_Right;
 			}
 			if (border_hack_contacts)
 			{
-				if (x == 0 && GBackDensity(x-1, y) >= ContactDensity) *border_hack_contacts |= CNAT_Left;
-				else if (x == ::Landscape.Width && GBackDensity(x+1, y) >= ContactDensity) *border_hack_contacts |= CNAT_Right;
+				if (x == 0 && CheckTouchableMaterial(x-1, y, cvtx)) *border_hack_contacts |= CNAT_Left;
+				else if (x == ::Landscape.GetWidth() && CheckTouchableMaterial(x+1, y, cvtx)) *border_hack_contacts |= CNAT_Right;
 			}
 		}
 
@@ -412,15 +404,15 @@ bool C4Shape::CheckScaleToWalk(int x, int y)
 		if (VtxCNAT[i] & CNAT_Bottom)
 		{
 			// no ground under the feet?
-			if (GBackDensity(x + VtxX[i], y + VtxY[i] + 1) < ContactDensity)
+			if (CheckTouchableMaterial(x + VtxX[i], y + VtxY[i] + 1, i))
 				return false;
 		}
 		else
 		{
 			// can climb with hands?
-			if (GBackDensity(x + VtxX[i] - 1, y + VtxY[i]) >= ContactDensity)
+			if (CheckTouchableMaterial(x + VtxX[i] - 1, y + VtxY[i], i))
 				return false;
-			if (GBackDensity(x + VtxX[i] + 1, y + VtxY[i]) >= ContactDensity)
+			if (CheckTouchableMaterial(x + VtxX[i] + 1, y + VtxY[i], i))
 				return false;
 		}
 	}
@@ -444,7 +436,7 @@ void C4Shape::CopyFrom(C4Shape rFrom, bool bCpyVertices, bool fCopyVerticesFromS
 	if (bCpyVertices)
 	{
 		// truncate / copy vertex count
-		VtxNum = (fCopyVerticesFromSelf ? Min<int32_t>(VtxNum, C4D_VertexCpyPos) : rFrom.VtxNum);
+		VtxNum = (fCopyVerticesFromSelf ? std::min<int32_t>(VtxNum, C4D_VertexCpyPos) : rFrom.VtxNum);
 		// restore vertices from back of own buffer (retaining count)
 		int32_t iCopyPos = (fCopyVerticesFromSelf ? C4D_VertexCpyPos : 0);
 		C4Shape &rVtxFrom = (fCopyVerticesFromSelf ? *this : rFrom);
@@ -460,7 +452,6 @@ void C4Shape::CopyFrom(C4Shape rFrom, bool bCpyVertices, bool fCopyVerticesFromS
 	AttachMat=rFrom.AttachMat;
 	ContactCNAT=rFrom.ContactCNAT;
 	ContactCount=rFrom.ContactCount;
-	FireTop=rFrom.FireTop;
 }
 
 int32_t C4Shape::GetBottomVertex()
@@ -504,11 +495,11 @@ int32_t C4Shape::GetVertexContact(int32_t iVtx, DWORD dwCheckMask, int32_t tx, i
 	// check all directions for solid mat
 	if (~VtxCNAT[iVtx] & CNAT_NoCollision)
 	{
-		if (dwCheckMask & CNAT_Center) if (rDensityProvider.GetDensity(tx, ty) >= ContactDensity)   iContact |= CNAT_Center;
-		if (dwCheckMask & CNAT_Left)   if (rDensityProvider.GetDensity(tx-1, ty) >= ContactDensity) iContact |= CNAT_Left;
-		if (dwCheckMask & CNAT_Right)  if (rDensityProvider.GetDensity(tx+1, ty) >= ContactDensity) iContact |= CNAT_Right;
-		if (dwCheckMask & CNAT_Top)    if (rDensityProvider.GetDensity(tx, ty-1) >= ContactDensity) iContact |= CNAT_Top;
-		if (dwCheckMask & CNAT_Bottom) if (rDensityProvider.GetDensity(tx, ty+1) >= ContactDensity) iContact |= CNAT_Bottom;
+		if (dwCheckMask & CNAT_Center) if (CheckTouchableMaterial(tx, ty  , iVtx, 0, rDensityProvider)) iContact |= CNAT_Center;
+		if (dwCheckMask & CNAT_Left)   if (CheckTouchableMaterial(tx-1, ty, iVtx, 0, rDensityProvider)) iContact |= CNAT_Left;
+		if (dwCheckMask & CNAT_Right)  if (CheckTouchableMaterial(tx+1, ty, iVtx, 0, rDensityProvider)) iContact |= CNAT_Right;
+		if (dwCheckMask & CNAT_Top)    if (CheckTouchableMaterial(tx, ty-1, iVtx, 0, rDensityProvider)) iContact |= CNAT_Top;
+		if (dwCheckMask & CNAT_Bottom) if (CheckTouchableMaterial(tx, ty+1, iVtx, 1, rDensityProvider)) iContact |= CNAT_Bottom;
 	}
 	// return resulting bitmask
 	return iContact;
@@ -517,7 +508,7 @@ int32_t C4Shape::GetVertexContact(int32_t iVtx, DWORD dwCheckMask, int32_t tx, i
 void C4Shape::CreateOwnOriginalCopy(C4Shape &rFrom)
 {
 	// copy vertices from original buffer, including count
-	VtxNum = Min<int32_t>(rFrom.VtxNum, C4D_VertexCpyPos);
+	VtxNum = std::min<int32_t>(rFrom.VtxNum, C4D_VertexCpyPos);
 	memcpy(VtxX+C4D_VertexCpyPos, rFrom.VtxX, VtxNum*sizeof(*VtxX));
 	memcpy(VtxY+C4D_VertexCpyPos, rFrom.VtxY, VtxNum*sizeof(*VtxY));
 	memcpy(VtxCNAT+C4D_VertexCpyPos, rFrom.VtxCNAT, VtxNum*sizeof(*VtxCNAT));
@@ -528,6 +519,22 @@ void C4Shape::CreateOwnOriginalCopy(C4Shape &rFrom)
 
 void C4Shape::CompileFunc(StdCompiler *pComp, const C4Shape *default_shape)
 {
+	const StdBitfieldEntry<int32_t> ContactDirections[] =
+	{
+
+		{ "CNAT_None", CNAT_None },
+		{ "CNAT_Left", CNAT_Left },
+		{ "CNAT_Right", CNAT_Right },
+		{ "CNAT_Top", CNAT_Top },
+		{ "CNAT_Bottom", CNAT_Bottom },
+		{ "CNAT_Center", CNAT_Center },
+		{ "CNAT_MultiAttach", CNAT_MultiAttach },
+		{ "CNAT_NoCollision", CNAT_NoCollision },
+		{ "CNAT_PhaseHalfVehicle", CNAT_PhaseHalfVehicle },
+
+		{ nullptr, 0 }
+	};
+
 	// a default shape is given in object compilation context only
 	bool fRuntime = !!default_shape;
 	C4Shape default_def_shape;
@@ -540,10 +547,9 @@ void C4Shape::CompileFunc(StdCompiler *pComp, const C4Shape *default_shape)
 	pComp->Value(mkNamingAdapt( VtxNum,                                                   "Vertices",           default_shape->VtxNum));
 	pComp->Value(mkNamingAdapt( mkArrayAdaptDMA(VtxX, default_shape->VtxX),               "VertexX",            default_shape->VtxX));
 	pComp->Value(mkNamingAdapt( mkArrayAdaptDMA(VtxY, default_shape->VtxY),               "VertexY",            default_shape->VtxY));
-	pComp->Value(mkNamingAdapt( mkArrayAdaptDMA(VtxCNAT, default_shape->VtxCNAT),         "VertexCNAT",         default_shape->VtxCNAT));
+	pComp->Value(mkNamingAdapt( mkArrayAdaptDMAM(VtxCNAT, default_shape->VtxCNAT, [&](decltype(*VtxCNAT) &elem){ return mkBitfieldAdapt<int32_t>(elem, ContactDirections); }), "VertexCNAT", default_shape->VtxCNAT));
 	pComp->Value(mkNamingAdapt( mkArrayAdaptDMA(VtxFriction, default_shape->VtxFriction), "VertexFriction",     default_shape->VtxFriction));
 	pComp->Value(mkNamingAdapt( ContactDensity,             "ContactDensity",     default_shape->ContactDensity));
-	pComp->Value(mkNamingAdapt( FireTop,                    "FireTop",            default_shape->FireTop));
 	if (fRuntime)
 	{
 		pComp->Value(mkNamingAdapt( iAttachX,                   "AttachX",            0                 ));

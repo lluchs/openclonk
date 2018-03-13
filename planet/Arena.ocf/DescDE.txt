@@ -1,0 +1,3 @@
+ Arena
+
+Dieser Rundenordner enthält schnelle Melee-Runden. Es sind Alle-gegen-alle, sowie teambasierte Runden verfügbar. Der Arenastil sorgt hier für schnelle Relaunches und Startausrüstung.

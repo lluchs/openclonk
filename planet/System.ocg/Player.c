@@ -1,12 +1,12 @@
-/*--
-		Player.c
-		Authors: timi, Maikel, Joern, Zapper, Randrian
-
-		Player and team related functions.
---*/
-
+/**
+	Player.c
+	Player and team related functions.
+	
+	@author timi, Maikel, Joern, Zapper, Randrian
+*/
 
 // Returns the player number of plr_name, or none if there is no such player. (written by timi for CR/CE/CP)
+// documented in /docs/sdk/script/fn
 global func GetPlayerByName(string plr_name)
 {
 	// Loop through all players.
@@ -35,6 +35,7 @@ global func GetTeamByName(string team_name)
 }
 
 // Returns the name of a player, including color markup using the player color.
+// documented in /docs/sdk/script/fn
 global func GetTaggedPlayerName(int plr)
 {
 	var plr_name = GetPlayerName(plr);
@@ -79,7 +80,44 @@ global func MakeColorReadable(int color)
 	return color;
 }
 
+// Returns the number of players in the specified team.
+global func GetPlayerInTeamCount(int team)
+{
+	var count = 0;
+	for (var index = 0; index < GetPlayerCount(); index++)
+		if (GetPlayerTeam(GetPlayerByIndex(index)) == team)
+			count++;
+	return count;
+}
+
+// Returns an array of player numbers of players of the specified type and in the specified team.
+// Set either player_type or team to nil to ignore that constraint.
+global func GetPlayers(int player_type, int team)
+{
+	var plr_list = [];
+	for (var index = 0; index < GetPlayerCount(player_type); index++)
+	{
+		var plr = GetPlayerByIndex(index, player_type);
+		if (team == nil || GetPlayerTeam(plr) == team)
+			PushBack(plr_list, plr);
+	}
+	return plr_list;
+}
+
+// Returns the player number corresponding to the specified player ID.
+global func GetPlayerByID(int plr_id)
+{
+	for (var index = 0; index < GetPlayerCount(); index++)
+	{
+		var plr = GetPlayerByIndex(index);
+		if (plr_id == GetPlayerID(plr))
+			return plr;
+	}
+	return NO_OWNER;
+}
+
 // Adds value to the account of iPlayer.
+// documented in /docs/sdk/script/fn
 global func DoWealth(int plr, int value)
 {
 	return SetWealth(plr, value + GetWealth(plr));
@@ -88,8 +126,10 @@ global func DoWealth(int plr, int value)
 // checks whether two players are allied - that means they are not hostile and neither of them is NO_OWNER
 global func IsAllied(int plr1, int plr2, bool check_one_way_only /* whether to check the hostility only in one direction */)
 {
-	if(plr1 == NO_OWNER) return false;
-	if(plr2 == NO_OWNER) return false;
+	if (plr1 == NO_OWNER)
+		return false;
+	if (plr2 == NO_OWNER)
+		return false;
 	return !Hostile(plr1, plr2, check_one_way_only);
 }
 
@@ -102,16 +142,21 @@ global func MessageWindow(string msg, int for_plr, id icon, string caption)
 	// Get caption.
 	if (!caption)
 		caption = GetName();
-	// Create msg window (menu).
-	var cursor = GetCursor(for_plr);
-	if (!cursor->CreateMenu(icon, cursor, 0, caption, 0, 2))
-		return false;
-	cursor->AddMenuItem(caption, nil, nil, 0, 0, msg);
+	// Create msg window as regular text
+	CustomMessage(Format("<c ffff00>%s</c>: %s", caption, msg), nil, for_plr, 0,150, nil, GetDefaultMenuDecoration(), icon, MSG_HCenter);
 	return true;
 }
 
-// Find a base of the given player. Use index to search through all bases.
-global func FindBase (int iPlr, int iIndex)
+// Returns the default menu decoration used in most places.
+// The return value should be a definition, e.g. GUI_MenuDeco.
+global func GetDefaultMenuDecoration()
 {
-	return FindObjects(Find_Owner(iPlr), Find_Func("IsBase"))[iIndex];
+	return _inherited(...);
+}
+
+// Find a base of the given player. Use index to search through all bases.
+// documented in /docs/sdk/script/fn
+global func FindBase(int plr, int index)
+{
+	return FindObjects(Find_Owner(plr), Find_Func("IsBase"))[index];
 }

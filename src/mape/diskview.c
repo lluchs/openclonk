@@ -143,31 +143,31 @@ static gboolean mape_disk_view_load_materials(MapeDiskView* disk_view,
 		-1
 	);
 
-	if(group == NULL)
+	has_parent = gtk_tree_model_iter_parent(
+		disk_view->tree_store,
+		&parent_iter,
+		material_iter
+	);
+		
+	if(has_parent == TRUE)
 	{
-		has_parent = gtk_tree_model_iter_parent(
+		gtk_tree_model_get(
 			disk_view->tree_store,
 			&parent_iter,
-			material_iter
+			MAPE_DISK_VIEW_COLUMN_GROUP,
+			&parent_group,
+			-1
 		);
-		
-		if(has_parent == TRUE)
-		{
-			gtk_tree_model_get(
-				disk_view->tree_store,
-				&parent_iter,
-				MAPE_DISK_VIEW_COLUMN_GROUP,
-				&parent_group,
-				-1
-			);
 			
-			g_assert(parent_group != NULL);
-		}
-		else
-		{
-			parent_group = disk_view->group_top;
-		}
+		g_assert(parent_group != NULL);
+	}
+	else
+	{
+		parent_group = disk_view->group_top;
+	}
 		
+	if(group == NULL)
+	{
 		group = mape_group_open_child(
 			parent_group,
 			"Material.ocg",
@@ -185,6 +185,11 @@ static gboolean mape_disk_view_load_materials(MapeDiskView* disk_view,
 		);
 	}
 
+	/* Load texture map. Note that this effectively only reads the
+	 * OverloadMaterials and OverloadTextures flags, because the indices
+	 * cannot be assigned yet, because materials and textures have not
+	 * been loaded. However, materials and textures can only be loaded
+	 * once we know whether we are overloading or not. */
 	texture_map = mape_texture_map_new();
 	if(mape_texture_map_load_map(texture_map, group, error) == FALSE)
 	{
@@ -195,6 +200,7 @@ static gboolean mape_disk_view_load_materials(MapeDiskView* disk_view,
 	overload_materials = mape_texture_map_get_overload_materials(texture_map);
 	overload_textures = mape_texture_map_get_overload_textures(texture_map);
 
+	overloaded_group = NULL;
 	if(overload_materials || overload_textures)
 	{
 		/* Look for overloaded Material.ocg */
@@ -206,8 +212,6 @@ static gboolean mape_disk_view_load_materials(MapeDiskView* disk_view,
 
 		for(;;)
 		{
-			overloaded_group = NULL;
-
 			has_parent = gtk_tree_model_iter_parent(
 				disk_view->tree_store,
 				&new_parent,
@@ -268,6 +272,7 @@ static gboolean mape_disk_view_load_materials(MapeDiskView* disk_view,
 	);
 
 	g_object_unref(texture_map);
+	mape_mapgen_set_root_group(parent_group);
 
 #if 0
 	if(overloaded_group != NULL)
@@ -415,7 +420,7 @@ static gboolean mape_disk_view_load(MapeDiskView* disk_view,
 		/* Check if this entry is a directory (we are hiding files). */
 		if(mape_group_is_child_folder(child_group, filename) == FALSE)
 		{
-			free(filename);
+			g_free(filename);
 			continue;
 		}
 
@@ -502,8 +507,7 @@ static gboolean mape_disk_view_load(MapeDiskView* disk_view,
 			&child_iter
 		);
 
-		free(filename);
-		/*free(utf8_file);*/
+		g_free(filename);
 	}
 	
 	/* TODO: Close group if no content */
@@ -521,11 +525,7 @@ static gboolean mape_disk_view_cb_key_press_event(GtkWidget* widget,
 
 	disk_view = (MapeDiskView*)user_data;
 
-#if GTK_CHECK_VERSION(2,21,8)
 	if(event->keyval != GDK_KEY_Left && event->keyval != GDK_KEY_Right)
-#else
-	if(event->keyval != GDK_Left && event->keyval != GDK_Right)
-#endif
 		return FALSE;
 
 	gtk_tree_view_get_cursor(
@@ -538,11 +538,7 @@ static gboolean mape_disk_view_cb_key_press_event(GtkWidget* widget,
 
 	switch(event->keyval)
 	{
-#if GTK_CHECK_VERSION(2,21,8)
 	case GDK_KEY_Left:
-#else
-	case GDK_Left:
-#endif
 		result = gtk_tree_view_row_expanded(
 			GTK_TREE_VIEW(disk_view->view),
 			path
@@ -572,11 +568,7 @@ static gboolean mape_disk_view_cb_key_press_event(GtkWidget* widget,
 		}
 
 		break;
-#if GTK_CHECK_VERSION(2,21,8)
 	case GDK_KEY_Right:
-#else
-	case GDK_Right:
-#endif
 		result = gtk_tree_view_row_expanded(
 			GTK_TREE_VIEW(disk_view->view),
 			path

@@ -2,7 +2,7 @@
  * OpenClonk, http://www.openclonk.org
  *
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2013, The OpenClonk Team and contributors
+ * Copyright (c) 2013-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -16,7 +16,7 @@
 #ifndef INC_C4UpperBoard
 #define INC_C4UpperBoard
 
-#include <C4Facet.h>
+#include "graphics/C4Facet.h"
 
 class C4UpperBoard
 {
@@ -24,8 +24,6 @@ class C4UpperBoard
 public:
 	C4UpperBoard();
 	~C4UpperBoard();
-	void Default();
-	void Clear();
 	void Init(C4Facet &cgo);
 	void Execute();
 protected:

@@ -2,7 +2,7 @@
  * OpenClonk, http://www.openclonk.org
  *
  * Copyright (c) 2004-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -15,57 +15,27 @@
  */
 // graphics used by object definitions (object and portraits)
 
-#include <C4Include.h>
-#include <C4DefGraphics.h>
+#include "C4Include.h"
+#include "object/C4DefGraphics.h"
 
-#include <C4DefList.h>
-#include <C4Object.h>
-#include <C4ObjectInfo.h>
-#include <C4Config.h>
-#include <C4Components.h>
-#include <C4Application.h>
-#include <C4Game.h>
-#include <C4Menu.h>
-#include <C4ObjectMenu.h>
-#include <C4Player.h>
-#include <C4Log.h>
-#include <C4Material.h>
-#include <C4PlayerList.h>
-#include <C4GameObjects.h>
-#include <C4RankSystem.h>
-#include <C4GraphicsResource.h>
-#include <C4MeshAnimation.h>
-#include "StdMeshLoader.h"
-
-// Helper class to load additional resources required for meshes from
-// a C4Group.
-class AdditionalResourcesLoader:
-		public StdMeshMaterialTextureLoader, public StdMeshSkeletonLoader
-{
-public:
-	AdditionalResourcesLoader(C4Group& hGroup): Group(hGroup) {}
-
-	virtual C4Surface* LoadTexture(const char* filename)
-	{
-		if (!Group.AccessEntry(filename)) return NULL;
-		C4Surface* surface = new C4Surface;
-		// Suppress error message here, StdMeshMaterial loader
-		// will show one.
-		if (!surface->Read(Group, GetExtension(filename)))
-			{ delete surface; surface = NULL; }
-		return surface;
-	}
-
-	virtual StdStrBuf LoadSkeleton(const char* filename)
-	{
-		StdStrBuf ret;
-		if (!Group.LoadEntryString(filename, &ret)) return StdStrBuf();
-		return ret;
-	}
-
-private:
-	C4Group& Group;
-};
+#include "c4group/C4Components.h"
+#include "game/C4Application.h"
+#include "graphics/C4Draw.h"
+#include "graphics/C4GraphicsResource.h"
+#include "graphics/C4Surface.h"
+#include "gui/C4Menu.h"
+#include "landscape/C4Material.h"
+#include "lib/StdMeshLoader.h"
+#include "object/C4Def.h"
+#include "object/C4DefList.h"
+#include "object/C4GameObjects.h"
+#include "object/C4MeshAnimation.h"
+#include "object/C4Object.h"
+#include "object/C4ObjectInfo.h"
+#include "object/C4ObjectMenu.h"
+#include "player/C4Player.h"
+#include "player/C4PlayerList.h"
+#include "player/C4RankSystem.h"
 
 //-------------------------------- C4DefGraphics -----------------------------------------------
 
@@ -74,9 +44,9 @@ C4DefGraphics::C4DefGraphics(C4Def *pOwnDef)
 	// store def
 	pDef = pOwnDef;
 	// zero fields
-	Type = TYPE_Bitmap;
-	Bmp.Bitmap = Bmp.BitmapClr = NULL;
-	pNext = NULL;
+	Type = TYPE_None;
+	Bmp.Bitmap = Bmp.BitmapClr = Bmp.BitmapNormal = nullptr;
+	pNext = nullptr;
 	fColorBitmapAutoCreated = false;
 }
 
@@ -92,26 +62,35 @@ void C4DefGraphics::Clear()
 	// zero own fields
 	switch (Type)
 	{
+	case TYPE_None:
+		break;
 	case TYPE_Bitmap:
-		if (Bmp.BitmapClr) { delete Bmp.BitmapClr; Bmp.BitmapClr=NULL; }
-		if (Bmp.Bitmap) { delete Bmp.Bitmap; Bmp.Bitmap=NULL; }
+		if (Bmp.BitmapNormal) { delete Bmp.BitmapNormal; Bmp.BitmapNormal=nullptr; }
+		if (Bmp.BitmapClr) { delete Bmp.BitmapClr; Bmp.BitmapClr=nullptr; }
+		if (Bmp.Bitmap) { delete Bmp.Bitmap; Bmp.Bitmap=nullptr; }
 		break;
 	case TYPE_Mesh:
-		if (Mesh) { delete Mesh; Mesh = NULL; }
+		if (Mesh) { delete Mesh; Mesh = nullptr; }
 		break;
 	}
+	Type = TYPE_None;
 
 	// delete additonal graphics
 	C4AdditionalDefGraphics *pGrp2N = pNext, *pGrp2;
-	while ((pGrp2=pGrp2N)) { pGrp2N = pGrp2->pNext; pGrp2->pNext = NULL; delete pGrp2; }
-	pNext = NULL; fColorBitmapAutoCreated = false;
+	while ((pGrp2=pGrp2N)) { pGrp2N = pGrp2->pNext; pGrp2->pNext = nullptr; delete pGrp2; }
+	pNext = nullptr; fColorBitmapAutoCreated = false;
 }
 
-bool C4DefGraphics::LoadBitmap(C4Group &hGroup, const char *szFilename, const char *szOverlay, bool fColorByOwner)
+bool C4DefGraphics::LoadBitmap(C4Group &hGroup, const char *szFilename, const char *szOverlay, const char *szNormal, bool fColorByOwner)
 {
 	if (!szFilename) return false;
+	Type = TYPE_Bitmap; // will be reset to TYPE_None in Clear() if loading fails
 	Bmp.Bitmap = new C4Surface();
-	if (!Bmp.Bitmap->Load(hGroup, szFilename)) return false;
+	if (!Bmp.Bitmap->Load(hGroup, szFilename, false, true, C4SF_MipMap))
+	{
+		Clear();
+		return false;
+	}
 
 	// Create owner color bitmaps
 	if (fColorByOwner)
@@ -119,7 +98,7 @@ bool C4DefGraphics::LoadBitmap(C4Group &hGroup, const char *szFilename, const ch
 		// Create additionmal bitmap
 		Bmp.BitmapClr=new C4Surface();
 		// if overlay-surface is present, load from that
-		if (szOverlay && Bmp.BitmapClr->Load(hGroup, szOverlay))
+		if (szOverlay && Bmp.BitmapClr->Load(hGroup, szOverlay, false, false, C4SF_MipMap))
 		{
 			// set as Clr-surface, also checking size
 			if (!Bmp.BitmapClr->SetAsClrByOwnerOf(Bmp.Bitmap))
@@ -127,17 +106,49 @@ bool C4DefGraphics::LoadBitmap(C4Group &hGroup, const char *szFilename, const ch
 				DebugLogF("    Gfx loading error in %s: %s (%d x %d) doesn't match overlay %s (%d x %d) - invalid file or size mismatch",
 				          hGroup.GetFullName().getData(), szFilename, Bmp.Bitmap ? Bmp.Bitmap->Wdt : -1, Bmp.Bitmap ? Bmp.Bitmap->Hgt : -1,
 				          szOverlay, Bmp.BitmapClr->Wdt, Bmp.BitmapClr->Hgt);
-				delete Bmp.BitmapClr; Bmp.BitmapClr = NULL;
+				Clear();
 				return false;
 			}
 		}
 		else
 		{
 			// otherwise, create by all blue shades
-			if (!Bmp.BitmapClr->CreateColorByOwner(Bmp.Bitmap)) return false;
+			if (!Bmp.BitmapClr->CreateColorByOwner(Bmp.Bitmap))
+			{
+				Clear();
+				return false;
+			}
 		}
 		fColorBitmapAutoCreated = true;
 	}
+
+	if (szNormal)
+	{
+		Bmp.BitmapNormal = new C4Surface();
+		if (Bmp.BitmapNormal->Load(hGroup, szNormal, false, true, C4SF_MipMap))
+		{
+			// Normal map loaded. Sanity check and link.
+			if(Bmp.BitmapNormal->Wdt != Bmp.Bitmap->Wdt ||
+			   Bmp.BitmapNormal->Hgt != Bmp.Bitmap->Hgt)
+			{
+				DebugLogF("    Gfx loading error in %s: %s (%d x %d) doesn't match normal %s (%d x %d) - invalid file or size mismatch",
+				          hGroup.GetFullName().getData(), szFilename, Bmp.Bitmap ? Bmp.Bitmap->Wdt : -1, Bmp.Bitmap ? Bmp.Bitmap->Hgt : -1,
+				          szNormal, Bmp.BitmapNormal->Wdt, Bmp.BitmapNormal->Hgt);
+				Clear();
+				return false;
+			}
+
+			Bmp.Bitmap->pNormalSfc = Bmp.BitmapNormal;
+			if(Bmp.BitmapClr) Bmp.BitmapClr->pNormalSfc = Bmp.BitmapNormal;
+		}
+		else
+		{
+			// No normal map
+			delete Bmp.BitmapNormal;
+			Bmp.BitmapNormal = nullptr;
+		}
+	}
+
 	Type = TYPE_Bitmap;
 	// success
 	return true;
@@ -145,20 +156,26 @@ bool C4DefGraphics::LoadBitmap(C4Group &hGroup, const char *szFilename, const ch
 
 bool C4DefGraphics::LoadMesh(C4Group &hGroup, const char* szFileName, StdMeshSkeletonLoader& loader)
 {
-	char* buf = NULL;
+	char* buf = nullptr;
 	size_t size;
 
 	try
 	{
 		if(!hGroup.LoadEntry(szFileName, &buf, &size, 1)) return false;
 
-		if(SEqualNoCase(GetExtension(szFileName), "xml"))
+		if (SEqualNoCase(GetExtension(szFileName), "xml"))
+		{
 			Mesh = StdMeshLoader::LoadMeshXml(buf, size, ::MeshMaterialManager, loader, hGroup.GetName());
+		}
 		else
+		{
 			Mesh = StdMeshLoader::LoadMeshBinary(buf, size, ::MeshMaterialManager, loader, hGroup.GetName());
+		}
 		delete[] buf;
 
-		// Create mirrored animations (#401), order submeshes
+		Mesh->SetLabel(pDef->id.ToString());
+
+		// order submeshes
 		Mesh->PostInit();
 	}
 	catch (const std::runtime_error& ex)
@@ -172,43 +189,65 @@ bool C4DefGraphics::LoadMesh(C4Group &hGroup, const char* szFileName, StdMeshSke
 	return true;
 }
 
-bool C4DefGraphics::Load(C4Group &hGroup, bool fColorByOwner)
+bool C4DefGraphics::LoadSkeleton(C4Group &hGroup, const char* szFileName, StdMeshSkeletonLoader& loader)
+{
+	char* buf = nullptr;
+	size_t size;
+
+	try
+	{
+		if (!hGroup.LoadEntry(szFileName, &buf, &size, 1)) return false;
+
+		// delete skeleton from the map for reloading, or else if you delete or rename
+		// a skeleton file in the folder the old skeleton will still exist in the map
+		loader.RemoveSkeleton(hGroup.GetName(), szFileName);
+
+		if (SEqualNoCase(GetExtension(szFileName), "xml"))
+		{
+			loader.LoadSkeletonXml(hGroup.GetName(), szFileName, buf, size);
+		}
+		else
+		{
+			loader.LoadSkeletonBinary(hGroup.GetName(), szFileName, buf, size);
+		}
+
+		delete[] buf;
+	}
+	catch (const std::runtime_error& ex)
+	{
+		DebugLogF("Failed to load skeleton in definition %s: %s", hGroup.GetName(), ex.what());
+		delete[] buf;
+		return false;
+	}
+
+	return true;
+}
+
+bool C4DefGraphics::Load(C4Group &hGroup, StdMeshSkeletonLoader &loader, bool fColorByOwner)
 {
 	char Filename[_MAX_PATH+1]; *Filename=0;
-	AdditionalResourcesLoader loader(hGroup);
 
-	// Load all materials for this definition:
+	// load skeletons
 	hGroup.ResetSearch();
-	while (hGroup.FindNextEntry(C4CFN_DefMaterials, Filename, NULL, !!*Filename))
+	while (hGroup.FindNextEntry("*", Filename, nullptr, !!*Filename))
 	{
-		StdStrBuf material;
-		if (hGroup.LoadEntryString(Filename, &material))
-		{
-			try
-			{
-				StdStrBuf buf;
-				buf.Copy(hGroup.GetName());
-				buf.Append("/"); buf.Append(Filename);
-				::MeshMaterialManager.Parse(material.getData(), buf.getData(), loader);
-			}
-			catch (const StdMeshMaterialError& ex)
-			{
-				DebugLogF("Failed to read material script: %s", ex.what());
-			}
-		}
+		if (!WildcardMatch(C4CFN_DefSkeleton, Filename) && !WildcardMatch(C4CFN_DefSkeletonXml, Filename)) continue;
+		LoadSkeleton(hGroup, Filename, loader);
 	}
 
 	// Try from Mesh first
-	if (!LoadMesh(hGroup, C4CFN_DefMesh, loader) && !LoadMesh(hGroup, C4CFN_DefMeshXml, loader) && !LoadBitmap(hGroup, C4CFN_DefGraphics, C4CFN_ClrByOwner, fColorByOwner)) return false;
+	if (!LoadMesh(hGroup, C4CFN_DefMesh, loader))
+		if(!LoadMesh(hGroup, C4CFN_DefMeshXml, loader))
+			LoadBitmap(hGroup, C4CFN_DefGraphics, C4CFN_ClrByOwner, C4CFN_NormalMap, fColorByOwner);
 
 	// load additional graphics
 	C4DefGraphics *pLastGraphics = this;
 	const int32_t iOverlayWildcardPos = SCharPos('*', C4CFN_ClrByOwnerEx);
 	hGroup.ResetSearch(); *Filename=0;
-	const char* const AdditionalGraphics[] = { C4CFN_DefGraphicsEx, C4CFN_DefGraphicsExMesh, C4CFN_DefGraphicsExMeshXml, NULL };
-	while (hGroup.FindNextEntry("*", Filename, NULL, !!*Filename))
+	const char* const AdditionalGraphics[] = { C4CFN_DefGraphicsEx, C4CFN_DefGraphicsExMesh, C4CFN_DefGraphicsExMeshXml, nullptr };
+	while (hGroup.FindNextEntry("*", Filename, nullptr, !!*Filename))
 	{
-		for(const char* const* szWildcard = AdditionalGraphics; *szWildcard != NULL; ++szWildcard)
+		for(const char* const* szWildcard = AdditionalGraphics; *szWildcard != nullptr; ++szWildcard)
 		{
 			if(!WildcardMatch(*szWildcard, Filename)) continue;
 			// skip def graphics
@@ -243,13 +282,20 @@ bool C4DefGraphics::Load(C4Group &hGroup, bool fColorByOwner)
 					EnforceExtension(OverlayFn, GetExtension(C4CFN_ClrByOwnerEx));
 				}
 
+				// create normal filename
+				char NormalFn[_MAX_PATH+1];
+				SCopy(C4CFN_NormalMapEx, NormalFn, _MAX_PATH);
+				NormalFn[iOverlayWildcardPos]=0;
+				SAppend(Filename + iWildcardPos, NormalFn);
+				EnforceExtension(NormalFn, GetExtension(C4CFN_NormalMapEx));
+
 				// load them
-				if (!pLastGraphics->LoadBitmap(hGroup, Filename, fColorByOwner ? OverlayFn : NULL, fColorByOwner))
+				if (!pLastGraphics->LoadBitmap(hGroup, Filename, fColorByOwner ? OverlayFn : nullptr, NormalFn, fColorByOwner))
 					return false;
 			}
 			else
 			{
-				if(!pLastGraphics->LoadMesh(hGroup, Filename, loader))
+				if (!pLastGraphics->LoadMesh(hGroup, Filename, loader))
 					return false;
 			}
 		}
@@ -266,34 +312,7 @@ C4DefGraphics *C4DefGraphics::Get(const char *szGrpName)
 	for (C4AdditionalDefGraphics *pGrp = pNext; pGrp; pGrp=pGrp->pNext)
 		if (SEqualNoCase(pGrp->GetName(), szGrpName)) return pGrp;
 	// nothing found
-	return NULL;
-}
-
-bool C4DefGraphics::CopyGraphicsFrom(C4DefGraphics &rSource)
-{
-	if (Type != TYPE_Bitmap) return false; // TODO!
-	// clear previous
-	if (Bmp.BitmapClr) { delete Bmp.BitmapClr; Bmp.BitmapClr=NULL; }
-	if (Bmp.Bitmap) { delete Bmp.Bitmap; Bmp.Bitmap=NULL; }
-	// copy from source
-	if (rSource.Bmp.Bitmap)
-	{
-		Bmp.Bitmap = new C4Surface();
-		if (!Bmp.Bitmap->Copy(*rSource.Bmp.Bitmap))
-			{ delete Bmp.Bitmap; Bmp.Bitmap=NULL; return false; }
-	}
-	if (rSource.Bmp.BitmapClr)
-	{
-		Bmp.BitmapClr = new C4Surface();
-		if (!Bmp.BitmapClr->Copy(*rSource.Bmp.BitmapClr))
-		{
-			if (Bmp.Bitmap) { delete Bmp.Bitmap; Bmp.Bitmap=NULL; }
-			delete Bmp.BitmapClr; Bmp.BitmapClr=NULL; return false;
-		}
-		if (Bmp.Bitmap) Bmp.BitmapClr->SetAsClrByOwnerOf(Bmp.Bitmap);
-	}
-	// done, success
-	return true;
+	return nullptr;
 }
 
 void C4DefGraphics::Draw(C4Facet &cgo, DWORD iColor, C4Object *pObj, int32_t iPhaseX, int32_t iPhaseY, C4DrawTransform* trans)
@@ -310,6 +329,9 @@ void C4DefGraphics::Draw(C4Facet &cgo, DWORD iColor, C4Object *pObj, int32_t iPh
 
 	switch(Type)
 	{
+	case C4DefGraphics::TYPE_None:
+		// Def has no graphics
+		break;
 	case C4DefGraphics::TYPE_Bitmap:
 		fctPicture.Set(GetBitmap(iColor),fctPicRect.x,fctPicRect.y,fctPicRect.Wdt,fctPicRect.Hgt);
 		fctPicture.DrawTUnscaled(cgo,true,iPhaseX,iPhaseY,trans);
@@ -327,7 +349,7 @@ void C4DefGraphics::Draw(C4Facet &cgo, DWORD iColor, C4Object *pObj, int32_t iPh
 		}
 		else
 		{
-			dummy.reset(new StdMeshInstance(*Mesh, 1.0f));
+			dummy = std::make_unique<StdMeshInstance>(*Mesh, 1.0f);
 			instance = dummy.get();
 			pDef->GetProperty(P_PictureTransformation, &value);
 		}
@@ -339,7 +361,7 @@ void C4DefGraphics::Draw(C4Facet &cgo, DWORD iColor, C4Object *pObj, int32_t iPh
 		pDraw->SetPerspective(true);
 		pDraw->RenderMesh(*instance, cgo.Surface, cgo.X,cgo.Y, cgo.Wdt, cgo.Hgt, pObj ? pObj->Color : iColor, trans);
 		pDraw->SetPerspective(false);
-		pDraw->SetMeshTransform(NULL);
+		pDraw->SetMeshTransform(nullptr);
 
 		break;
 	}
@@ -364,26 +386,26 @@ void C4DefGraphics::DrawClr(C4Facet &cgo, bool fAspect, DWORD dwClr)
 
 void C4DefGraphicsAdapt::CompileFunc(StdCompiler *pComp)
 {
-	bool fCompiler = pComp->isCompiler();
+	bool deserializing = pComp->isDeserializer();
 	// nothing?
-	if (!fCompiler && !pDefGraphics) return;
+	if (!deserializing && !pDefGraphics) return;
 	// definition
-	C4ID id; if (!fCompiler) id = pDefGraphics->pDef->id;
+	C4ID id; if (!deserializing) id = pDefGraphics->pDef->id;
 	pComp->Value(id);
 	// go over two separators ("::"). Expect them if an id was found.
 	if (!pComp->Separator(StdCompiler::SEP_PART2) || !pComp->Separator(StdCompiler::SEP_PART2))
-		pComp->excCorrupt("DefGraphics: expected \"::\"");
+		pComp->excCorrupt(R"(DefGraphics: expected "::")");
 	// compile name
-	StdStrBuf Name; if (!fCompiler) Name = pDefGraphics->GetName();
+	StdStrBuf Name; if (!deserializing) Name = pDefGraphics->GetName();
 	pComp->Value(mkDefaultAdapt(mkParAdapt(Name, StdCompiler::RCT_Idtf), ""));
 	// reading: search def-graphics
-	if (fCompiler)
+	if (deserializing)
 	{
 		// search definition, throw expection if not found
 		C4Def *pDef = ::Definitions.ID2Def(id);
 		// search def-graphics
 		if (!pDef || !( pDefGraphics = pDef->Graphics.Get(Name.getData()) ))
-			pComp->excCorrupt("DefGraphics: could not find graphics \"%s\" in %s(%s)!", Name.getData(), id.ToString(), pDef ? pDef->GetName() : "def not found");
+			pComp->excCorrupt(R"(DefGraphics: could not find graphics "%s" in %s(%s)!)", Name.getData(), id.ToString(), pDef ? pDef->GetName() : "def not found");
 	}
 }
 
@@ -393,8 +415,11 @@ C4AdditionalDefGraphics::C4AdditionalDefGraphics(C4Def *pOwnDef, const char *szN
 	SCopy(szName, Name, C4MaxName);
 }
 
-C4DefGraphicsPtrBackup::C4DefGraphicsPtrBackup(C4DefGraphics *pSourceGraphics):
-	MeshMaterialUpdate(::MeshMaterialManager), pMeshUpdate(NULL)
+// ---------------------------------------------------------------------------
+// C4DefGraphicsPtrBackup: Functionality to reload def graphics at runtime
+
+C4DefGraphicsPtrBackupEntry::C4DefGraphicsPtrBackupEntry(C4DefGraphics *pSourceGraphics):
+	pMeshUpdate(nullptr)
 {
 	// assign graphics + def
 	pGraphicsPtr = pSourceGraphics;
@@ -403,58 +428,37 @@ C4DefGraphicsPtrBackup::C4DefGraphicsPtrBackup(C4DefGraphics *pSourceGraphics):
 	const char *szName = pGraphicsPtr->GetName();
 	if (szName) SCopy(szName, Name, C4MaxName); else *Name=0;
 
-	// Remove all mesh materials that were loaded from this definition
-	for(StdMeshMatManager::Iterator iter = ::MeshMaterialManager.Begin(); iter != MeshMaterialManager.End(); )
-	{
-		StdStrBuf Filename;
-		Filename.Copy(pDef->Filename);
-		Filename.Append("/"); Filename.Append(GetFilename(iter->FileName.getData()));
-
-		if(Filename == iter->FileName)
-			iter = ::MeshMaterialManager.Remove(iter, &MeshMaterialUpdate);
-		else
-			++iter;
-	}
-
 	// assign mesh update
 	if(pSourceGraphics->Type == C4DefGraphics::TYPE_Mesh)
 		pMeshUpdate = new StdMeshUpdate(*pSourceGraphics->Mesh);
-
-	// create next graphics recursively
-	C4DefGraphics *pNextGfx = pGraphicsPtr->pNext;
-	if (pNextGfx)
-		pNext = new C4DefGraphicsPtrBackup(pNextGfx);
-	else
-		pNext = NULL;
 }
 
-C4DefGraphicsPtrBackup::~C4DefGraphicsPtrBackup()
+C4DefGraphicsPtrBackupEntry::~C4DefGraphicsPtrBackupEntry()
 {
 	// graphics ptr still assigned? then remove dead graphics pointers from objects
 	if (pGraphicsPtr) AssignRemoval();
 	delete pMeshUpdate;
-	// delete following graphics recursively
-	if (pNext) delete pNext;
 }
 
-void C4DefGraphicsPtrBackup::AssignUpdate(C4DefGraphics *pNewGraphics)
+void C4DefGraphicsPtrBackupEntry::AssignUpdate()
 {
-	UpdateMeshes();
+	// Update all attached meshes that were using this mesh
+	UpdateAttachedMeshes();
 
 	// only if graphics are assigned
 	if (pGraphicsPtr)
 	{
 		// check all objects
-		C4Object *pObj;
-		for (C4ObjectLink *pLnk = ::Objects.First; pLnk; pLnk=pLnk->Next)
-			if ((pObj=pLnk->Obj)) if (pObj->Status)
+		for (C4Object *pObj : Objects)
+		{
+			if (pObj && pObj->Status)
 				{
 					if (pObj->pGraphics == pGraphicsPtr)
 					{
 						// same graphics found. Update mesh graphics if any.
 						if(pMeshUpdate)
 						{
-							assert(pObj->pMeshInstance != NULL); // object had mesh graphics, so mesh instance should be present
+							assert(pObj->pMeshInstance != nullptr); // object had mesh graphics, so mesh instance should be present
 							assert(&pObj->pMeshInstance->GetMesh() == &pMeshUpdate->GetOldMesh()); // mesh instance of correct type even
 
 							// Get new mesh from reloaded graphics
@@ -468,7 +472,7 @@ void C4DefGraphicsPtrBackup::AssignUpdate(C4DefGraphics *pNewGraphics)
 							if (!pObj->SetGraphics(Name, pObj->Def))
 							{
 								// shouldn't happen
-								pObj->AssignRemoval(); pObj->pGraphics=NULL;
+								pObj->AssignRemoval(); pObj->pGraphics=nullptr;
 							}
 					}
 
@@ -491,28 +495,25 @@ void C4DefGraphicsPtrBackup::AssignUpdate(C4DefGraphics *pNewGraphics)
 					if (pDef && pObj->Menu && (pDeco = pObj->Menu->GetFrameDecoration()))
 						if (pDeco->idSourceDef == pDef->id)
 							if (!pDeco->UpdateGfx())
-								pObj->Menu->SetFrameDeco(NULL);
+								pObj->Menu->SetFrameDeco(nullptr);
 				}
+		}
 		// done; reset field to indicate finished update
-		pGraphicsPtr = NULL;
+		pGraphicsPtr = nullptr;
 	}
-	// check next graphics
-	if (pNext) pNext->AssignUpdate(pNewGraphics);
 }
 
-void C4DefGraphicsPtrBackup::AssignRemoval()
+void C4DefGraphicsPtrBackupEntry::AssignRemoval()
 {
-	// Reset all mesh materials to what they were before the update
-	MeshMaterialUpdate.Cancel();
-	UpdateMeshes();
+	// Remove all attached meshes that were using this mesh
+	UpdateAttachedMeshes();
 
 	// only if graphics are assigned
 	if (pGraphicsPtr)
 	{
 		// check all objects
-		C4Object *pObj;
-		for (C4ObjectLink *pLnk = ::Objects.First; pLnk; pLnk=pLnk->Next)
-			if ((pObj=pLnk->Obj)) if (pObj->Status)
+		for (C4Object *pObj : Objects)
+			if (pObj && pObj->Status)
 				{
 					if (pObj->pGraphics == pGraphicsPtr)
 					{
@@ -524,11 +525,11 @@ void C4DefGraphicsPtrBackup::AssignRemoval()
 
 							pObj->AssignRemoval();
 							delete pObj->pMeshInstance;
-							pObj->pMeshInstance = NULL;
-							pObj->pGraphics = NULL;
+							pObj->pMeshInstance = nullptr;
+							pObj->pGraphics = nullptr;
 						}
 						// sprite graphics; reset them
-						else if (!pObj->SetGraphics()) { pObj->AssignRemoval(); pObj->pGraphics=NULL; }
+						else if (!pObj->SetGraphics()) { pObj->AssignRemoval(); pObj->pGraphics=nullptr; }
 					}
 					// remove any overlay graphics
 					for (;;)
@@ -548,26 +549,122 @@ void C4DefGraphicsPtrBackup::AssignRemoval()
 					C4GUI::FrameDecoration *pDeco;
 					if (pDef && pObj->Menu && (pDeco = pObj->Menu->GetFrameDecoration()))
 						if (pDeco->idSourceDef == pDef->id)
-							pObj->Menu->SetFrameDeco(NULL);
+							pObj->Menu->SetFrameDeco(nullptr);
 				}
 		// done; reset field to indicate finished update
-		pGraphicsPtr = NULL;
+		pGraphicsPtr = nullptr;
 	}
-	// check next graphics
-	if (pNext) pNext->AssignRemoval();
 }
 
-void C4DefGraphicsPtrBackup::UpdateMeshes()
+void C4DefGraphicsPtrBackupEntry::UpdateAttachedMeshes()
+{
+	for (C4Object *pObj : Objects)
+	{
+		if (pObj && pObj->Status)
+		{
+			if(pObj->pMeshInstance)
+				UpdateAttachedMesh(pObj->pMeshInstance);
+			for (C4GraphicsOverlay* pGfxOverlay = pObj->pGfxOverlay; pGfxOverlay; pGfxOverlay = pGfxOverlay->GetNext())
+				if(pGfxOverlay->pMeshInstance)
+					UpdateAttachedMesh(pGfxOverlay->pMeshInstance);
+		}
+	}
+}
+
+void C4DefGraphicsPtrBackupEntry::UpdateAttachedMesh(StdMeshInstance* instance)
+{
+	// Update if instance is an owned attached mesh
+	if(pMeshUpdate &&
+	   &instance->GetMesh() == &pMeshUpdate->GetOldMesh() &&
+	   instance->GetAttachParent() &&
+	   instance->GetAttachParent()->OwnChild)
+	{
+		C4DefGraphics *pGrp = pDef->Graphics.Get(Name); // null for failed def. reload
+		if(pGrp && pGrp->Type == C4DefGraphics::TYPE_Mesh)
+		{
+			pMeshUpdate->Update(instance, *pGrp->Mesh); // might detach from parent
+		}
+		else
+		{
+			instance->GetAttachParent()->Parent->DetachMesh(instance->GetAttachParent()->Number);
+		}
+	}
+	// Non-attached meshes and unowned attached meshes are updated in
+	// AssignUpdate or AssignRemoval, respectively, since they are
+	// contained in the object list.
+
+	// Copy the attached mesh list before recursion because the recursive
+	// call might detach meshes, altering the list and invalidating
+	// iterators.
+	std::vector<StdMeshInstance::AttachedMesh*> attached_meshes;
+	for(StdMeshInstance::AttachedMeshIter iter = instance->AttachedMeshesBegin(); iter != instance->AttachedMeshesEnd(); ++iter)
+		attached_meshes.push_back(*iter);
+
+	for(auto & attached_mesh : attached_meshes)
+		// TODO: Check that this mesh is still attached?
+		UpdateAttachedMesh(attached_mesh->Child);
+}
+
+C4DefGraphicsPtrBackup::C4DefGraphicsPtrBackup():
+	MeshMaterialUpdate(::MeshMaterialManager),
+	MeshAnimationUpdate(::Definitions.GetSkeletonLoader())
+{
+}
+
+C4DefGraphicsPtrBackup::~C4DefGraphicsPtrBackup()
+{
+	if(!fApplied) AssignRemoval();
+
+	for(auto & Entry : Entries)
+		delete Entry;
+}
+
+void C4DefGraphicsPtrBackup::Add(C4DefGraphics* pGfx)
+{
+	for(C4DefGraphics* pCur = pGfx; pCur != nullptr; pCur = pCur->pNext)
+		Entries.push_back(new C4DefGraphicsPtrBackupEntry(pCur));
+
+	// Remove all mesh materials that were loaded from this definition
+	C4Def* pDef = pGfx->pDef;
+	for(StdMeshMatManager::Iterator iter = ::MeshMaterialManager.Begin(); iter != MeshMaterialManager.End(); )
+	{
+		StdStrBuf Filename;
+		Filename.Copy(pDef->Filename);
+		Filename.Append("/"); Filename.Append(GetFilename(iter->FileName.getData()));
+
+		if(Filename == iter->FileName)
+			iter = ::MeshMaterialManager.Remove(iter, &MeshMaterialUpdate);
+		else
+			++iter;
+	}
+}
+
+void C4DefGraphicsPtrBackup::AssignRemoval()
+{
+	MeshMaterialUpdate.Cancel();
+
+	// Remove gfx
+	for(auto & Entry : Entries)
+		Entry->AssignRemoval();
+
+	fApplied = true;
+}
+
+void C4DefGraphicsPtrBackup::AssignUpdate()
 {
 	// Update mesh materials for all meshes
-	for(C4DefList::Table::iterator iter = Definitions.table.begin(); iter != Definitions.table.end(); ++iter)
-		if(iter->second->Graphics.Type == C4DefGraphics::TYPE_Mesh)
-			MeshMaterialUpdate.Update(iter->second->Graphics.Mesh);
+	for(auto & iter : Definitions.table)
+		if(iter.second->Graphics.Type == C4DefGraphics::TYPE_Mesh)
+			MeshMaterialUpdate.Update(iter.second->Graphics.Mesh);
 
-	// Update mesh materials for all mesh instances.
-	C4Object *pObj;
-	for (C4ObjectLink *pLnk = ::Objects.First; pLnk; pLnk=pLnk->Next)
-		if ((pObj=pLnk->Obj)) if (pObj->Status)
+	// Then, update mesh references in instances, attach bones by name, and update sprite gfx
+	for(auto & Entry : Entries)
+		Entry->AssignUpdate();
+
+	// Update mesh materials and animations for all mesh instances.
+	for (C4Object *pObj : Objects)
+	{
+		if (pObj && pObj->Status)
 		{
 			if(pObj->pMeshInstance)
 				UpdateMesh(pObj->pMeshInstance);
@@ -575,44 +672,20 @@ void C4DefGraphicsPtrBackup::UpdateMeshes()
 				if(pGfxOverlay->pMeshInstance)
 					UpdateMesh(pGfxOverlay->pMeshInstance);
 		}
+	}
+
+	fApplied = true;
 }
 
 void C4DefGraphicsPtrBackup::UpdateMesh(StdMeshInstance* instance)
 {
-	if(pMeshUpdate)
-	{
-		// Update materials for meshes that need not to be updated
-		if(&instance->GetMesh() != &pMeshUpdate->GetOldMesh()) // TODO: Won't work for multiple graphics
-		{
-			MeshMaterialUpdate.Update(instance);
-		}
-		// Updated if instance is an owned attached mesh
-		else if(instance->GetAttachParent() && instance->GetAttachParent()->OwnChild)
-		{
-			C4DefGraphics *pGrp = pDef->Graphics.Get(Name); // null for failed def. reload
-			if(pGrp && pGrp->Type == C4DefGraphics::TYPE_Mesh)
-			{
-				pMeshUpdate->Update(instance, *pGrp->Mesh); // might detach from parent
-			}
-			else
-			{
-				instance->GetAttachParent()->Parent->DetachMesh(instance->GetAttachParent()->Number);
-			}
-		}
-		// Non-attached meshes and unowned attached meshes are updated in
-		// AssignUpdate or AssignRemoval, respectively, since they are contained
-		// in the object list.
-	}
+	MeshMaterialUpdate.Update(instance);
+	MeshAnimationUpdate.Update(instance);
 
-	// Copy the attached mesh list before recursion because the recursive call
-	// might detach meshes, altering the list and invalidating iterators.
-	std::vector<StdMeshInstance::AttachedMesh*> attached_meshes;
-	for(StdMeshInstance::AttachedMeshIter iter = instance->AttachedMeshesBegin(); iter != instance->AttachedMeshesEnd(); ++iter)
-		attached_meshes.push_back(*iter);
-
-	for(std::vector<StdMeshInstance::AttachedMesh*>::iterator iter = attached_meshes.begin(); iter != attached_meshes.end(); ++iter)
-		// TODO: Check that this mesh is still attached?
-		UpdateMesh((*iter)->Child);
+	// Recursive for attached meshes not in object list
+	for (StdMeshInstance::AttachedMeshIter iter = instance->AttachedMeshesBegin(); iter != instance->AttachedMeshesEnd(); ++iter)
+		if ((*iter)->OwnChild)
+			UpdateMesh((*iter)->Child);
 }
 
 // ---------------------------------------------------------------------------
@@ -621,20 +694,20 @@ void C4DefGraphicsPtrBackup::UpdateMesh(StdMeshInstance* instance)
 C4GraphicsOverlay::~C4GraphicsOverlay()
 {
 	// Free mesh instance
-	delete pMeshInstance; pMeshInstance = NULL;
+	delete pMeshInstance; pMeshInstance = nullptr;
 	// free any additional overlays
 	C4GraphicsOverlay *pNextOther = pNext, *pOther;
 	while ((pOther = pNextOther))
 	{
 		pNextOther = pOther->pNext;
-		pOther->pNext = NULL;
+		pOther->pNext = nullptr;
 		delete pOther;
 	}
 }
 
 void C4GraphicsOverlay::UpdateFacet()
 {
-	// special: Nothing to update for object and pSourceGfx may be NULL
+	// special: Nothing to update for object and pSourceGfx may be nullptr
 	// If there will ever be something to init here, UpdateFacet() will also need to be called when objects have been loaded
 	if (eMode == MODE_Object) return;
 	// otherwise, source graphics must be specified
@@ -643,7 +716,7 @@ void C4GraphicsOverlay::UpdateFacet()
 	assert(pDef);
 	fZoomToShape = false;
 	// Clear old mesh instance, if any
-	delete pMeshInstance; pMeshInstance = NULL;
+	delete pMeshInstance; pMeshInstance = nullptr;
 	// update by mode
 	switch (eMode)
 	{
@@ -653,7 +726,7 @@ void C4GraphicsOverlay::UpdateFacet()
 	case MODE_Base: // def base graphics
 		if (pSourceGfx->Type == C4DefGraphics::TYPE_Bitmap)
 			fctBlit.Set(pSourceGfx->GetBitmap(), 0, 0, pDef->Shape.Wdt, pDef->Shape.Hgt, pDef->Shape.x+pDef->Shape.Wdt/2, pDef->Shape.y+pDef->Shape.Hgt/2);
-		else
+		else if (pSourceGfx->Type == C4DefGraphics::TYPE_Mesh)
 			pMeshInstance = new StdMeshInstance(*pSourceGfx->Mesh, 1.0f);
 		break;
 
@@ -684,16 +757,16 @@ void C4GraphicsOverlay::UpdateFacet()
 			            action->GetPropertyInt(P_Wdt), action->GetPropertyInt(P_Hgt));
 			// FIXME: fctBlit.TargetX has to be set here
 		}
-		else
+		else if (pSourceGfx->Type == C4DefGraphics::TYPE_Mesh)
 		{
 			C4String* AnimationName = action->GetPropertyStr(P_Animation);
 			if (!AnimationName) return;
 
 			pMeshInstance = new StdMeshInstance(*pSourceGfx->Mesh, 1.0f);
-			const StdMeshAnimation* Animation = pSourceGfx->Mesh->GetAnimationByName(AnimationName->GetData());
+			const StdMeshAnimation* Animation = pSourceGfx->Mesh->GetSkeleton().GetAnimationByName(AnimationName->GetData());
 			if (!Animation) return;
 
-			pMeshInstance->PlayAnimation(*Animation, 0, NULL, new C4ValueProviderRef<int32_t>(iPhase, ftofix(Animation->Length / action->GetPropertyInt(P_Length))), new C4ValueProviderConst(itofix(1)));
+			pMeshInstance->PlayAnimation(*Animation, 0, nullptr, new C4ValueProviderRef<int32_t>(iPhase, ftofix(Animation->Length / action->GetPropertyInt(P_Length))), new C4ValueProviderConst(itofix(1)), true);
 		}
 
 		break;
@@ -755,8 +828,9 @@ bool C4GraphicsOverlay::IsValid(const C4Object *pForObj) const
 			return true;
 		else if (pSourceGfx->Type == C4DefGraphics::TYPE_Bitmap)
 			return !!fctBlit.Surface;
-		else
+		else if (pSourceGfx->Type == C4DefGraphics::TYPE_Mesh)
 			return !!pMeshInstance;
+		return false;
 	}
 	else
 	{
@@ -764,116 +838,12 @@ bool C4GraphicsOverlay::IsValid(const C4Object *pForObj) const
 	}
 }
 
-void C4GraphicsOverlay::Read(const char **ppInput)
-{
-	// deprecated
-	assert(false && "C4GraphicsOverlay::Read: deprecated");
-#if 0
-	const char *szReadFrom = *ppInput;
-	// defaults
-	eMode = MODE_None; pSourceGfx = NULL; *Action=0; dwBlitMode = 0; iPhase = 0; iID=0;
-	// read ID
-	SCopyUntil(szReadFrom, OSTR, ',', C4MaxName);
-	szReadFrom += strlen(OSTR); if (*szReadFrom) ++szReadFrom;
-	sscanf(OSTR, "%i", &iID);
-	// read C4ID::Gfxname
-	int32_t iLineLength = SLen(szReadFrom);
-	// not C4ID::Name?
-	if (iLineLength < 6 || szReadFrom[4]!=':' || szReadFrom[5]!=':')
-	{
-		DebugLog("C4Compiler error: Malformed graphics overlay definition!");
-		return;
-	}
-	// get ID
-	char id[5]; SCopy(szReadFrom, id, 4); szReadFrom += 6;
-	C4Def *pSrcDef = ::Definitions.ID2Def(C4Id(id)); // defaults to NULL for unloaded def
-	if (pSrcDef)
-	{
-		char GfxName[C4MaxName+1];
-		SCopyUntil(szReadFrom, GfxName, ',', C4MaxName);
-		szReadFrom += strlen(GfxName); if (*szReadFrom) ++szReadFrom;
-		// get graphics - "C4ID::" leads to *szLine == NULL, and thus the default graphic of pSrcDef!
-		pSourceGfx = pSrcDef->Graphics.Get(GfxName);
-	}
-	// read mode
-	DWORD dwRead;
-	SCopyUntil(szReadFrom, OSTR, ',', C4MaxName);
-	szReadFrom += strlen(OSTR); if (*szReadFrom) ++szReadFrom;
-	sscanf(OSTR, "%i", &dwRead); eMode = (Mode) dwRead;
-	// read action
-	SCopyUntil(szReadFrom, Action, ',', C4MaxName);
-	szReadFrom += strlen(Action); if (*szReadFrom) ++szReadFrom;
-	// read blit mode
-	SCopyUntil(szReadFrom, OSTR, ',', C4MaxName);
-	szReadFrom += strlen(OSTR); if (*szReadFrom) ++szReadFrom;
-	sscanf(OSTR, "%i", &dwBlitMode);
-	// read phase
-	SCopyUntil(szReadFrom, OSTR, ',', C4MaxName);
-	szReadFrom += strlen(OSTR); if (*szReadFrom) ++szReadFrom;
-	sscanf(OSTR, "%i", &iPhase);
-	// read transform
-	if (*szReadFrom) ++szReadFrom; // '('
-	int32_t iScanCnt = sscanf(szReadFrom, "%f,%f,%f,%f,%f,%f,%d",
-	                          &Transform.mat[0], &Transform.mat[1], &Transform.mat[2],
-	                          &Transform.mat[3], &Transform.mat[4], &Transform.mat[5], &Transform.FlipDir);
-	if (iScanCnt != 7) { DebugLog("C4Compiler: malformed C4CV_Transform"); }
-	iScanCnt = SCharPos(')', szReadFrom); if (iScanCnt>=0) szReadFrom += iScanCnt+1;
-	// assign ptr immediately after read overlay
-	*ppInput = szReadFrom;
-	// update used facet according to read data
-	UpdateFacet();
-#endif
-}
-
-void C4GraphicsOverlay::Write(char *szOutput)
-{
-	// deprecated
-	assert(false && "C4GraphicsOverlay::Write: deprecated");
-#if 0
-	// safety: Don't save invalid
-	if (!pSourceGfx) return;
-	C4Def *pDef = pSourceGfx->pDef;
-	assert(pDef);
-	// get to end of buffer
-	szOutput += strlen(szOutput);
-	// store ID
-	sprintf(OSTR, "%i", iID); SCopy(OSTR, szOutput); szOutput += strlen(szOutput);
-	*szOutput = ','; ++szOutput;
-	// append C4ID::Graphicsname (or C4ID:: for def graphics)
-	SCopy(pDef->id.ToString(), szOutput); szOutput += strlen(szOutput);
-	SCopy("::", szOutput); szOutput += strlen(szOutput);
-	const char *szGrpName = pSourceGfx->GetName();
-	if (szGrpName) { SCopy(szGrpName, szOutput); szOutput += strlen(szOutput); }
-	*szOutput = ','; ++szOutput;
-	// store mode
-	DWORD dwMode = eMode;
-	sprintf(OSTR, "%i", dwMode); SCopy(OSTR, szOutput); szOutput += strlen(OSTR);
-	// store action
-	*szOutput = ','; ++szOutput;
-	SCopy(Action, szOutput); szOutput += strlen(szOutput);
-	// store blit mode
-	*szOutput = ','; ++szOutput;
-	sprintf(OSTR, "%i", dwBlitMode); SCopy(OSTR, szOutput); szOutput += strlen(szOutput);
-	// store phase
-	*szOutput = ','; ++szOutput;
-	sprintf(OSTR, "%i", iPhase); SCopy(OSTR, szOutput); szOutput += strlen(szOutput);
-	// store transform
-	*szOutput = ','; ++szOutput;
-	sprintf(OSTR, "(%f,%f,%f,%f,%f,%f,%d)",
-	        Transform.mat[0], Transform.mat[1], Transform.mat[2],
-	        Transform.mat[3], Transform.mat[4], Transform.mat[5], Transform.FlipDir);
-	SCopy(OSTR, szOutput); szOutput += strlen(szOutput);
-	// terminate string
-	*szOutput=0;
-#endif
-}
-
 void C4GraphicsOverlay::CompileFunc(StdCompiler *pComp)
 {
 	// read ID
 	pComp->Value(iID); pComp->Separator();
 	// read def-graphics
-	pComp->Value(mkDefaultAdapt(C4DefGraphicsAdapt(pSourceGfx), (C4DefGraphics *)NULL));
+	pComp->Value(mkDefaultAdapt(C4DefGraphicsAdapt(pSourceGfx), (C4DefGraphics *)nullptr));
 	pComp->Separator();
 	// read mode
 	pComp->Value(mkIntAdapt(eMode)); pComp->Separator();
@@ -892,15 +862,15 @@ void C4GraphicsOverlay::CompileFunc(StdCompiler *pComp)
 		pComp->Value(mkIntAdapt(dwClrModulation));
 	else
 		// default
-		if (pComp->isCompiler()) dwClrModulation = 0xffffff;
+		if (pComp->isDeserializer()) dwClrModulation = 0xffffff;
 	// read overlay target object
 	if (pComp->Separator())
 		pComp->Value(OverlayObj);
 	else
 		// default
-		if (pComp->isCompiler()) OverlayObj = NULL;
+		if (pComp->isDeserializer()) OverlayObj = nullptr;
 	// update used facet according to read data
-	if (pComp->isCompiler()) UpdateFacet();
+	if (pComp->isDeserializer()) UpdateFacet();
 }
 
 void C4GraphicsOverlay::DenumeratePointers()
@@ -911,16 +881,29 @@ void C4GraphicsOverlay::DenumeratePointers()
 void C4GraphicsOverlay::Draw(C4TargetFacet &cgo, C4Object *pForObj, int32_t iByPlayer)
 {
 	assert(!IsPicture());
-	assert(pForObj);
+	// note: Also called with pForObj==nullptr for editor placement preview
 	// get target pos
 	float offX, offY;
 	float newzoom;
-	pForObj->GetDrawPosition(cgo, offX, offY, newzoom);
+	if (pForObj)
+	{
+		pForObj->GetDrawPosition(cgo, offX, offY, newzoom);
+	}
+	else
+	{
+		// offset in editor mode preview
+		offX = cgo.X;
+		offY = cgo.Y;
+		newzoom = cgo.Zoom;
+	}
 	ZoomDataStackItem zdsi(newzoom);
 
 	// special blit mode
 	if (dwBlitMode == C4GFXBLIT_PARENT)
+	{
+		assert(pForObj);
 		(OverlayObj ? static_cast<C4Object*>(OverlayObj) : pForObj)->PrepareDrawing();
+	}
 	else
 	{
 		pDraw->SetBlitMode(dwBlitMode);
@@ -931,6 +914,7 @@ void C4GraphicsOverlay::Draw(C4TargetFacet &cgo, C4Object *pForObj, int32_t iByP
 	}
 	if (eMode == MODE_Rank)
 	{
+		assert(pForObj);
 		C4TargetFacet ccgo;
 		ccgo.Set(cgo.Surface, offX+pForObj->Shape.x,offY+pForObj->Shape.y,pForObj->Shape.Wdt,pForObj->Shape.Hgt, cgo.TargetX, cgo.TargetY);
 		DrawRankSymbol(ccgo, OverlayObj);
@@ -938,7 +922,8 @@ void C4GraphicsOverlay::Draw(C4TargetFacet &cgo, C4Object *pForObj, int32_t iByP
 	// drawing specific object?
 	else if (OverlayObj)
 	{
-		// TODO: Shouldn't have called PrepareDrawing/set ClrModulation here, since 
+		assert(pForObj);
+		// TODO: Shouldn't have called PrepareDrawing/set ClrModulation here, since
 		// OverlayObj drawing will do it on its own.
 		if (eMode == MODE_ObjectPicture)
 		{
@@ -956,6 +941,7 @@ void C4GraphicsOverlay::Draw(C4TargetFacet &cgo, C4Object *pForObj, int32_t iByP
 	}
 	else if (eMode == MODE_ExtraGraphics)
 	{
+		assert(pForObj);
 		// draw self with specified gfx
 		if (pSourceGfx)
 		{
@@ -981,6 +967,7 @@ void C4GraphicsOverlay::Draw(C4TargetFacet &cgo, C4Object *pForObj, int32_t iByP
 	}
 	else if(eMode == MODE_Picture || eMode == MODE_IngamePicture)
 	{
+		assert(pForObj);
 		float twdt, thgt;
 		if (fZoomToShape)
 		{
@@ -998,13 +985,13 @@ void C4GraphicsOverlay::Draw(C4TargetFacet &cgo, C4Object *pForObj, int32_t iByP
 		C4DrawTransform trf(Transform, offX, offY);
 
 		// Don't set pForObj because we don't draw the picture of pForObj, but the picture of another definition on top of pForObj:
-		pSourceGfx->Draw(ccgo, pForObj->Color, NULL, iPhase, 0, &trf);
+		pSourceGfx->Draw(ccgo, pForObj->Color, nullptr, iPhase, 0, &trf);
 	}
 	else
 	{
 		// no object specified: Draw from fctBlit
 		// update by object color
-		if (fctBlit.Surface) fctBlit.Surface->SetClr(pForObj->Color);
+		if (fctBlit.Surface && pForObj) fctBlit.Surface->SetClr(pForObj->Color);
 
 		if (!pMeshInstance)
 		{
@@ -1012,7 +999,8 @@ void C4GraphicsOverlay::Draw(C4TargetFacet &cgo, C4Object *pForObj, int32_t iByP
 			C4DrawTransform trf(Transform, offX, offY);
 			if (fZoomToShape)
 			{
-				float fZoom = Min<float>((float) pForObj->Shape.Wdt / Max<int>(fctBlit.Wdt,1), (float) pForObj->Shape.Hgt / Max<int>(fctBlit.Hgt,1));
+				assert(pForObj);
+				float fZoom = std::min(pForObj->Shape.Wdt / std::max(fctBlit.Wdt, 1.0f), pForObj->Shape.Hgt / std::max(fctBlit.Hgt, 1.0f));
 				trf.ScaleAt(fZoom, fZoom, offX, offY);
 			}
 
@@ -1026,7 +1014,8 @@ void C4GraphicsOverlay::Draw(C4TargetFacet &cgo, C4Object *pForObj, int32_t iByP
 			C4DrawTransform trf(Transform, offX, offY);
 			if (fZoomToShape)
 			{
-				float fZoom = Min<float>((float) pForObj->Shape.Wdt / Max<int>(pDef->Shape.Wdt,1), (float) pForObj->Shape.Hgt / Max<int>(pDef->Shape.Hgt,1));
+				assert(pForObj);
+				float fZoom = std::min((float)pForObj->Shape.Wdt / std::max(pDef->Shape.Wdt, 1), (float)pForObj->Shape.Hgt / std::max(pDef->Shape.Hgt, 1));
 				trf.ScaleAt(fZoom, fZoom,  offX, offY);
 			}
 
@@ -1036,8 +1025,8 @@ void C4GraphicsOverlay::Draw(C4TargetFacet &cgo, C4Object *pForObj, int32_t iByP
 			if (C4ValueToMatrix(value, &matrix))
 				pDraw->SetMeshTransform(&matrix);
 
-			pDraw->RenderMesh(*pMeshInstance, cgo.Surface, offX - pDef->Shape.Wdt/2.0, offY - pDef->Shape.Hgt/2.0, pDef->Shape.Wdt, pDef->Shape.Hgt, pForObj->Color, &trf);
-			pDraw->SetMeshTransform(NULL);
+			pDraw->RenderMesh(*pMeshInstance, cgo.Surface, offX - pDef->Shape.Wdt/2.0, offY - pDef->Shape.Hgt/2.0, pDef->Shape.Wdt, pDef->Shape.Hgt, pForObj ? pForObj->Color : 0xff, &trf);
+			pDraw->SetMeshTransform(nullptr);
 		}
 	}
 
@@ -1069,7 +1058,7 @@ void C4GraphicsOverlay::DrawRankSymbol(C4Facet &cgo, C4Object *rank_obj)
 		pRankSys = rank_def->pRankNames;
 		iRankCnt = rank_def->pRankNames->GetBaseRankNum();
 	}
-	pRankSys->DrawRankSymbol(NULL, rank_obj->Info->Rank, pRankRes, iRankCnt, false, 0, &cgo);
+	pRankSys->DrawRankSymbol(nullptr, rank_obj->Info->Rank, pRankRes, iRankCnt, false, 0, &cgo);
 }
 
 void C4GraphicsOverlay::DrawPicture(C4Facet &cgo, C4Object *pForObj, C4DrawTransform* trans)
@@ -1097,7 +1086,7 @@ void C4GraphicsOverlay::DrawPicture(C4Facet &cgo, C4Object *pForObj, C4DrawTrans
 	if(trans) trf *= *trans;
 
 	// Don't set pForObj because we don't draw the picture of pForObj, but the picture of another definition on top of pForObj:
-	pSourceGfx->Draw(cgo, pForObj->Color, NULL, iPhase, 0, &trf);
+	pSourceGfx->Draw(cgo, pForObj->Color, nullptr, iPhase, 0, &trf);
 
 	// cleanup
 	if (dwBlitMode == C4GFXBLIT_PARENT)
@@ -1127,12 +1116,12 @@ bool C4GraphicsOverlay::operator == (const C4GraphicsOverlay &rCmp) const
 void C4GraphicsOverlayListAdapt::CompileFunc(StdCompiler *pComp)
 {
 	bool fNaming = pComp->hasNaming();
-	if (pComp->isCompiler())
+	if (pComp->isDeserializer())
 	{
 		// clear list
-		delete [] pOverlay; pOverlay = NULL;
+		delete [] pOverlay; pOverlay = nullptr;
 		// read the whole list
-		C4GraphicsOverlay *pLast = NULL;
+		C4GraphicsOverlay *pLast = nullptr;
 		bool fContinue;
 		do
 		{
@@ -1146,9 +1135,9 @@ void C4GraphicsOverlayListAdapt::CompileFunc(StdCompiler *pComp)
 			{
 				delete e;
 				// delete unused overlay
-				delete pNext; pNext = NULL;
+				delete pNext; pNext = nullptr;
 				// clear up
-				if (!pLast) pOverlay = NULL;
+				if (!pLast) pOverlay = nullptr;
 				// done
 				return;
 			}
@@ -1191,4 +1180,17 @@ void C4GraphicsOverlayListAdapt::CompileFunc(StdCompiler *pComp)
 			pComp->Value(fContinue);
 		}
 	}
+}
+
+C4Surface *C4DefGraphics::GetBitmap(DWORD dwClr)
+{
+	if (Type != TYPE_Bitmap)
+		return nullptr;
+	if (Bmp.BitmapClr)
+	{
+		Bmp.BitmapClr->SetClr(dwClr);
+		return Bmp.BitmapClr;
+	}
+	else
+		return Bmp.Bitmap;
 }

@@ -1,7 +1,7 @@
 /*
  * OpenClonk, http://www.openclonk.org
  *
- * Copyright (c) 2012-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2012-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -19,8 +19,16 @@
 #include "network/C4Network2UPnP.h"
 #include "C4Version.h"
 
-#include <boost/foreach.hpp>
+#ifdef __GNUC__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wnon-virtual-dtor"
+#pragma GCC diagnostic ignored "-Wredundant-decls"
+#pragma GCC diagnostic ignored "-Wunknown-pragmas"
+#endif
 #include <natupnp.h>
+#ifdef __GNUC__
+#pragma GCC diagnostic pop
+#endif
 
 #if defined(__MINGW32__) || defined(__MINGW64__)
 // MinGW doesn't usually have these
@@ -36,22 +44,20 @@ namespace
 	template<class T> inline void SafeRelease(T* &t)
 	{
 		if (t) t->Release();
-		t = NULL;
+		t = nullptr;
 	}
 }
 
-struct C4Network2UPnPP
+class C4Network2UPnPP
 {
-	bool MustReleaseCOM;
+public:
+	bool MustReleaseCOM{false};
 
 	// NAT
-	IStaticPortMappingCollection *mappings;
+	IStaticPortMappingCollection *mappings{nullptr};
 	std::set<IStaticPortMapping*> added_mappings;
 
-	C4Network2UPnPP()
-		: MustReleaseCOM(false),
-		mappings(NULL)
-	{}
+	C4Network2UPnPP() = default;
 
 	void AddMapping(C4Network2IOProtocol protocol, uint16_t intport, uint16_t extport);
 	void RemoveMapping(C4Network2IOProtocol protocol, uint16_t extport);
@@ -61,18 +67,23 @@ struct C4Network2UPnPP
 C4Network2UPnP::C4Network2UPnP()
 	: p(new C4Network2UPnPP)
 {
+	Log("UPnP init...");
 	// Make sure COM is available
-	if (FAILED(CoInitializeEx(0, COINIT_APARTMENTTHREADED)))
+	if (FAILED(CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED)))
 	{
 		// Didn't work, don't do UPnP then
+		Log("UPnP fail (no COM).");
 		return;
 	}
 	p->MustReleaseCOM = true;
 
 	// Get the NAT service
-	IUPnPNAT *nat = NULL;
-	if (FAILED(CoCreateInstance(CLSID_UPnPNAT, NULL, CLSCTX_INPROC_SERVER, IID_IUPnPNAT, reinterpret_cast<void**>(&nat))))
+	IUPnPNAT *nat = nullptr;
+	if (FAILED(CoCreateInstance(CLSID_UPnPNAT, nullptr, CLSCTX_INPROC_SERVER, IID_IUPnPNAT, reinterpret_cast<void**>(&nat))))
+	{
+		Log("UPnP fail (no service).");
 		return;
+	}
 
 	// Fetch NAT mappings
 	for (int ctr = 0; ctr < 10; ++ctr)
@@ -83,10 +94,13 @@ C4Network2UPnP::C4Network2UPnP()
 			LogF("UPnP: Got NAT port mapping table after %d tries", ctr+1);
 			break;
 		}
+		if (ctr == 2) Log(LoadResStr("IDS_MSG_UPNPHINT"));
 		Sleep(1000);
 	}
 
 	SafeRelease(nat);
+
+	if (!p->mappings) Log("UPnP fail (no mapping).");
 }
 
 C4Network2UPnP::~C4Network2UPnP()
@@ -97,7 +111,7 @@ C4Network2UPnP::~C4Network2UPnP()
 		// Decrement COM reference count
 		CoUninitialize();
 	}
-	delete p; p = NULL;
+	delete p; p = nullptr;
 }
 
 void C4Network2UPnP::AddMapping(C4Network2IOProtocol protocol, uint16_t intport, uint16_t extport)
@@ -114,7 +128,7 @@ void C4Network2UPnPP::ClearNatMappings()
 {
 	if (!mappings)
 		return;
-	BOOST_FOREACH(IStaticPortMapping *mapping, added_mappings)
+	for(IStaticPortMapping *mapping: added_mappings)
 	{
 		BSTR proto, client;
 		long intport, extport;
@@ -123,7 +137,7 @@ void C4Network2UPnPP::ClearNatMappings()
 		mapping->get_InternalClient(&client);
 		mapping->get_Protocol(&proto);
 		if (SUCCEEDED(mappings->Remove(extport, proto)))
-			LogF("UPnP: Closed port %d->%s:%d (%s)", extport, StdStrBuf(client).getData(), intport, StdStrBuf(proto).getData());
+			LogF("UPnP: Closed port %d->%s:%d (%s)", (int)extport, StdStrBuf(client).getData(), (int)intport, StdStrBuf(proto).getData());
 		::SysFreeString(proto);
 		::SysFreeString(client);
 		SafeRelease(mapping);
@@ -138,14 +152,14 @@ void C4Network2UPnPP::AddMapping(C4Network2IOProtocol protocol, uint16_t intport
 		// Get (one of the) local host address(es)
 		char hostname[MAX_PATH];
 		hostent *host;
-		if (gethostname(hostname, MAX_PATH) == 0 && (host = gethostbyname(hostname)) != NULL)	
+		if (gethostname(hostname, MAX_PATH) == 0 && (host = gethostbyname(hostname)) != nullptr)	
 		{
 			in_addr addr;
 			addr.s_addr = *(ULONG*)host->h_addr_list[0];
 
 			BSTR description = ::SysAllocString(ADDL(C4ENGINECAPTION));
 			BSTR client = ::SysAllocString(GetWideChar(inet_ntoa(addr)));
-			IStaticPortMapping *mapping = NULL;
+			IStaticPortMapping *mapping = nullptr;
 			if (SUCCEEDED(mappings->Add(extport, protocol == P_TCP ? PROTO_TCP : PROTO_UDP, intport, client, VARIANT_TRUE, description, &mapping)))
 			{
 				LogF("UPnP: Successfully opened port %d->%s:%d (%s)", extport, StdStrBuf(client).getData(), intport, protocol == P_TCP ? "TCP" : "UDP");

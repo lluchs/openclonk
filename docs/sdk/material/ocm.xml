@@ -106,9 +106,12 @@
           <col>Inflammability.</col>
         </row>
         <row>
-          <col>Incindiary</col>
+          <col>Incendiary</col>
           <col>Integer</col>
-          <col>This material incinerates objects.</col>
+          <col>
+            This material incinerates objects.
+            <em>Note: For compatibility reasons, the misspelling &quot;Incindiary&quot; is also accepted if (and only if) no value with the correct spelling is set.</em>
+          </col>
         </row>
         <row>
           <col>Corrode</col>
@@ -129,6 +132,11 @@
           <col>Soil</col>
           <col>Integer</col>
           <col>Plants grow on this material.</col>
+        </row>
+        <row>
+          <col>Light</col>
+          <col>Integer</col>
+          <col>0 or 1. If greater than zero, ambient light is emitted from this material even if drawn unterground.</col>
         </row>
         <row>
           <col>TempConvStrength</col>
@@ -186,11 +194,6 @@
           <col>Direction of temperature conversion: 0 bottom up, 1 top down</col>
         </row>
         <row>
-          <col>Alpha</col>
-          <col>6 integers</col>
-          <col>Transparency of the three material colors.</col>
-        </row>
-        <row>
           <col>Placement</col>
           <col>Integer</col>
           <col>0-100. This Value is used for lighting of the landscape and is usually determined automatically from the other material values.</col>
@@ -214,6 +217,11 @@
           <col>PXSGfxRt</col>
           <col>4 integers</col>
           <col>Target rectangle for the graphics of loose material pixels. Additional phases on the right and below the specified rectangle will be used. The rectangle should always start in the top left corner and use the complete texture size.</col>
+        </row>
+        <row>
+          <col>MinShapeOverlap</col>
+          <col>Integer</col>
+          <col>Used during map-to-landscape zooming when drawn with a texture with shape definitions: Minimum overlap of map pixels to corresponding shapes to cause a full shape expansion. See <emlink href="material/index.html#TextureShapes">Shape textures</emlink>.</col>
         </row>
       </table>
     </text>
@@ -367,8 +375,11 @@
           <col>The background material.</col>
         </row>
         <row>
-          <col>Incindiary</col>
-          <col>All materials to be incinerated.</col>
+          <col>Incendiary</col>
+          <col>
+            All materials that can incinerate objects.
+            <em>Note: For compatibility reasons, the misspelling &quot;Incindiary&quot; is also accepted.</em>
+          </col>
         </row>
         <row>
           <col>Extinguisher</col>
@@ -438,5 +449,5 @@
  The return value of the function should be either 1 for removal or 0 for keeping the loose material.
     </text>
   </part>
-  <author>Sven2</author><date>2006-12</date>
+  <author>Sven2</author><date>2015-10</date>
 </doc>

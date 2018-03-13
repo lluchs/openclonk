@@ -1,89 +1,128 @@
-/*
+/**
 	IronBomb
-	Author: Ringwaul, Clonkonaut
-
-	Explodes after a short fuse. Explodes on contact if shot by the grenade launcher
+	Explodes after a short fuse. Explodes on contact if shot by the grenade launcher.
+	
+	@author Ringwaul, Clonkonaut
 */
 
-local armed; // If true, explodes on contact
+// If true, explodes on contact.
+local armed; 
 
-public func ControlUse(object clonk, int x, int y, bool box)
+public func ControlUse(object clonk, int x, int y)
 {
-	// if already activated, nothing (so, throw)
-	if(GetEffect("FuseBurn", this))
+	// If already activated, nothing (so, throw).
+	if (GetEffect("FuseBurn", this))
 	{
-		return false;
-	}
-	else
-	{
-		Fuse();
+		clonk->ControlThrow(this, x, y);
 		return true;
 	}
+	Fuse();
+	return true;
 }
 
-func Fuse(bool explode_on_hit)
+public func Fuse(bool explode_on_hit)
 {
 	armed = explode_on_hit;
-	AddEffect("FuseBurn", this, 1,1, this);
+	AddEffect("FuseBurn", this, 1, 1, this);
+	return;
 }
 
-func FxFuseBurnTimer(object bomb, int num, int timer)
+public func FuseTime() { return 90; }
+
+public func IsFusing() { return !!GetEffect("FuseBurn", this); }
+
+public func OnCannonShot(object cannon)
 {
+	return Fuse(true);
+}
+
+public func FxFuseBurnStart(object target, effect fx, int temp)
+{
+	if (temp)
+		return FX_OK;
+	Sound("Fire::FuseLoop", {loop_count = +1});
+	return FX_OK;
+}
+
+
+public func FxFuseBurnTimer(object target, effect fx, int time)
+{
+	// Emit some smoke from the fuse hole.
 	var i = 3;
 	var x = +Sin(GetR(), i);
 	var y = -Cos(GetR(), i);
 	CreateParticle("Smoke", x, y, x, y, PV_Random(18, 36), Particles_Smoke(), 2);
-
-	if(timer == 1) Sound("FuseLoop",nil,nil,nil,+1);
-	if(timer >= 90)
+	// Explode if time is up.
+	if (time >= FuseTime())
 	{
-		Sound("FuseLoop",nil,nil,nil,-1);
 		DoExplode();
-		return -1;
+		return FX_Execute_Kill;
 	}
+	return FX_OK;
 }
 
-func DoExplode()
+public func FxFuseBurnStop(object target, effect fx, int reason, bool temp)
 {
-	var i = 23;
-	while(i != 0)
+	if (temp)
+		return FX_OK;
+	Sound("Fire::FuseLoop", {loop_count = -1});
+	return FX_OK;
+}
+
+public func DoExplode()
+{
+	// Cast lots of shrapnel.
+	var shrapnel_count = 20;
+	for (var cnt = 0; cnt < shrapnel_count; cnt++)
 	{
-		var shrapnel = CreateObject(Shrapnel);
-		shrapnel->SetVelocity(Random(359), RandomX(100,140));
-		shrapnel->SetRDir(-30+ Random(61));
+		var shrapnel = CreateObjectAbove(Shrapnel);
+		shrapnel->SetVelocity(Random(359), RandomX(100, 140));
+		shrapnel->SetRDir(-30 + Random(61));
 		shrapnel->Launch(GetController());
-		CreateObject(BulletTrail)->Set(2,30,shrapnel);
-		i--;
+		CreateObject(BulletTrail)->Set(shrapnel, 2, 30);
 	}
-	if(GBackLiquid())
-		Sound("BlastLiquid2");
+	if (GBackLiquid())
+		Sound("Fire::BlastLiquid2");
 	else
-		Sound("BlastMetal");
+		Sound("Fire::BlastMetal");
 	CreateParticle("Smoke", PV_Random(-30, 30), PV_Random(-30, 30), 0, 0, PV_Random(40, 60), Particles_Smoke(), 60);
-	Explode(30);
+	Explode(28);
+	return;
 }
 
-protected func Hit(x, y)
+protected func Hit(int x, int y)
 {
-	if (armed) return DoExplode();
-	StonyObjectHit(x,y);
+	if (armed) 
+		return DoExplode();
+	return StonyObjectHit(x,y);
 }
 
-protected func Incineration() { Extinguish(); Fuse(); }
-
-protected func RejectEntrance()
+protected func Incineration(int caused_by)
 {
-	return GetAction() == "Fuse" || GetAction() == "Ready";
+	Extinguish(); 
+	Fuse();
+	SetController(caused_by);
+	return;
 }
+
+// Drop fusing bomb on death to prevent explosion directly after respawn
+public func IsDroppedOnDeath(object clonk)
+{
+	return !!GetEffect("FuseBurn", this);
+}
+
+public func HasExplosionOnImpact() { return armed; }
 
 public func IsWeapon() { return true; }
 public func IsArmoryProduct() { return true; }
 public func IsGrenadeLauncherAmmo() { return true; }
+public func IsExplosive() { return true; }
+
+/*-- Properties --*/
 
 local Name = "$Name$";
 local Description = "$Description$";
-local UsageHelp = "$UsageHelp$";
-local Collectible = 1;
-local Rebuy = true;
+local Collectible = true;
 local BlastIncinerate = 1;
 local ContactIncinerate = 1;
+local Components = {Firestone = 1, Metal = 1};

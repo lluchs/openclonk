@@ -6,7 +6,7 @@
 
 #include Library_Map
 
-static g_caves;
+static g_caves, g_end_cave_x, g_end_cave_y;
 
 local caves, n_caves, start_cave, end_cave;
 
@@ -42,17 +42,6 @@ func GetCaveLinkDir(c1, c2)
 	var dx=c2.X-c1.X, dy=c2.Y-c1.Y, adx=Abs(dx), ady=Abs(dy);
 	//Log("%d,%d  to   %d,%d  dx=%d  dy=%d", c1.X, c1.Y, c2.X, c2.Y, dx, dy);
 	return (dx<-ady) | (dx>ady)<<1 | (dy<=-adx)<<2 | (dy>=adx)<<3;
-}
-
-func IsLineOverlap(int x1, int y1, int x2, int y2, int x3, int y3, int x4, int y4)
-{
-	// Check if line from x1,y1 to x2,y2 crosses the line from x3,y3 to x4,y4
-	var d1x=x2-x1, d1y=y2-y1, d2x=x4-x3, d2y=y4-y3, d3x=x3-x1, d3y=y3-y1;
-	var a = d1y*d3x-d1x*d3y;
-	var b = d2y*d3x-d2x*d3y;
-	var c = d2y*d1x-d2x*d1y;
-	if (!c) return !a && Inside(x3, x1,x2) && Inside(y3, y1,y2); // lines are parallel
-	return a*c>=0 && !(a*a/(c*c+1)) && b*c>=0 && !(b*b/(c*c+1));
 }
 
 func FindCaveConnections()
@@ -180,7 +169,7 @@ func DrawVariations(string mat, int ratio, int sx, int sy)
 func DrawBackground()
 {
 	Draw("Rock");
-	DrawVariations("Rock-rock_cracked", 50, 5,15);
+	DrawVariations("Rock", 50, 5,15);
 	DrawVariations("Ore", 10, 8,8);
 	DrawVariations("Firestone", 8, 12,3);
 	DrawVariations("Coal", 8, 8,3);
@@ -223,21 +212,28 @@ func DrawTunnels()
 func DrawStart()
 {
 	Draw("Tunnel", nil, [0, start_cave.Y - 8, start_cave.X + 4, 8]);
-	Draw("Brick", nil, [0, start_cave.Y, start_cave.X-2, 1]);
+	Draw("Brick", nil, [0, start_cave.Y, start_cave.X-2, 2]);
 	return true;
 }
 
 func DrawEnd()
 {
 	Draw("Ruby", {Algo=MAPALGO_Ellipsis, X=end_cave.X, Y=end_cave.Y, Wdt=4, Hgt=4});
+	g_end_cave_x = end_cave.X;
+	g_end_cave_y = end_cave.Y;
 	return true;
 }
 
 protected func InitializeMap(map)
 {
-	map->Resize(270,270);
+	var s = SCENPAR_MapSize-1;
+	//var d = SCENPAR_Difficulty-1;
+	var map_size = [[120,120], [200,200], [330,330]][s];
+	var find_cave_iterations = [100,150,300][s];
 
-	FindCaves(200);
+	Resize(map_size[0],map_size[1]);
+
+	FindCaves(find_cave_iterations);
 	FindCaveConnections();
 	FindStart();
 	MakeMaze();

@@ -3,7 +3,7 @@
  *
  * Copyright (c) 1998-2000, Matthes Bender
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -17,22 +17,20 @@
 
 /* In-game menu as used by objects, players, and fullscreen options */
 
-#include <C4Include.h>
-#include <C4Menu.h>
+#include "C4Include.h"
+#include "gui/C4Menu.h"
 
-#include <C4DefList.h>
-#include <C4Object.h>
-#include <C4FullScreen.h>
-#include <C4ObjectCom.h>
-#include <C4Viewport.h>
-#include <C4Player.h>
-#include <C4MouseControl.h>
-#include <C4GraphicsResource.h>
-#include <C4GraphicsSystem.h>
-#include <C4Game.h>
-#include <C4PlayerList.h>
-#include <C4GameObjects.h>
-#include <C4GameControl.h>
+#include "control/C4GameControl.h"
+#include "game/C4Viewport.h"
+#include "graphics/C4Draw.h"
+#include "graphics/C4GraphicsResource.h"
+#include "gui/C4MouseControl.h"
+#include "lib/StdColors.h"
+#include "object/C4Def.h"
+#include "object/C4DefList.h"
+#include "object/C4Object.h"
+#include "player/C4Player.h"
+#include "player/C4PlayerList.h"
 
 const int32_t     C4MN_DefInfoWdt     = 270, // default width of info windows
                   C4MN_DlgWdt         = 270, // default width of dialog windows
@@ -50,7 +48,7 @@ const int32_t C4MN_InfoCaption_Delay = 90;
 C4MenuItem::C4MenuItem(C4Menu *pMenu, int32_t iIndex, const char *szCaption,
                        const char *szCommand, int32_t iCount, C4Object *pObject, const char *szInfoCaption,
                        C4ID idID, const char *szCommand2, bool fOwnValue, int32_t iValue, int32_t iStyle, bool fIsSelectable)
-		: C4GUI::Element(), Count(iCount), id(idID), Object(pObject), pSymbolObj(NULL), pSymbolGraphics(NULL), dwSymbolClr(0u),
+		: C4GUI::Element(), Count(iCount), id(idID), Object(pObject), pSymbolObj(nullptr), pSymbolGraphics(nullptr), dwSymbolClr(0u),
 		fOwnValue(fOwnValue), iValue(iValue), fSelected(false), iStyle(iStyle), pMenu(pMenu),
 		iIndex(iIndex), IsSelectable(fIsSelectable), TextDisplayProgress(-1)
 {
@@ -63,12 +61,6 @@ C4MenuItem::C4MenuItem(C4Menu *pMenu, int32_t iIndex, const char *szCaption,
 	// some info caption corrections
 	SReplaceChar(InfoCaption, 10, ' '); SReplaceChar(InfoCaption, 13, '|');
 	SetToolTip(InfoCaption);
-	// components initialization
-	if (idID)
-	{
-		C4Def *pDef = C4Id2Def(idID);
-		if (pDef) pDef->GetComponents(&Components, NULL);
-	}
 }
 
 C4MenuItem::~C4MenuItem()
@@ -85,7 +77,7 @@ void C4MenuItem::DoTextProgress(int32_t &riByVal)
 	// normal text: move forward in unbroken message, ignoring markup
 	StdStrBuf sText(Caption);
 	C4Markup MarkupChecker(false);
-	const char *szPos = sText.getPtr(Min<int>(TextDisplayProgress, sText.getLength()));
+	const char *szPos = sText.getPtr(std::min<int>(TextDisplayProgress, sText.getLength()));
 	while (riByVal && *szPos)
 	{
 		MarkupChecker.SkipTags(&szPos);
@@ -119,7 +111,7 @@ int32_t C4MenuItem::GetSymbolWidth(int32_t iForHeight)
 {
 	// Context or dialog menus
 	if (iStyle==C4MN_Style_Context || (iStyle==C4MN_Style_Dialog && Symbol.Surface))
-		return Max(Symbol.Wdt * iForHeight / Max(Symbol.Hgt, 1.0f), static_cast<float>(iForHeight));
+		return std::max(Symbol.Wdt * iForHeight / std::max(Symbol.Hgt, 1.0f), static_cast<float>(iForHeight));
 	// Info menus
 	if (iStyle==C4MN_Style_Info && Symbol.Surface && Symbol.Wdt)
 		return Symbol.Wdt;
@@ -153,11 +145,11 @@ void C4MenuItem::DrawElement(C4TargetFacet &cgo)
 	// Draw if there is no text progression at all (TextDisplayProgress==-1, or if it's progressed far enough already (TextDisplayProgress>0)
 	if(pSymbolObj && TextDisplayProgress)
 	{
-		pSymbolObj->DrawPicture(cgoSymbolOut, false, NULL);
+		pSymbolObj->DrawPicture(cgoSymbolOut, false, nullptr);
 	}
 	else if (pSymbolGraphics && TextDisplayProgress)
 	{
-		pSymbolGraphics->Draw(cgoSymbolOut, dwSymbolClr ? dwSymbolClr : 0xffffffff, NULL, 0, 0, NULL);
+		pSymbolGraphics->Draw(cgoSymbolOut, dwSymbolClr ? dwSymbolClr : 0xffffffff, nullptr, 0, 0, nullptr);
 	}
 	else if (Symbol.Surface && TextDisplayProgress)
 		Symbol.DrawClr(cgoItemSymbol, true, dwSymbolClr);
@@ -182,7 +174,7 @@ void C4MenuItem::DrawElement(C4TargetFacet &cgo)
 		char cXChg='\0'; int iStopPos = 0;
 		if (TextDisplayProgress>-1)
 		{
-			iStopPos = Min<int>(TextDisplayProgress, strlen(Caption));
+			iStopPos = std::min<int>(TextDisplayProgress, strlen(Caption));
 			cXChg = Caption[iStopPos];
 			Caption[iStopPos] = '\0';
 		}
@@ -242,7 +234,7 @@ void C4MenuItem::MouseEnter(C4GUI::CMouse &rMouse)
 // -----------------------------------------------------------
 // C4Menu
 
-C4Menu::C4Menu() : C4GUI::Dialog(100, 100, NULL, true) // will be re-adjusted later
+C4Menu::C4Menu() : C4GUI::Dialog(100, 100, nullptr, true) // will be re-adjusted later
 {
 	Default();
 	AddElement(pClientWindow = new C4GUI::ScrollWindow(this));
@@ -398,8 +390,7 @@ bool C4Menu::AddItem(C4MenuItem *pNew, const char *szCaption, const char *szComm
                      int32_t iCount, C4Object *pObject, const char *szInfoCaption,
                      C4ID idID, const char *szCommand2, bool fOwnValue, int32_t iValue, bool fIsSelectable)
 {
-#ifdef DEBUGREC_MENU
-	if (Config.General.DebugRec)
+	if (DEBUGREC_MENU && Config.General.DebugRec)
 		if (pObject)
 		{
 			C4RCMenuAdd rc = { pObject ? pObject->Number : -1, iCount, idID, fOwnValue, iValue, fIsSelectable };
@@ -407,7 +398,6 @@ bool C4Menu::AddItem(C4MenuItem *pNew, const char *szCaption, const char *szComm
 			if (szCommand) AddDbgRec(RCT_MenuAddC, szCommand, strlen(szCommand)+1);
 			if (szCommand2) AddDbgRec(RCT_MenuAddC, szCommand2, strlen(szCommand2)+1);
 		}
-#endif
 	// Add it to the list
 	pClientWindow->AddElement(pNew);
 	// first menuitem is portrait, if it does not have text but a facet
@@ -430,7 +420,6 @@ bool C4Menu::AddItem(C4MenuItem *pNew, const char *szCaption, const char *szComm
 bool C4Menu::Control(BYTE byCom, int32_t iData)
 {
 	if (!IsActive()) return false;
-	//bool fSingleColumn = IsContextMenu();
 
 	switch (byCom)
 	{
@@ -440,30 +429,18 @@ bool C4Menu::Control(BYTE byCom, int32_t iData)
 
 		// organize with nicer subfunction...
 	case COM_MenuLeft:
-		/*// Single column: left => begin
-		if (fSingleColumn)
-		  MoveSelection(-Selection, true, true);
-		else
-		{*/
 		// Top wrap-around
 		if (Selection-1 < 0)
 			MoveSelection(ItemCount - 1 - Selection, true, true);
 		else
 			MoveSelection(-1, true, true);
-		/*}*/
 		break;
 	case COM_MenuRight:
-		/*// Single column: right => end
-		if (fSingleColumn)
-		  MoveSelection(ItemCount - 1 - Selection, true, true);
-		else
-		{*/
 		// Bottom wrap-around
 		if (Selection+1 >= ItemCount)
 			MoveSelection(-Selection, true, true);
 		else
 			MoveSelection(+1, true, true);
-		/*}*/
 		break;
 	case COM_MenuUp:
 		iData = -Columns;
@@ -655,7 +632,7 @@ void C4Menu::InitLocation(C4Facet &cgoArea)
 		break;
 	case C4MN_Style_Context:
 	{
-		ItemHeight = Max<int32_t>(C4MN_SymbolSize, ::GraphicsResource.FontRegular.GetLineHeight());
+		ItemHeight = std::max<int32_t>(C4MN_SymbolSize, ::GraphicsResource.FontRegular.GetLineHeight());
 		int32_t iWdt, iHgt;
 		::GraphicsResource.FontRegular.GetTextExtent(Caption, ItemWidth, iHgt, true);
 		// FIXME: Blah. This stuff should be calculated correctly by pTitle.
@@ -664,7 +641,7 @@ void C4Menu::InitLocation(C4Facet &cgoArea)
 		for (int i = 0; (pItem = GetItem(i)); ++i)
 		{
 			::GraphicsResource.FontRegular.GetTextExtent(pItem->Caption, iWdt, iHgt, true);
-			ItemWidth = Max(ItemWidth, iWdt + pItem->GetSymbolWidth(ItemHeight));
+			ItemWidth = std::max(ItemWidth, iWdt + pItem->GetSymbolWidth(ItemHeight));
 		}
 		ItemWidth += 3; // Add some extra space so text doesn't touch right border frame...
 		break;
@@ -675,7 +652,7 @@ void C4Menu::InitLocation(C4Facet &cgoArea)
 		int32_t iWdt,iHgt,iLargestTextWdt;
 		::GraphicsResource.FontRegular.GetTextExtent(Caption,iWdt,iHgt, true);
 		iLargestTextWdt = iWdt + 2 * C4MN_SymbolSize + C4MN_FrameWidth;
-		ItemWidth=Min<int>(cgoArea.Wdt - 2*C4MN_FrameWidth, Max(iLargestTextWdt, C4MN_DefInfoWdt));
+		ItemWidth=std::min<int>(cgoArea.Wdt - 2*C4MN_FrameWidth, std::max(iLargestTextWdt, C4MN_DefInfoWdt));
 		ItemHeight=0;
 		StdStrBuf sText;
 		C4MenuItem *pItem;
@@ -684,18 +661,18 @@ void C4Menu::InitLocation(C4Facet &cgoArea)
 			::GraphicsResource.FontRegular.BreakMessage(pItem->InfoCaption, ItemWidth, &sText, true);
 			::GraphicsResource.FontRegular.GetTextExtent(sText.getData(),iWdt,iHgt, true);
 			assert(iWdt <= ItemWidth);
-			ItemWidth=Max(ItemWidth,iWdt); ItemHeight=Max(ItemHeight,iHgt);
-			iLargestTextWdt = Max(iLargestTextWdt, iWdt);
+			ItemWidth=std::max(ItemWidth,iWdt); ItemHeight=std::max(ItemHeight,iHgt);
+			iLargestTextWdt = std::max(iLargestTextWdt, iWdt);
 		}
 		// although width calculation is done from C4MN_DefInfoWdt, this may be too large for some very tiny info windows
 		// so make sure no space is wasted
-		ItemWidth = Min(ItemWidth, iLargestTextWdt);
+		ItemWidth = std::min(ItemWidth, iLargestTextWdt);
 		// Add some extra space so text doesn't touch right border frame...
 		ItemWidth += 3;
 		// Now add some space to show the picture on the left
 		ItemWidth += C4PictureSize;
 		// And set a minimum item height (again, for the picture)
-		ItemHeight = Max<int>(ItemHeight, C4PictureSize);
+		ItemHeight = std::max<int>(ItemHeight, C4PictureSize);
 		break;
 	}
 
@@ -705,13 +682,13 @@ void C4Menu::InitLocation(C4Facet &cgoArea)
 		// Item height varies
 		int32_t iWdt,iHgt;
 		::GraphicsResource.FontRegular.GetTextExtent(Caption,iWdt,iHgt, true);
-		ItemWidth=Min<int>(cgoArea.Wdt - 2*C4MN_FrameWidth, Max<int>(iWdt + 2 * C4MN_SymbolSize + C4MN_FrameWidth, C4MN_DlgWdt));
+		ItemWidth=std::min<int>(cgoArea.Wdt - 2*C4MN_FrameWidth, std::max<int>(iWdt + 2 * C4MN_SymbolSize + C4MN_FrameWidth, C4MN_DlgWdt));
 		ItemHeight=iHgt; // Items may be multiline and higher
 		if (HasPortrait())
 		{
 			// subtract portrait only if this would not make the dialog too small
 			if (ItemWidth > C4MN_DlgPortraitWdt*2 && cgoArea.Hgt > cgoArea.Wdt)
-				ItemWidth = Max<int>(ItemWidth - C4MN_DlgPortraitWdt - C4MN_DlgPortraitIndent, 40);
+				ItemWidth = std::max<int>(ItemWidth - C4MN_DlgPortraitWdt - C4MN_DlgPortraitIndent, 40);
 		}
 	}
 	}
@@ -720,9 +697,9 @@ void C4Menu::InitLocation(C4Facet &cgoArea)
 	if (Style == C4MN_Style_Dialog)
 		Lines = C4MN_DlgLines;
 	else
-		Lines = DisplayedItemCount/Columns+Min<int32_t>(DisplayedItemCount%Columns,1);
+		Lines = DisplayedItemCount/Columns+std::min<int32_t>(DisplayedItemCount%Columns,1);
 	// adjust by max. height
-	Lines=Max<int32_t>(Min<int32_t>((cgoArea.Hgt-100)/Max<int32_t>(ItemHeight,1),Lines),1);
+	Lines=std::max<int32_t>(std::min<int32_t>((cgoArea.Hgt-100)/std::max<int32_t>(ItemHeight,1),Lines),1);
 
 	InitSize();
 	int32_t X,Y;
@@ -741,7 +718,7 @@ void C4Menu::InitLocation(C4Facet &cgoArea)
 	if (Alignment & C4MN_Align_Right) X=cgoArea.Wdt-2*C4SymbolSize-rcBounds.Wdt;
 	if (Alignment & C4MN_Align_Top) Y=C4SymbolSize;
 	if (Alignment & C4MN_Align_Bottom) Y=cgoArea.Hgt-C4SymbolSize-rcBounds.Hgt;
-	if (Alignment & C4MN_Align_Free) { X=BoundBy<int32_t>(X,0,cgoArea.Wdt-rcBounds.Wdt); Y=BoundBy<int32_t>(Y,0,cgoArea.Hgt-rcBounds.Hgt); }
+	if (Alignment & C4MN_Align_Free) { X=Clamp<int32_t>(X,0,cgoArea.Wdt-rcBounds.Wdt); Y=Clamp<int32_t>(Y,0,cgoArea.Hgt-rcBounds.Hgt); }
 	// Centered (due to small viewport size)
 	if (rcBounds.Wdt>cgoArea.Wdt-2*C4SymbolSize) X=(cgoArea.Wdt-rcBounds.Wdt)/2;
 	if (rcBounds.Hgt>cgoArea.Hgt-2*C4SymbolSize) Y=(cgoArea.Hgt-rcBounds.Hgt)/2;
@@ -772,7 +749,7 @@ void C4Menu::InitSize()
 	// dialogs have auto-enlarge vertically
 	if (pLast && Style == C4MN_Style_Dialog)
 	{
-		Height = Max<int>(Height, pLast->GetBounds().y + pLast->GetBounds().Hgt + C4MN_DlgLineMargin);
+		Height = std::max<int>(Height, pLast->GetBounds().y + pLast->GetBounds().Hgt + C4MN_DlgLineMargin);
 		fBarNeeded = false;
 	}
 	else
@@ -845,7 +822,7 @@ void C4Menu::DrawElement(C4TargetFacet &cgo)
 		if (pItem && pItem->fOwnValue)
 			iValue = pItem->iValue;
 		else
-			iValue = pDef->GetValue(NULL, NO_OWNER);
+			iValue = pDef->GetValue(nullptr, NO_OWNER);
 	}
 
 	// Store and clear global clipper
@@ -864,18 +841,12 @@ void C4Menu::DrawElement(C4TargetFacet &cgo)
 	// Draw specified extra
 	switch (Extra)
 	{
-	case C4MN_Extra_Components:
-		if (pItem) pItem->Components.Draw(cgoExtra,-1,::Definitions,C4D_All,true,C4FCT_Right | C4FCT_Triple | C4FCT_Half);
-		break;
 	case C4MN_Extra_Value:
 	{
 		if (pDef) ::GraphicsResource.fctWealth.DrawValue(cgoExtra,iValue,0,0,C4FCT_Right);
 	}
 	break;
 	}
-
-	// Restore global clipper
-	//pDraw->SetPrimaryClipper(iX1,iY1,iX2,iY2);
 }
 
 void C4Menu::DrawFrame(C4Surface * sfcSurface, int32_t iX, int32_t iY, int32_t iWdt, int32_t iHgt)
@@ -937,7 +908,7 @@ void C4Menu::Execute()
 		if (!RefillInternal())
 			Close(false);
 	// text progress
-	if (fTextProgressing /*&& !Game.iTick2*/)
+	if (fTextProgressing)
 		SetTextProgress(+1, true);
 }
 
@@ -975,38 +946,6 @@ void C4Menu::AdjustSelection()
 		SetSelection(-1, Selection >= 0, false);
 	else
 		SetSelection(iSel, iSel != Selection, true);
-}
-
-bool C4Menu::ConvertCom(int32_t &rCom, int32_t &rData, bool fAsyncConversion)
-{
-	// This function converts normal Coms to menu Coms before they are send to the queue
-
-	// Menu not active
-	if (!IsActive()) return false;
-
-	// Convert plain com control to menu com
-	switch (rCom)
-	{
-		// Convert recognized menu coms
-	case COM_Throw:    rCom = COM_MenuEnter;    break;
-	case COM_Dig:      rCom = COM_MenuClose;    break;
-	case COM_Special2: rCom = COM_MenuEnterAll; break;
-	case COM_Up:       rCom = COM_MenuUp;       break;
-	case COM_Left:     rCom = COM_MenuLeft;     break;
-	case COM_Down:     rCom = COM_MenuDown;     break;
-	case COM_Right:    rCom = COM_MenuRight;    break;
-		// Not a menu com: do nothing
-	default: return true;
-	}
-
-	// If text is still progressing, any menu com will complete it first
-	// Note: conversion to COM_MenuShowText is not synchronized because text lengths may vary
-	// between clients. The above switch is used to determine whether the com was a menu com
-	if (fTextProgressing && fAsyncConversion)
-		rCom = COM_MenuShowText;
-
-	// Done
-	return true;
 }
 
 bool C4Menu::SetLocation(int32_t iX, int32_t iY)
@@ -1058,7 +997,7 @@ C4Viewport *C4Menu::GetViewport()
 		if (pVP->IsViewportMenu(this))
 			return pVP;
 	// none matching
-	return NULL;
+	return nullptr;
 }
 
 void C4Menu::UpdateElementPositions()
@@ -1070,13 +1009,13 @@ void C4Menu::UpdateElementPositions()
 	pClientWindow->SetBounds(GetContainedClientRect());
 	// re-stack all list items
 	int xOff, yOff = 0;
-	C4MenuItem *pCurr = static_cast<C4MenuItem *>(pClientWindow->GetFirst()), *pPrev = NULL;
+	C4MenuItem *pCurr = static_cast<C4MenuItem *>(pClientWindow->GetFirst()), *pPrev = nullptr;
 	if (HasPortrait() && pCurr)
 	{
 		// recheck portrait
 		xOff = C4MN_DlgPortraitWdt + C4MN_DlgPortraitIndent;
 		C4Facet &fctPortrait = pCurr->Symbol;
-		C4Rect rcPortraitBounds(0,0, C4MN_DlgPortraitWdt + C4MN_DlgPortraitIndent, fctPortrait.Hgt * C4MN_DlgPortraitWdt / Max<int>(fctPortrait.Wdt, 1));
+		C4Rect rcPortraitBounds(0,0, C4MN_DlgPortraitWdt + C4MN_DlgPortraitIndent, fctPortrait.Hgt * C4MN_DlgPortraitWdt / std::max<int>(fctPortrait.Wdt, 1));
 		if (pCurr->GetBounds() != rcPortraitBounds)
 		{
 			pCurr->GetBounds() = rcPortraitBounds;
@@ -1102,7 +1041,7 @@ void C4Menu::UpdateElementPositions()
 			int32_t iWdt, iAvailWdt = ItemWidth, iSymWdt;
 			for (;;)
 			{
-				iSymWdt = Min<int32_t>(pCurr->GetSymbolWidth(iAssumedItemHeight), iAvailWdt/2);
+				iSymWdt = std::min<int32_t>(pCurr->GetSymbolWidth(iAssumedItemHeight), iAvailWdt/2);
 				iAvailWdt = ItemWidth - iSymWdt;
 				::GraphicsResource.FontRegular.BreakMessage(pCurr->Caption, iAvailWdt, &sText, true);
 				::GraphicsResource.FontRegular.GetTextExtent(sText.getData(),iWdt,rcNewBounds.Hgt, true);
@@ -1129,7 +1068,7 @@ void C4Menu::UpdateElementPositions()
 					// following item larger height: Need to re-stack from beginning
 					iMaxDlgOptionHeight = rcNewBounds.Hgt;
 					pNext = pFirstStack;
-					pPrev = NULL;
+					pPrev = nullptr;
 					yOff = 0;
 					iIndex = 0;
 					continue;
@@ -1142,8 +1081,8 @@ void C4Menu::UpdateElementPositions()
 		}
 		else
 		{
-			rcNewBounds.x = (iIndex % Max<int32_t>(Columns, 1)) * ItemWidth;
-			rcNewBounds.y = (iIndex / Max<int32_t>(Columns, 1)) * ItemHeight;
+			rcNewBounds.x = (iIndex % std::max<int32_t>(Columns, 1)) * ItemWidth;
+			rcNewBounds.y = (iIndex / std::max<int32_t>(Columns, 1)) * ItemHeight;
 		}
 		rcNewBounds.x += xOff;
 		if (pCurr->GetBounds() != rcNewBounds)

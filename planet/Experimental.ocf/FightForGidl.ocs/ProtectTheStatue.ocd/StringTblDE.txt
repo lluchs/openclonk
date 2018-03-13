@@ -1,2 +1,0 @@
-Name=Schütze die Statue
-Description=Verteidige die Statue gegen gegnerische Angriffe!

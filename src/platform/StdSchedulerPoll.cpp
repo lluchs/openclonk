@@ -1,28 +1,29 @@
+/*
+ * OpenClonk, http://www.openclonk.org
+ *
+ * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
+ *
+ * Distributed under the terms of the ISC license; see accompanying file
+ * "COPYING" for details.
+ *
+ * "Clonk" is a registered trademark of Matthes Bender, used with permission.
+ * See accompanying file "TRADEMARK" for details.
+ *
+ * To redistribute this file separately, substitute the full license texts
+ * for the above references.
+ */
+
 #include "C4Include.h"
-#include "StdScheduler.h"
+#include "platform/StdScheduler.h"
+
 #ifdef HAVE_POLL_H
-
-#include <stdio.h>
-
-#include <assert.h>
-#include <errno.h>
-#include <fcntl.h>
-
-#include <vector>
-
 #ifdef HAVE_IO_H
 #include <io.h>
 #endif
 #ifdef HAVE_SHARE_H
 #include <share.h>
 #endif
-
-#ifdef HAVE_UNISTD_H
-// For pipe()
-#include <unistd.h>
-#endif
-
-#include <map>
 
 // Is this process currently signaled?
 bool StdSchedulerProc::IsSignaled()
@@ -134,13 +135,13 @@ bool StdScheduler::DoScheduleProcs(int iTimeout)
 		bool any_executed = false;
 		auto tNow = C4TimeMilliseconds::Now();
 		// Which process?
-		for (auto i = 0; i < procs.size(); i++)
+		for (size_t i = 0; i < procs.size(); i++)
 		{
 			auto proc = procs[i];
 			auto tProcTick = proc->GetNextTick(tNow);
 			if (tProcTick <= tNow)
 			{
-				struct pollfd * pfd = 0;
+				struct pollfd * pfd = nullptr;
 				if (fds_for_proc.find(proc) != fds_for_proc.end())
 					pfd = &fds[fds_for_proc[proc].first];
 				if (!proc->Execute(0, pfd))
@@ -186,8 +187,6 @@ bool StdScheduler::DoScheduleProcs(int iTimeout)
 
 #if defined(HAVE_SYS_TIMERFD_H)
 #include <sys/timerfd.h>
-#include <unistd.h>
-#include <fcntl.h>
 CStdMultimediaTimerProc::CStdMultimediaTimerProc(uint32_t iDelay)
 {
 	fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
@@ -230,7 +229,7 @@ void CStdMultimediaTimerProc::GetFDs(std::vector<struct pollfd> & checkfds)
 	pollfd pfd = { fd, POLLIN, 0 };
 	checkfds.push_back(pfd);
 }
-#endif
+#endif // HAVE_SYS_TIMERFD_H
 
 #if !defined(USE_COCOA)
 void StdScheduler::Added(StdSchedulerProc *pProc) {}
@@ -238,11 +237,4 @@ void StdScheduler::Removing(StdSchedulerProc *pProc) {}
 void StdScheduler::Changed(StdSchedulerProc* pProc) {}
 void StdScheduler::StartOnCurrentThread() {}
 #endif
-
-void *StdThread::_ThreadFunc(void *pPar)
-{
-	StdThread *pThread = reinterpret_cast<StdThread *>(pPar);
-	return reinterpret_cast<void *>(pThread->ThreadFunc());
-}
-
-#endif
+#endif // HAVE_POLL_H

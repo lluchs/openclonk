@@ -2,7 +2,7 @@
  * OpenClonk, http://www.openclonk.org
  *
  * Copyright (c) 2007-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2010-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2010-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -17,18 +17,16 @@
 // is only compiled WITH_AUTOMATIC_UPDATE
 
 #include "C4Include.h"
+#include "gui/C4UpdateDlg.h"
 
-#include "C4UpdateDlg.h"
-
-#include "C4DownloadDlg.h"
-#include <C4Log.h>
+#include "c4group/C4Components.h"
+#include "game/C4Application.h"
+#include "gui/C4DownloadDlg.h"
 
 #ifdef _WIN32
 #include <shellapi.h>
 #else
-#include <unistd.h>
 #include <fcntl.h>
-#include <errno.h>
 #include <sys/wait.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -152,7 +150,7 @@ void C4UpdateDlg::RedirectToDownloadPage()
 
 bool C4UpdateDlg::DoUpdate(const char *szUpdateURL, C4GUI::Screen *pScreen)
 {
-	if(szUpdateURL == NULL || strlen(szUpdateURL) == 0)
+	if(szUpdateURL == nullptr || strlen(szUpdateURL) == 0)
 	{
 		pScreen->ShowMessageModal(LoadResStr("IDS_MSG_NEWRELEASEAVAILABLE"), LoadResStr("IDS_TYPE_UPDATE"),C4GUI::MessageDialog::btnOK, C4GUI::Ico_Ex_Update);
 		RedirectToDownloadPage();
@@ -179,43 +177,66 @@ bool C4UpdateDlg::DoUpdate(const char *szUpdateURL, C4GUI::Screen *pScreen)
 
 bool C4UpdateDlg::ApplyUpdate(const char *strUpdateFile, bool fDeleteUpdate, C4GUI::Screen *pScreen)
 {
-	// Determine name of update program
-	StdStrBuf strUpdateProg; strUpdateProg.Copy(C4CFN_UpdateProgram);
-	// Windows: manually append extension because ExtractEntry() cannot properly glob and Extract() doesn't return failure values
+	// Apply update: If the update file is a .ocu, it will extract c4group and apply the update.
+	// If the update file is an installer, it will just launch that installer.
+	StdStrBuf strUpdateProgEx, strUpdateArgs;
+	bool fIsGroupUpdate = SEqualNoCase(GetExtension(strUpdateFile), C4CFN_UpdateGroupExtension+1);
+	// Is this an update executable or an update group?
+	if (fIsGroupUpdate)
+	{
+		// This is an update group (.ocu). Extract c4group and run it.
+		// Find a place to extract the update
+		Config.MakeTempUpdateFolder();
+		// Determine name of update program
+		StdStrBuf strUpdateProg;
+		strUpdateProg.Copy(C4CFN_UpdateProgram);
+		// Windows: manually append extension because ExtractEntry() cannot properly glob and Extract() doesn't return failure values
 #ifdef _WIN32
-	strUpdateProg += ".exe";
+		strUpdateProg += ".exe";
 #endif
-	// Determine name of local extract of update program
-	StdStrBuf strUpdateProgEx;
-	strUpdateProgEx.Copy(Config.AtExePath(strUpdateProg.getData()));
+		// Determine name of local extract of update program
+		strUpdateProgEx.Copy(Config.AtTempUpdatePath(strUpdateProg.getData()));
 
-	// Extract update program (the update should be applied using the new version)
-	C4Group UpdateGroup;
-	if (!UpdateGroup.Open(strUpdateFile))
-	{
-		LogF("Error opening \"%s\": %s", strUpdateFile, UpdateGroup.GetError());
-		return false;
-	}
-	// Look for update program at top level
-	if (!UpdateGroup.ExtractEntry(strUpdateProg.getData(), strUpdateProgEx.getData()))
-	{
-		LogF("Error extracting \"%s\": %s", strUpdateProg.getData(), UpdateGroup.GetError());
-		return false;
-	}
-#if 0
-	char strSubGroup[1024+1];
-		// ASK: What is this? Why should an update program not be found at the top
-		// level? This seems obsolete. - Newton
-		// Not found: look for an engine update pack one level down
-		if (UpdateGroup.FindEntry(FormatString("cr_*_%s.ocu", C4_OS).getData(), strSubGroup))
-			// Extract update program from sub group
-			if (SubGroup.OpenAsChild(&UpdateGroup, strSubGroup))
-			{
-				SubGroup.ExtractEntry(strUpdateProg.getData(), strUpdateProgEx.getData());
-				SubGroup.Close();
-			}
+		// Extract update program (the update should be applied using the new version)
+		C4Group UpdateGroup;
+		if (!UpdateGroup.Open(strUpdateFile))
+		{
+			LogF("Error opening \"%s\": %s", strUpdateFile, UpdateGroup.GetError());
+			return false;
+		}
+		// Look for update program at top level
+		if (!UpdateGroup.ExtractEntry(strUpdateProg.getData(), strUpdateProgEx.getData()))
+		{
+			LogF("Error extracting \"%s\": %s", strUpdateProg.getData(), UpdateGroup.GetError());
+			return false;
+		}
+		// Extract any needed library files
+		UpdateGroup.Extract(C4CFN_UpdateProgramLibs, Config.AtTempUpdatePath(""), C4CFN_UpdateProgram);
+		UpdateGroup.Close();
+#ifdef _WIN32
+		// Notice: even if the update program and update group are in the temp path, they must be executed in our working directory
+		DWORD ProcessID = GetCurrentProcessId();
+		//strUpdateArgs.Format("\"%s\" \"%s\" %s %lu", strUpdateProgEx.getData(), strUpdateFile, fDeleteUpdate ? "-yd" : "-y", (unsigned long)ProcessID);
+		strUpdateArgs.Format("\"%s\" %s %lu", strUpdateFile, fDeleteUpdate ? "-yd" : "-y", (unsigned long)ProcessID);
+
+#if 0 // debug code to reroute updating via batch file
+		CStdFile f; - reroute via vi
+		f.Create(Config.AtTempUpdatePath("update.bat"));
+		f.WriteString(FormatString("%s %s\npause\n", strUpdateProgEx.getData(), strUpdateArgs.getData()).getData());
+		f.Close();
+		strUpdateProgEx.Copy(Config.AtTempUpdatePath("update.bat"));
+		strUpdateArgs.Copy(strUpdateProgEx);
 #endif
-	UpdateGroup.Close();
+#endif
+	}
+	else
+	{
+		// This "update" is actually an installer. Just run it.
+		strUpdateProgEx = strUpdateFile;
+		strUpdateArgs = "";
+		// if group was downloaded to temp path, delete it from there
+		if (fDeleteUpdate) SCopy(strUpdateProgEx.getData(), Config.General.TempUpdatePath, CFG_MaxString);
+	}
 
 	// Execute update program
 	Log(LoadResStr("IDS_PRC_LAUNCHINGUPDATE"));
@@ -223,12 +244,8 @@ bool C4UpdateDlg::ApplyUpdate(const char *strUpdateFile, bool fDeleteUpdate, C4G
 
 #ifdef _WIN32
 	// Notice: even if the update program and update group are in the temp path, they must be executed in our working directory
-	DWORD ProcessID = GetCurrentProcessId();
-	StdStrBuf strUpdateArgs;
-	strUpdateArgs.Format("\"%s\" \"%s\" %s %lu", strUpdateProgEx.getData(), strUpdateFile, fDeleteUpdate ? "-yd" : "-y", (unsigned long)ProcessID);
-
 	// the magic verb "runas" opens the update program in a shell requesting elevation
-	int iError = (intptr_t)ShellExecute(NULL, L"runas", strUpdateProgEx.GetWideChar(), strUpdateArgs.GetWideChar(), Config.General.ExePath.GetWideChar(), SW_SHOW);
+	int iError = (intptr_t)ShellExecute(nullptr, L"runas", strUpdateProgEx.GetWideChar(), strUpdateArgs.GetWideChar(), Config.General.ExePath.GetWideChar(), SW_SHOW);
 	if (iError <= 32) return false;
 
 	// must quit ourselves for update program to work
@@ -254,7 +271,10 @@ bool C4UpdateDlg::ApplyUpdate(const char *strUpdateFile, bool fDeleteUpdate, C4G
 		dup2(c4group_output[1], STDERR_FILENO);
 		if (c4group_output[1] != STDOUT_FILENO && c4group_output[1] != STDERR_FILENO)
 			close(c4group_output[1]);
-		execl(C4CFN_UpdateProgram, C4CFN_UpdateProgram, "-v", strUpdateFile, (fDeleteUpdate ? "-yd" : "-y"), static_cast<char *>(0));
+		if (fIsGroupUpdate)
+			execl(C4CFN_UpdateProgram, C4CFN_UpdateProgram, "-v", strUpdateFile, (fDeleteUpdate ? "-yd" : "-y"), static_cast<char *>(0));
+		else
+			execl(strUpdateFile, strUpdateFile, static_cast<char *>(0));
 		printf("execl failed: %s\n", strerror(errno));
 		exit(1);
 		// Parent process
@@ -274,8 +294,8 @@ bool C4UpdateDlg::ApplyUpdate(const char *strUpdateFile, bool fDeleteUpdate, C4G
 
 bool C4UpdateDlg::IsValidUpdate(const char *szVersion)
 {
-	StdStrBuf strVersion; strVersion.Format("%d.%d.%d", C4XVER1, C4XVER2, C4XVER3);
-	if (szVersion == NULL || strlen(szVersion) == 0) return false;
+	StdStrBuf strVersion; strVersion.Format("%d.%d", C4XVER1, C4XVER2);
+	if (szVersion == nullptr || strlen(szVersion) == 0) return false;
 	return strcmp(szVersion,strVersion.getData()) != 0;
 }
 
@@ -283,21 +303,21 @@ bool C4UpdateDlg::CheckForUpdates(C4GUI::Screen *pScreen, bool fAutomatic)
 {
 	// Automatic update only once a day
 	if (fAutomatic)
-		if (time(NULL) - Config.Network.LastUpdateTime < 60 * 60 * 24)
+		if (time(nullptr) - Config.Network.LastUpdateTime < 60 * 60 * 24)
 			return false;
 	// Store the time of this update check (whether it's automatic or not or successful or not)
-	Config.Network.LastUpdateTime = time(NULL);
+	Config.Network.LastUpdateTime = time(nullptr);
 	// Get current update url and version info from server
 	StdStrBuf UpdateURL;
 	StdStrBuf VersionInfo;
-	C4GUI::Dialog *pWaitDlg = NULL;
+	C4GUI::Dialog *pWaitDlg = nullptr;
 	pWaitDlg = new C4GUI::MessageDialog(LoadResStr("IDS_MSG_LOOKINGFORUPDATES"), LoadResStr("IDS_TYPE_UPDATE"), C4GUI::MessageDialog::btnAbort, C4GUI::Ico_Ex_Update, C4GUI::MessageDialog::dsRegular);
 	pWaitDlg->SetDelOnClose(false);
 	pScreen->ShowDialog(pWaitDlg, false);
 
 	C4Network2UpdateClient UpdateClient;
 	bool fSuccess = false, fAborted = false;
-	StdStrBuf strVersion; strVersion.Format("%d.%d.%d", C4XVER1, C4XVER2, C4XVER3);
+	StdStrBuf strVersion; strVersion.Format("%d.%d", C4XVER1, C4XVER2);
 	StdStrBuf strQuery; strQuery.Format("%s?version=%s&platform=%s&action=version", Config.Network.UpdateServerAddress, strVersion.getData(), C4_OS);
 	if (UpdateClient.Init() && UpdateClient.SetServer(strQuery.getData()) && UpdateClient.QueryUpdateURL())
 	{
@@ -317,7 +337,7 @@ bool C4UpdateDlg::CheckForUpdates(C4GUI::Screen *pScreen, bool fAutomatic)
 			UpdateClient.GetUpdateURL(&UpdateURL);
 		}
 		Application.InteractiveThread.RemoveProc(&UpdateClient);
-		UpdateClient.SetNotify(NULL);
+		UpdateClient.SetNotify(nullptr);
 	}
 	delete pWaitDlg;
 	// User abort

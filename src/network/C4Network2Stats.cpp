@@ -2,7 +2,7 @@
  * OpenClonk, http://www.openclonk.org
  *
  * Copyright (c) 2005-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2010-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2010-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -15,24 +15,22 @@
  */
 // network statistics and information dialogs
 
-#include <C4Include.h>
-#include <C4Network2Stats.h>
+#include "C4Include.h"
+#include "network/C4Network2Stats.h"
 
-#include <C4Game.h>
-#include <C4Player.h>
-#include <C4PlayerList.h>
-#include <C4GameObjects.h>
-#include <C4Network2.h>
-#include <C4GameControl.h>
+#include "control/C4GameControl.h"
+#include "network/C4Network2.h"
+#include "object/C4GameObjects.h"
+#include "player/C4Player.h"
+#include "player/C4PlayerList.h"
 
 C4Graph::C4Graph()
-		: szTitle(LoadResStr("IDS_NET_GRAPH")), dwColor(0x7fff0000)
+		: szTitle(LoadResStr("IDS_NET_GRAPH")) 
 {
 }
 
 C4TableGraph::C4TableGraph(int iBackLogLength, int iStartTime)
-		: iBackLogLength(iBackLogLength), pValues(NULL), fMultiplier(1), pAveragedValues(NULL), iBackLogPos(0), fWrapped(false)
-		, iInitialStartTime(iStartTime), iTime(iStartTime), iAveragedTime(iStartTime), iAvgRange(1)
+		: iBackLogLength(iBackLogLength), iInitialStartTime(iStartTime), iTime(iStartTime), iAveragedTime(iStartTime)
 {
 	// create value buffer
 	assert(iBackLogLength);
@@ -116,11 +114,11 @@ C4Graph::ValueType C4TableGraph::GetMinValue() const
 	int iPos0 = iBackLogPos ? iBackLogPos-1 : iBackLogPos;
 	ValueType iMinVal = pAveragedValues[iPos0];
 	int i = iPos0; ValueType *p = pAveragedValues;
-	while (i--) iMinVal = Min(iMinVal, *p++);
+	while (i--) iMinVal = std::min(iMinVal, *p++);
 	if (fWrapped)
 	{
 		i = iBackLogLength - iPos0;
-		while (--i) iMinVal = Min(iMinVal, *++p);
+		while (--i) iMinVal = std::min(iMinVal, *++p);
 	}
 	return iMinVal * fMultiplier;
 }
@@ -130,11 +128,11 @@ C4Graph::ValueType C4TableGraph::GetMaxValue() const
 	int iPos0 = iBackLogPos ? iBackLogPos-1 : iBackLogPos;
 	ValueType iMaxVal = pAveragedValues[iPos0];
 	int i = iPos0; ValueType *p = pAveragedValues;
-	while (i--) iMaxVal = Max(iMaxVal, *p++);
+	while (i--) iMaxVal = std::max(iMaxVal, *p++);
 	if (fWrapped)
 	{
 		i = iBackLogLength - iPos0;
-		while (--i) iMaxVal = Max(iMaxVal, *++p);
+		while (--i) iMaxVal = std::max(iMaxVal, *++p);
 	}
 	return iMaxVal * fMultiplier;
 }
@@ -211,10 +209,10 @@ void C4TableGraph::Update() const
 #else
 	int iAvgFwRange = 0;
 #endif
-	for (int iUpdateTime = Max(iAveragedTime-iAvgFwRange-1, iStartTime); iUpdateTime < iTime; ++iUpdateTime)
+	for (int iUpdateTime = std::max(iAveragedTime-iAvgFwRange-1, iStartTime); iUpdateTime < iTime; ++iUpdateTime)
 	{
 		ValueType iSum=0, iSumWeight=0, iWeight;
-		for (int iSumTime = Max(iUpdateTime - iAvgRange, iStartTime); iSumTime < Min(iUpdateTime + iAvgFwRange+1, iTime); ++iSumTime)
+		for (int iSumTime = std::max(iUpdateTime - iAvgRange, iStartTime); iSumTime < std::min(iUpdateTime + iAvgFwRange+1, iTime); ++iSumTime)
 		{
 			iWeight = (ValueType) iAvgRange - Abs(iUpdateTime - iSumTime) + 1;
 			iSum += GetAtValue(iSumTime) * iWeight;
@@ -232,7 +230,7 @@ C4Graph::TimeType C4GraphCollection::GetStartTime() const
 {
 	const_iterator i = begin(); if (i == end()) return 0;
 	C4Graph::TimeType iTime = (*i)->GetStartTime();
-	while (++i != end()) iTime = Min(iTime, (*i)->GetStartTime());
+	while (++i != end()) iTime = std::min(iTime, (*i)->GetStartTime());
 	return iTime;
 }
 
@@ -240,7 +238,7 @@ C4Graph::TimeType C4GraphCollection::GetEndTime() const
 {
 	const_iterator i = begin(); if (i == end()) return 0;
 	C4Graph::TimeType iTime = (*i)->GetEndTime();
-	while (++i != end()) iTime = Max(iTime, (*i)->GetEndTime());
+	while (++i != end()) iTime = std::max(iTime, (*i)->GetEndTime());
 	return iTime;
 }
 
@@ -248,7 +246,7 @@ C4Graph::ValueType C4GraphCollection::GetMinValue() const
 {
 	const_iterator i = begin(); if (i == end()) return 0;
 	C4Graph::ValueType iVal = (*i)->GetMinValue();
-	while (++i != end()) iVal = Min(iVal, (*i)->GetMinValue());
+	while (++i != end()) iVal = std::min(iVal, (*i)->GetMinValue());
 	return iVal;
 }
 
@@ -256,44 +254,44 @@ C4Graph::ValueType C4GraphCollection::GetMaxValue() const
 {
 	const_iterator i = begin(); if (i == end()) return 0;
 	C4Graph::ValueType iVal = (*i)->GetMaxValue();
-	while (++i != end()) iVal = Max(iVal, (*i)->GetMaxValue());
+	while (++i != end()) iVal = std::max(iVal, (*i)->GetMaxValue());
 	return iVal;
 }
 
 int C4GraphCollection::GetSeriesCount() const
 {
 	int iCount = 0;
-	for (const_iterator i = begin(); i != end(); ++i) iCount += (*i)->GetSeriesCount();
+	for (auto i : *this) iCount += i->GetSeriesCount();
 	return iCount;
 }
 
 const C4Graph *C4GraphCollection::GetSeries(int iIndex) const
 {
-	for (const_iterator i = begin(); i != end(); ++i)
+	for (auto i : *this)
 	{
-		int iCnt = (*i)->GetSeriesCount();
-		if (iIndex < iCnt) return (*i)->GetSeries(iIndex);
+		int iCnt = i->GetSeriesCount();
+		if (iIndex < iCnt) return i->GetSeries(iIndex);
 		iIndex -= iCnt;
 	}
-	return NULL;
+	return nullptr;
 }
 
 void C4GraphCollection::Update() const
 {
 	// update all child graphs
-	for (const_iterator i = begin(); i != end(); ++i) (*i)->Update();
+	for (auto i : *this) i->Update();
 }
 
 void C4GraphCollection::SetAverageTime(int iToTime)
 {
 	if ((iCommonAvgTime = iToTime))
-		for (iterator i = begin(); i != end(); ++i) (*i)->SetAverageTime(iToTime);
+		for (auto & i : *this) i->SetAverageTime(iToTime);
 }
 
 void C4GraphCollection::SetMultiplier(ValueType fToVal)
 {
 	if ((fMultiplier = fToVal))
-		for (iterator i = begin(); i != end(); ++i) (*i)->SetMultiplier(fToVal);
+		for (auto & i : *this) i->SetMultiplier(fToVal);
 }
 
 
@@ -301,8 +299,6 @@ void C4GraphCollection::SetMultiplier(ValueType fToVal)
 
 C4Network2Stats::C4Network2Stats()
 {
-	// set self (needed in CreateGraph-fns)
-	Game.pNetworkStatistics = this;
 	// init callback timer
 	Application.Add(this);
 	SecondCounter = 0;
@@ -320,14 +316,14 @@ C4Network2Stats::C4Network2Stats()
 	statActions.SetTitle(LoadResStr("IDS_NET_APM"));
 	statActions.SetAverageTime(100);
 	for (C4Player *pPlr = ::Players.First; pPlr; pPlr = pPlr->Next) pPlr->CreateGraphs();
-	C4Network2Client *pClient = NULL;
+	C4Network2Client *pClient = nullptr;
 	while ((pClient = ::Network.Clients.GetNextClient(pClient))) pClient->CreateGraphs();
 }
 
 C4Network2Stats::~C4Network2Stats()
 {
 	for (C4Player *pPlr = ::Players.First; pPlr; pPlr = pPlr->Next) pPlr->ClearGraphs();
-	C4Network2Client *pClient = NULL;
+	C4Network2Client *pClient = nullptr;
 	while ((pClient = ::Network.Clients.GetNextClient(pClient))) pClient->ClearGraphs();
 	Application.Remove(this);
 }
@@ -343,7 +339,7 @@ void C4Network2Stats::ExecuteSecond()
 	statNetI.RecordValue(C4Graph::ValueType(::Network.NetIO.getProtIRate(P_TCP) + ::Network.NetIO.getProtIRate(P_UDP)));
 	statNetO.RecordValue(C4Graph::ValueType(::Network.NetIO.getProtORate(P_TCP) + ::Network.NetIO.getProtORate(P_UDP)));
 	// pings for all clients
-	C4Network2Client *pClient = NULL;
+	C4Network2Client *pClient = nullptr;
 	while ((pClient = ::Network.Clients.GetNextClient(pClient))) if (pClient->getStatPing())
 		{
 			int iPing=0;
@@ -387,7 +383,7 @@ C4Graph *C4Network2Stats::GetGraphByName(const StdStrBuf &rszName, bool &rfIsTem
 	if (SEqualNoCase(rszName.getData(), "control")) return &statControls;
 	if (SEqualNoCase(rszName.getData(), "apm")) return &statActions;
 	// no match
-	return NULL;
+	return nullptr;
 }
 
 // MassGraph.SetDumpFile(StdStrBuf("C:\\test.txt"));

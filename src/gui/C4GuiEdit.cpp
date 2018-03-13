@@ -2,7 +2,7 @@
  * OpenClonk, http://www.openclonk.org
  *
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -16,14 +16,13 @@
 // generic user interface
 // room for textual deconvolution
 
-#include <C4Include.h>
-#include <C4Gui.h>
+#include "C4Include.h"
+#include "gui/C4Gui.h"
 
-#include <C4FullScreen.h>
-#include <C4LoaderScreen.h>
-#include <C4Application.h>
-#include <C4MouseControl.h>
-#include <C4GraphicsResource.h>
+#include "game/C4Application.h"
+#include "graphics/C4Draw.h"
+#include "graphics/C4GraphicsResource.h"
+#include "gui/C4MouseControl.h"
 
 namespace C4GUI
 {
@@ -104,10 +103,10 @@ namespace C4GUI
 	{
 		// register same op for all shift states; distinction will be done in handling proc
 		C4CustomKey::CodeList KeyList;
-		KeyList.push_back(C4KeyCodeEx(key));
-		KeyList.push_back(C4KeyCodeEx(key, KEYS_Shift));
-		KeyList.push_back(C4KeyCodeEx(key, KEYS_Control));
-		KeyList.push_back(C4KeyCodeEx(key, C4KeyShiftState(KEYS_Shift | KEYS_Control)));
+		KeyList.emplace_back(key);
+		KeyList.emplace_back(key, KEYS_Shift);
+		KeyList.emplace_back(key, KEYS_Control);
+		KeyList.emplace_back(key, C4KeyShiftState(KEYS_Shift | KEYS_Control));
 		return new C4KeyBinding(KeyList, szName, KEYSCOPE_Gui, new ControlKeyCBExPassKey<Edit, CursorOperation>(*this, op, &Edit::KeyCursorOp), eKeyPrio);
 	}
 
@@ -120,7 +119,7 @@ namespace C4GUI
 	int32_t Edit::GetCustomEditHeight(CStdFont *pUseFont)
 	{
 		// edit height for custom font: Make it so edits and wooden labels have same height
-		return Max<int32_t>(pUseFont->GetLineHeight()+3, C4GUI_MinWoodBarHgt);
+		return std::max<int32_t>(pUseFont->GetLineHeight()+3, C4GUI_MinWoodBarHgt);
 	}
 
 	void Edit::ClearText()
@@ -150,11 +149,11 @@ namespace C4GUI
 	void Edit::DeleteSelection()
 	{
 		// move end text to front
-		int32_t iSelBegin = Min(iSelectionStart, iSelectionEnd), iSelEnd = Max(iSelectionStart, iSelectionEnd);
+		int32_t iSelBegin = std::min(iSelectionStart, iSelectionEnd), iSelEnd = std::max(iSelectionStart, iSelectionEnd);
 		if (iSelectionStart == iSelectionEnd) return;
 		memmove(Text + iSelBegin, Text + iSelEnd, strlen(Text + iSelEnd)+1);
 		// adjust cursor pos
-		if (iCursorPos > iSelBegin) iCursorPos = Max(iSelBegin, iCursorPos - iSelEnd + iSelBegin);
+		if (iCursorPos > iSelBegin) iCursorPos = std::max(iSelBegin, iCursorPos - iSelEnd + iSelBegin);
 		// cursor might have moved: ensure it is shown
 		tLastInputTime = C4TimeMilliseconds::Now();
 		// nothing selected
@@ -201,7 +200,7 @@ namespace C4GUI
 		{
 			int32_t w, h; char strMask[2] = { cPasswordMask, 0 };
 			pFont->GetTextExtent(strMask, w, h, false);
-			return BoundBy<int32_t>((iControlXPos + w/2) / w, 0, SLen(Text));
+			return Clamp<int32_t>((iControlXPos + w/2) / std::max<int32_t>(1, w), 0, SLen(Text));
 		}
 		int32_t i = 0;
 		for (int32_t iLastW = 0, w,h; Text[i]; ++i)
@@ -236,7 +235,7 @@ namespace C4GUI
 	{
 		if (rcClientRect.Wdt<5) return;
 		// get position of cursor
-		int32_t iScrollOff = Min<int32_t>(20, rcClientRect.Wdt/3);
+		int32_t iScrollOff = std::min<int32_t>(20, rcClientRect.Wdt/3);
 		int32_t w,h;
 		if (!cPasswordMask)
 		{
@@ -251,12 +250,12 @@ namespace C4GUI
 		while (w-iXScroll < rcClientRect.Wdt/5 && w<iScrollOff+iXScroll && iXScroll > 0)
 		{
 			// left
-			iXScroll = Max(iXScroll - Min(100, rcClientRect.Wdt/4), 0);
+			iXScroll = std::max(iXScroll - std::min(100, rcClientRect.Wdt/4), 0);
 		}
 		while (w-iXScroll >= rcClientRect.Wdt/5 && w>=rcClientRect.Wdt-iScrollOff+iXScroll)
 		{
 			// right
-			iXScroll += Min(100, rcClientRect.Wdt/4);
+			iXScroll += std::min(100, rcClientRect.Wdt/4);
 		}
 	}
 
@@ -290,13 +289,12 @@ namespace C4GUI
 	bool Edit::Copy()
 	{
 		// get selected range
-		int32_t iSelBegin = Min(iSelectionStart, iSelectionEnd), iSelEnd = Max(iSelectionStart, iSelectionEnd);
+		int32_t iSelBegin = std::min(iSelectionStart, iSelectionEnd), iSelEnd = std::max(iSelectionStart, iSelectionEnd);
 		if (iSelBegin == iSelEnd) return false;
-		StdStrBuf buf;
 		// allocate a global memory object for the text.
-		buf.Append(Text+iSelBegin, iSelEnd-iSelBegin);
+		std::string buf(Text+iSelBegin, iSelEnd-iSelBegin);
 		if (cPasswordMask)
-			memset(buf.getMData(), cPasswordMask, buf.getLength());
+			buf.assign(buf.size(), cPasswordMask);
 
 		return Application.Copy(buf);
 	}
@@ -316,7 +314,7 @@ namespace C4GUI
 		bool fSuccess = false;
 		// check clipboard contents
 		if(!Application.IsClipboardFull()) return false;
-		StdStrBuf text(Application.Paste());
+		StdCopyStrBuf text(Application.Paste().c_str());
 		char * szText = text.getMData();
 		if (text)
 		{
@@ -526,7 +524,7 @@ namespace C4GUI
 			iCursorPos = iSelectionStart;
 #ifndef _WIN32
 			// Insert primary selection
-			InsertText(Application.Paste(false).getData(), true);
+			InsertText(Application.Paste(false).c_str(), true);
 #endif
 			break;
 		};
@@ -610,8 +608,8 @@ namespace C4GUI
 		if (iSelectionStart != iSelectionEnd)
 		{
 			// get selection range
-			int32_t iSelBegin = Min(iSelectionStart, iSelectionEnd);
-			int32_t iSelEnd = Max(iSelectionStart, iSelectionEnd);
+			int32_t iSelBegin = std::min(iSelectionStart, iSelectionEnd);
+			int32_t iSelEnd = std::max(iSelectionStart, iSelectionEnd);
 			// get offsets in text
 			int32_t iSelX1, iSelX2, h;
 			char c = pDrawText[iSelBegin]; pDrawText[iSelBegin]=0; pFont->GetTextExtent(pDrawText, iSelX1, h, false); pDrawText[iSelBegin]=c;
@@ -652,12 +650,12 @@ namespace C4GUI
 	ContextMenu *Edit::OnContext(C4GUI::Element *pListItem, int32_t iX, int32_t iY)
 	{
 		// safety: no text?
-		if (!Text) return NULL;
+		if (!Text) return nullptr;
 		// create context menu
 		ContextMenu *pCtx = new ContextMenu();
 		// fill with any valid items
 		// get selected range
-		uint32_t iSelBegin = Min(iSelectionStart, iSelectionEnd), iSelEnd = Max(iSelectionStart, iSelectionEnd);
+		uint32_t iSelBegin = std::min(iSelectionStart, iSelectionEnd), iSelEnd = std::max(iSelectionStart, iSelectionEnd);
 		bool fAnythingSelected = (iSelBegin != iSelEnd);
 		if (fAnythingSelected)
 		{
@@ -682,7 +680,7 @@ namespace C4GUI
 		int32_t iPos = iCursorPos;
 		while (iPos>0)
 				if (IsWholeWordSpacer(Text[iPos-1])) break; else --iPos;
-		SCopy(Text + iPos, szTargetBuf, Min(iCursorPos - iPos, iMaxTargetBufLen));
+		SCopy(Text + iPos, szTargetBuf, std::min(iCursorPos - iPos, iMaxTargetBufLen));
 		return !!*szTargetBuf;
 	}
 
@@ -706,13 +704,13 @@ namespace C4GUI
 			pPrevFocusCtrl = pDlg->GetFocus();
 			pDlg->SetFocus(this, false);
 		}
-		else pPrevFocusCtrl=NULL;
+		else pPrevFocusCtrl=nullptr;
 		// key binding for rename abort
 		C4CustomKey::CodeList keys;
-		keys.push_back(C4KeyCodeEx(K_ESCAPE));
+		keys.emplace_back(K_ESCAPE);
 		if (Config.Controls.GamepadGuiControl)
 		{
-			keys.push_back(C4KeyCodeEx(KEY_Gamepad(0, KEY_JOY_AnyHighButton)));
+			ControllerKeys::Cancel(keys);
 		}
 		pKeyAbort = new C4KeyBinding(keys, "GUIRenameEditAbort", KEYSCOPE_Gui,
 		                             new ControlKeyCB<RenameEdit>(*this, &RenameEdit::KeyAbort), C4CustomKey::PRIO_FocusCtrl);
@@ -820,14 +818,14 @@ namespace C4GUI
 		if (fMultiline)
 		{
 			iEditWdt += 2; // indent edit a bit
-			if (piWdt) *piWdt = Max<int32_t>(iLabelWdt, iEditWdt);
+			if (piWdt) *piWdt = std::max<int32_t>(iLabelWdt, iEditWdt);
 			if (piHgt) *piHgt = iLabelHgt + iEditHgt + 2;
 		}
 		else
 		{
 			iLabelWdt += 2; // add a bit of spacing between label and edit
 			if (piWdt) *piWdt = iLabelWdt + iEditWdt;
-			if (piHgt) *piHgt = Max<int32_t>(iLabelHgt, iEditHgt);
+			if (piHgt) *piHgt = std::max<int32_t>(iLabelHgt, iEditHgt);
 		}
 		return true;
 	}

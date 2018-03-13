@@ -1,3 +1,2 @@
 Name=Axt
-Description=Werkzeug eines jeden Holzf‰llers.
-UsageHelp=Benutze die Axt um einen Baum zu f‰llen.
+Description=Werkzeug eines jeden Holzf√§llers. Benutze die Axt um einen Baum zu f√§llen.

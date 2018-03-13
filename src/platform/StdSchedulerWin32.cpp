@@ -1,7 +1,23 @@
+/*
+ * OpenClonk, http://www.openclonk.org
+ *
+ * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
+ *
+ * Distributed under the terms of the ISC license; see accompanying file
+ * "COPYING" for details.
+ *
+ * "Clonk" is a registered trademark of Matthes Bender, used with permission.
+ * See accompanying file "TRADEMARK" for details.
+ *
+ * To redistribute this file separately, substitute the full license texts
+ * for the above references.
+ */
+
 // Events are Windows-specific
-#include <C4Include.h>
-#include <StdScheduler.h>
-#ifdef USE_WIN32_WINDOWS
+#include "C4Include.h"
+#include "platform/StdScheduler.h"
+#ifdef STDSCHEDULER_USE_EVENTS
 
 #include <mmsystem.h>
 #include <process.h>
@@ -22,21 +38,21 @@ bool CStdNotifyProc::CheckAndReset()
 
 bool StdScheduler::DoScheduleProcs(int iTimeout)
 {
-	int i;
+	size_t i;
 	// Collect event handles
 	int iEventCnt = 0; HANDLE hEvent;
-	StdSchedulerProc *pMessageProc = NULL;
-	for (i = 0; i < procs.size(); i++)
+	StdSchedulerProc *pMessageProc = nullptr;
+	for (i = 0u; i < procs.size(); i++)
 	{
 		auto proc = procs[i];
-		if ( (hEvent = procs[i]->GetEvent()) )
+		if ( (hEvent = proc->GetEvent()) )
 		{
 			if (hEvent == STDSCHEDULER_EVENT_MESSAGE)
-				pMessageProc = procs[i];
+				pMessageProc = proc;
 			else
 			{
 				eventHandles[iEventCnt] = hEvent;
-				eventProcs[iEventCnt] = procs[i];
+				eventProcs[iEventCnt] = proc;
 				iEventCnt++;
 			}
 		}
@@ -68,14 +84,17 @@ bool StdScheduler::DoScheduleProcs(int iTimeout)
 	}
 
 	// Execute all processes with timeout
+	// Iterate over the index because procedures may be added or removed during execution
+	// (If they are removed, we skip one execution, which doesn't really matter in practice)
 	auto tNow = C4TimeMilliseconds::Now();
-	for (auto proc = procs.begin(); proc != procs.end(); ++proc)
+	for (size_t i_proc = 0u; i_proc < procs.size(); ++i_proc)
 	{
-		auto tProcTick = (*proc)->GetNextTick(tNow);
+		StdSchedulerProc *proc = procs[i_proc];
+		auto tProcTick = proc->GetNextTick(tNow);
 		if (tProcTick <= tNow)
-			if (!(*proc)->Execute(0))
+			if (!proc->Execute(0))
 			{
-				OnError(*proc);
+				OnError(proc);
 				fSuccess = false;
 			}
 	}
@@ -99,7 +118,7 @@ CStdMultimediaTimerProc::CStdMultimediaTimerProc(uint32_t iDelay) :
 		TIMECAPS tc;
 		timeGetDevCaps(&tc, sizeof(tc));
 		// Establish minimum resolution
-		uCriticalTimerResolution = BoundBy(uCriticalTimerResolution, tc.wPeriodMin, tc.wPeriodMax);
+		uCriticalTimerResolution = Clamp(uCriticalTimerResolution, tc.wPeriodMin, tc.wPeriodMax);
 		timeBeginPeriod(uCriticalTimerResolution);
 	}
 	iTimePeriod++;
@@ -167,11 +186,4 @@ bool CStdMultimediaTimerProc::CheckAndReset()
 	Event.Reset();
 	return true;
 }
-
-void __cdecl StdThread::_ThreadFunc(void *pPar)
-{
-	StdThread *pThread = reinterpret_cast<StdThread *>(pPar);
-	_endthreadex(pThread->ThreadFunc());
-}
-
 #endif

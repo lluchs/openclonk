@@ -8,7 +8,7 @@
 
 public func ControlUse(object pClonk)
 {
-	Sound("Blast3");
+	Sound("Fire::Blast3*");
 	Exit(0,-GetY());
 	AddEffect("ThunderStrike",nil,100,1,nil,this->GetID(),pClonk->GetOwner(),this->GetX()-5);
 	RemoveObject();
@@ -80,7 +80,7 @@ global func FxThunderStrikeTimer(pTarget, effect, iEffectTime)
 		{
 			if(t->GetID() == TargetBalloon)
 			{
-				var arw=CreateObject(Arrow,0,0,owner);
+				var arw=CreateObjectAbove(Arrow,0,0,owner);
 				t->OnProjectileHit(arw);
 				arw->RemoveObject();
 			}

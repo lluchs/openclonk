@@ -2,7 +2,7 @@
  * OpenClonk, http://www.openclonk.org
  *
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -18,13 +18,12 @@
 #ifndef C4NETIO_H
 #define C4NETIO_H
 
-#include "StdSync.h"
-#include "StdBuf.h"
-#include "StdCompiler.h"
-#include "StdScheduler.h"
+#include "lib/StdCompiler.h"
+#include "platform/StdScheduler.h"
+#include "platform/StdSync.h"
 
 #ifdef _WIN32
-#include <C4windowswrapper.h>
+#include "platform/C4windowswrapper.h"
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #ifndef WINSOCK_VERSION
@@ -61,13 +60,158 @@ class C4NetIO : public StdSchedulerProc
 {
 public:
 	C4NetIO();
-	virtual ~C4NetIO();
+	~C4NetIO() override;
 
 	// *** constants / types
 	static const int TO_INF; // = -1;
-	static const uint16_t P_NONE; // = -1
 
-	typedef sockaddr_in addr_t;
+	struct HostAddress
+	{
+		enum AddressFamily
+		{
+			IPv6 = AF_INET6,
+			IPv4 = AF_INET,
+			UnknownFamily = 0
+		};
+		enum SpecialAddress
+		{
+			Loopback,	// IPv6 localhost (::1)
+			Any,	// IPv6 any-address (::)
+			AnyIPv4	// IPv4 any-address (0.0.0.0)
+		};
+
+		enum ToStringFlags
+		{
+			TSF_SkipZoneId = 1,
+			TSF_SkipPort = 2
+		};
+		
+		HostAddress() { Clear(); }
+		HostAddress(const HostAddress &other) { SetHost(other); }
+		HostAddress(SpecialAddress addr) { SetHost(addr); }
+		explicit HostAddress(uint32_t addr) { SetHost(addr); }
+		HostAddress(const StdStrBuf &addr) { SetHost(addr); }
+		HostAddress(const sockaddr *addr) { SetHost(addr); }
+
+		AddressFamily GetFamily() const;
+		size_t GetAddrLen() const;
+		
+		void SetScopeId(int scopeId);
+		int GetScopeId() const;
+
+		void Clear();
+		void SetHost(const sockaddr *addr);
+		void SetHost(const HostAddress &host);
+		void SetHost(SpecialAddress host);
+		void SetHost(const StdStrBuf &host, AddressFamily family = UnknownFamily);
+		void SetHost(uint32_t host);
+
+		C4NetIO::HostAddress AsIPv6() const; // convert an IPv4 address to an IPv6-mapped IPv4 address
+		C4NetIO::HostAddress AsIPv4() const; // try to convert an IPv6-mapped IPv4 address to an IPv4 address (returns unchanged address if not possible)
+
+		// General categories
+		bool IsNull() const;
+		bool IsMulticast() const;
+		bool IsLoopback() const;
+		bool IsLocal() const; // IPv6 link-local address
+		bool IsPrivate() const; // IPv6 ULA or IPv4 private address range
+//		bool IsBroadcast() const;
+
+		StdStrBuf ToString(int flags = 0) const;
+
+		bool operator ==(const HostAddress &rhs) const;
+		bool operator !=(const HostAddress &rhs) const { return !(*this == rhs); }
+
+	protected:
+		// data
+		union
+		{
+			sockaddr gen;
+			sockaddr_in v4;
+			sockaddr_in6 v6;
+		};
+	};
+
+	struct EndpointAddress : public HostAddress	// Host and port
+	{
+		static const uint16_t IPPORT_NONE = 0;
+
+		EndpointAddress() { Clear(); }
+		EndpointAddress(const EndpointAddress &other) : HostAddress() { SetAddress(other); }
+		EndpointAddress(const HostAddress &host, uint16_t port = IPPORT_NONE) : HostAddress(host) { SetPort(port); }
+		EndpointAddress(HostAddress::SpecialAddress addr, uint16_t port = IPPORT_NONE) : HostAddress(addr) { SetPort(port); }
+		explicit EndpointAddress(const StdStrBuf &addr) { SetAddress(addr); }
+
+		StdStrBuf ToString(int flags = 0) const;
+
+		void Clear();
+
+		void SetAddress(const sockaddr *addr);
+		void SetAddress(const EndpointAddress &other);
+		void SetAddress(HostAddress::SpecialAddress addr, uint16_t port = IPPORT_NONE);
+		void SetAddress(const HostAddress &host, uint16_t port = IPPORT_NONE);
+		void SetAddress(const StdStrBuf &addr, AddressFamily family = UnknownFamily);
+
+		HostAddress GetHost() const { return *this; }	// HostAddress copy ctor slices off port information
+		EndpointAddress AsIPv6() const; // convert an IPv4 address to an IPv6-mapped IPv4 address
+		EndpointAddress AsIPv4() const; // try to convert an IPv6-mapped IPv4 address to an IPv4 address (returns unchanged address if not possible)
+		
+		void SetPort(uint16_t port);
+		void SetDefaultPort(uint16_t port); // set a port only if there is none
+		uint16_t GetPort() const;
+
+		bool IsNull() const;
+		bool IsNullHost() const { return HostAddress::IsNull(); }
+
+		// Pointer wrapper to be able to implicitly convert to sockaddr*
+		class EndpointAddressPtr;
+		const EndpointAddressPtr operator &() const;
+		EndpointAddressPtr operator &();
+		class EndpointAddressPtr
+		{
+			EndpointAddress * const p;
+			friend EndpointAddressPtr EndpointAddress::operator &();
+			friend const EndpointAddressPtr EndpointAddress::operator &() const;
+			EndpointAddressPtr(EndpointAddress *p) : p(p) {}
+		public:
+			const EndpointAddress &operator *() const { return *p; }
+			EndpointAddress &operator *() { return *p; }
+
+			const EndpointAddress &operator ->() const { return *p; }
+			EndpointAddress &operator ->() { return *p; }
+
+			operator const EndpointAddress*() const { return p; }
+			operator EndpointAddress*() { return p; }
+
+			operator const sockaddr*() const { return &p->gen; }
+			operator sockaddr*() { return &p->gen; }
+
+			operator const sockaddr_in*() const { return &p->v4; }
+			operator sockaddr_in*() { return &p->v4; }
+
+			operator const sockaddr_in6*() const { return &p->v6; }
+			operator sockaddr_in6*() { return &p->v6; }
+		};
+
+		bool operator ==(const EndpointAddress &rhs) const;
+		bool operator !=(const EndpointAddress &rhs) const { return !(*this == rhs); }
+
+		// conversions
+		operator sockaddr() const { return gen; }
+		operator sockaddr_in() const { assert(gen.sa_family == AF_INET); return v4; }
+		operator sockaddr_in6() const { assert(gen.sa_family == AF_INET6); return v6; }
+
+		// StdCompiler
+		void CompileFunc(StdCompiler *comp);
+
+	private:
+		bool SetAddressByString(const StdStrBuf &address, short family);
+
+		friend class EndpointAddressPtr;
+	};
+	typedef EndpointAddress addr_t;
+
+	static std::vector<HostAddress> GetLocalAddresses();
 
 	// callback class
 	class CBClass
@@ -76,7 +220,7 @@ public:
 		virtual bool OnConn(const addr_t &AddrPeer, const addr_t &AddrConnect, const addr_t *pOwnAddr, C4NetIO *pNetIO) { return true; }
 		virtual void OnDisconn(const addr_t &AddrPeer, C4NetIO *pNetIO, const char *szReason) { }
 		virtual void OnPacket(const class C4NetIOPacket &rPacket, C4NetIO *pNetIO) = 0;
-		virtual ~CBClass() { }
+		virtual ~CBClass() = default;
 	};
 
 	// used to explicitly callback to a specific class
@@ -86,11 +230,11 @@ public:
 		T *pTarget;
 	public:
 		CBProxy *operator () (T *pnTarget) { pTarget = pnTarget; return this; }
-		virtual bool OnConn(const addr_t &AddrPeer, const addr_t &AddrConnect, const addr_t *pOwnAddr, C4NetIO *pNetIO)
+		bool OnConn(const addr_t &AddrPeer, const addr_t &AddrConnect, const addr_t *pOwnAddr, C4NetIO *pNetIO) override
 		{ return pTarget->T::OnConn(AddrPeer, AddrConnect, pOwnAddr, pNetIO); }
-		virtual void OnDisconn(const addr_t &AddrPeer, C4NetIO *pNetIO, const char *szReason)
+		void OnDisconn(const addr_t &AddrPeer, C4NetIO *pNetIO, const char *szReason) override
 		{ pTarget->T::OnDisconn(AddrPeer, pNetIO, szReason); }
-		virtual void OnPacket(const class C4NetIOPacket &rPacket, C4NetIO *pNetIO)
+		void OnPacket(const class C4NetIOPacket &rPacket, C4NetIO *pNetIO) override
 		{ pTarget->T::OnPacket(rPacket, pNetIO); }
 	};
 
@@ -108,13 +252,11 @@ public:
 	// *** interface
 
 	// * not multithreading safe
-	virtual bool Init(uint16_t iPort = P_NONE) = 0;
-	virtual bool InitBroadcast(addr_t *pBroadcastAddr) = 0;
+	virtual bool Init(uint16_t iPort = addr_t::IPPORT_NONE) = 0;
 	virtual bool Close() = 0;
-	virtual bool CloseBroadcast() = 0;
 
-	virtual bool Execute(int iTimeout = -1, pollfd * = 0) = 0; // (for StdSchedulerProc)
-	virtual bool IsNotify() { return true; }
+	bool Execute(int iTimeout = -1, pollfd * = nullptr) override = 0; // (for StdSchedulerProc)
+	bool IsNotify() override { return true; }
 
 	// * multithreading safe
 	virtual bool Connect(const addr_t &addr) = 0; // async!
@@ -128,6 +270,12 @@ public:
 	virtual bool GetStatistic(int *pBroadcastRate) = 0;
 	virtual bool GetConnStatistic(const addr_t &addr, int *pIRate, int *pORate, int *pLoss) = 0;
 	virtual void ClearStatistic() = 0;
+
+protected:
+//	virtual SOCKET CreateSocket() = 0;
+
+	// Makes IPv4 connections from an IPv6 socket work.
+	bool InitIPv6Socket(SOCKET socket);
 
 	// *** errors
 protected:
@@ -168,7 +316,7 @@ public:
 	const C4NetIO::addr_t &getAddr() const { return addr; }
 
 	uint8_t     getStatus()const { return getSize() ? *getBufPtr<char>(*this) : 0; }
-	const char *getPData() const { return getSize() ? getBufPtr<char>(*this, 1) : NULL; }
+	const char *getPData() const { return getSize() ? getBufPtr<char>(*this, 1) : nullptr; }
 	size_t      getPSize() const { return getSize() ? getSize() - 1 : 0; }
 	StdBuf      getPBuf()  const { return getSize() ? getPart(1, getSize() - 1) : getRef(); }
 
@@ -180,8 +328,6 @@ public:
 
 	// delete contents
 	void Clear();
-	// Talk gcc into accepting references to temporaries
-	ALLOW_TEMP_TO_REF(C4NetIOPacket)
 };
 
 
@@ -190,37 +336,51 @@ class C4NetIOTCP : public C4NetIO, protected CStdCSecExCallback
 {
 public:
 	C4NetIOTCP();
-	virtual ~C4NetIOTCP();
+	~C4NetIOTCP() override;
+
+	// Socket is an unconnected, but bound socket.
+	class Socket
+	{
+		SOCKET sock;
+		Socket(SOCKET s) : sock(s) { }
+		friend class C4NetIOTCP;
+	public:
+		~Socket();
+		// GetAddress returns the address the socket is bound to.
+		C4NetIO::addr_t GetAddress();
+	};
 
 	// *** interface
 
 	// * not multithreading safe
-	virtual bool Init(uint16_t iPort = P_NONE);
+	bool Init(uint16_t iPort = addr_t::IPPORT_NONE) override;
 	virtual bool InitBroadcast(addr_t *pBroadcastAddr);
-	virtual bool Close();
+	bool Close() override;
 	virtual bool CloseBroadcast();
 
-	virtual bool Execute(int iMaxTime = TO_INF, pollfd * readyfds = 0);
+	bool Execute(int iMaxTime = TO_INF, pollfd * readyfds = nullptr) override;
 
 	// * multithreading safe
-	virtual bool Connect(const addr_t &addr);
-	virtual bool Close(const addr_t &addr);
+	std::unique_ptr<Socket> Bind(const addr_t &addr);
+	bool Connect(const addr_t &addr, std::unique_ptr<Socket> socket);
+	bool Connect(const addr_t &addr) override;
+	bool Close(const addr_t &addr) override;
 
-	virtual bool Send(const C4NetIOPacket &rPacket);
-	virtual bool Broadcast(const C4NetIOPacket &rPacket);
-	virtual bool SetBroadcast(const addr_t &addr, bool fSet = true);
+	bool Send(const C4NetIOPacket &rPacket) override;
+	bool Broadcast(const C4NetIOPacket &rPacket) override;
+	bool SetBroadcast(const addr_t &addr, bool fSet = true) override;
 
 	virtual void UnBlock();
 #ifdef STDSCHEDULER_USE_EVENTS
-	virtual HANDLE GetEvent();
+	HANDLE GetEvent() override;
 #else
-	virtual void GetFDs(std::vector<struct pollfd> & FDs);
+	void GetFDs(std::vector<struct pollfd> & FDs) override;
 #endif
 
 	// statistics
-	virtual bool GetStatistic(int *pBroadcastRate);
-	virtual bool GetConnStatistic(const addr_t &addr, int *pIRate, int *pORate, int *pLoss);
-	virtual void ClearStatistic();
+	bool GetStatistic(int *pBroadcastRate) override;
+	bool GetConnStatistic(const addr_t &addr, int *pIRate, int *pORate, int *pLoss) override;
+	void ClearStatistic() override;
 
 protected:
 
@@ -294,7 +454,7 @@ protected:
 	};
 	friend class Peer;
 	// peer list
-	Peer *pPeerList;
+	Peer *pPeerList{nullptr};
 
 	// small list for waited-for connections
 	struct ConnectWait
@@ -304,13 +464,13 @@ protected:
 
 		ConnectWait *Next;
 	}
-	*pConnectWaits;
+	*pConnectWaits{nullptr};
 
 	CStdCSecEx PeerListCSec;
 	CStdCSec PeerListAddCSec;
 
 	// initialized?
-	bool fInit;
+	bool fInit{false};
 
 	// listen socket
 	uint16_t iListenPort;
@@ -318,7 +478,7 @@ protected:
 
 #ifdef STDSCHEDULER_USE_EVENTS
 	// event indicating network activity
-	HANDLE Event;
+	HANDLE Event{nullptr};
 #else
 	// Pipe used for cancelling select
 	int Pipe[2];
@@ -328,9 +488,12 @@ protected:
 
 	bool Listen(uint16_t inListenPort);
 
+	SOCKET CreateSocket(addr_t::AddressFamily family);
+	bool Connect(const addr_t &addr, SOCKET nsock);
+
 	Peer *Accept(SOCKET nsock = INVALID_SOCKET, const addr_t &ConnectAddr = addr_t());
 	Peer *GetPeer(const addr_t &addr);
-	void OnShareFree(CStdCSecEx *pCSec);
+	void OnShareFree(CStdCSecEx *pCSec) override;
 
 	void AddConnectWait(SOCKET sock, const addr_t &addr);
 	ConnectWait *GetConnectWait(const addr_t &addr);
@@ -338,9 +501,9 @@ protected:
 
 	// *** callbacks
 public:
-	virtual void SetCallback(CBClass *pnCallback) { pCB = pnCallback; };
+	void SetCallback(CBClass *pnCallback) override { pCB = pnCallback; };
 private:
-	CBClass *pCB;
+	CBClass *pCB{nullptr};
 
 };
 
@@ -352,56 +515,56 @@ class C4NetIOSimpleUDP : public C4NetIO
 {
 public:
 	C4NetIOSimpleUDP();
-	virtual ~C4NetIOSimpleUDP();
+	~C4NetIOSimpleUDP() override;
 
-	virtual bool Init(uint16_t iPort = P_NONE);
+	bool Init(uint16_t iPort = addr_t::IPPORT_NONE) override;
 	virtual bool InitBroadcast(addr_t *pBroadcastAddr);
-	virtual bool Close();
+	bool Close() override;
 	virtual bool CloseBroadcast();
 
-	virtual bool Execute(int iMaxTime = TO_INF, pollfd * = 0);
+	bool Execute(int iMaxTime = TO_INF, pollfd * = nullptr) override;
 
-	virtual bool Send(const C4NetIOPacket &rPacket);
-	virtual bool Broadcast(const C4NetIOPacket &rPacket);
+	bool Send(const C4NetIOPacket &rPacket) override;
+	bool Broadcast(const C4NetIOPacket &rPacket) override;
 
 	virtual void UnBlock();
 #ifdef STDSCHEDULER_USE_EVENTS
-	virtual HANDLE GetEvent();
+	HANDLE GetEvent() override;
 #else
-	virtual void GetFDs(std::vector<struct pollfd> & FDs);
+	void GetFDs(std::vector<struct pollfd> & FDs) override;
 #endif
 
 	// not implemented
-	virtual bool Connect(const addr_t &addr) { assert(false); return false; }
-	virtual bool Close(const addr_t &addr) { assert(false); return false; }
+	bool Connect(const addr_t &addr) override { assert(false); return false; }
+	bool Close(const addr_t &addr) override { assert(false); return false; }
 
-	virtual bool SetBroadcast(const addr_t &addr, bool fSet = true) { assert(false); return false; }
+	bool SetBroadcast(const addr_t &addr, bool fSet = true) override { assert(false); return false; }
 
-	virtual bool GetStatistic(int *pBroadcastRate) { assert(false); return false; }
-	virtual bool GetConnStatistic(const addr_t &addr, int *pIRate, int *pORate, int *pLoss)
+	bool GetStatistic(int *pBroadcastRate) override { assert(false); return false; }
+	bool GetConnStatistic(const addr_t &addr, int *pIRate, int *pORate, int *pLoss) override
 	{ assert(false); return false; }
-	virtual void ClearStatistic() { assert(false); }
+	void ClearStatistic() override { assert(false); }
 
 private:
 	// status
-	bool fInit;
-	bool fMultiCast;
+	bool fInit{false};
+	bool fMultiCast{false};
 	uint16_t iPort;
 
 	// the socket and the associated event
 	SOCKET sock;
 #ifdef STDSCHEDULER_USE_EVENTS
-	HANDLE hEvent;
+	HANDLE hEvent{nullptr};
 #else
 	int Pipe[2];
 #endif
 
 	// multicast
-	addr_t MCAddr; ip_mreq MCGrpInfo;
+	addr_t MCAddr; ipv6_mreq MCGrpInfo;
 	bool fMCLoopback;
 
 	// multibind
-	int fAllowReUse;
+	int fAllowReUse{false};
 
 protected:
 
@@ -423,7 +586,7 @@ private:
 
 	// *** callbacks
 public:
-	virtual void SetCallback(CBClass *pnCallback) { pCB = pnCallback; };
+	void SetCallback(CBClass *pnCallback) override { pCB = pnCallback; };
 private:
 	CBClass *pCB;
 
@@ -438,29 +601,30 @@ class C4NetIOUDP : public C4NetIOSimpleUDP, protected CStdCSecExCallback
 {
 public:
 	C4NetIOUDP();
-	virtual ~C4NetIOUDP();
+	~C4NetIOUDP() override;
 
 	// *** interface
 
-	virtual bool Init(uint16_t iPort = P_NONE);
-	virtual bool InitBroadcast(addr_t *pBroadcastAddr);
-	virtual bool Close();
-	virtual bool CloseBroadcast();
+	bool Init(uint16_t iPort = addr_t::IPPORT_NONE) override;
+	bool InitBroadcast(addr_t *pBroadcastAddr) override;
+	bool Close() override;
+	bool CloseBroadcast() override;
 
-	virtual bool Execute(int iMaxTime = TO_INF, pollfd * = 0);
+	bool Execute(int iMaxTime = TO_INF, pollfd * = nullptr) override;
 
-	virtual bool Connect(const addr_t &addr);
-	virtual bool Close(const addr_t &addr);
+	bool Connect(const addr_t &addr) override;
+	bool Close(const addr_t &addr) override;
 
-	virtual bool Send(const C4NetIOPacket &rPacket);
-	virtual bool Broadcast(const C4NetIOPacket &rPacket);
-	virtual bool SetBroadcast(const addr_t &addr, bool fSet = true);
+	bool Send(const C4NetIOPacket &rPacket) override;
+	bool SendDirect(C4NetIOPacket &&rPacket); // (mt-safe)
+	bool Broadcast(const C4NetIOPacket &rPacket) override;
+	bool SetBroadcast(const addr_t &addr, bool fSet = true) override;
 
-	virtual C4TimeMilliseconds GetNextTick(C4TimeMilliseconds tNow);
+	C4TimeMilliseconds GetNextTick(C4TimeMilliseconds tNow) override;
 
-	virtual bool GetStatistic(int *pBroadcastRate);
-	virtual bool GetConnStatistic(const addr_t &addr, int *pIRate, int *pORate, int *pLoss);
-	virtual void ClearStatistic();
+	bool GetStatistic(int *pBroadcastRate) override;
+	bool GetConnStatistic(const addr_t &addr, int *pIRate, int *pORate, int *pLoss) override;
+	void ClearStatistic() override;
 
 protected:
 
@@ -480,6 +644,7 @@ protected:
 	};
 
 	// packet structures
+	struct BinAddr;
 	struct PacketHdr; struct TestPacket; struct ConnPacket; struct ConnOKPacket; struct AddAddrPacket;
 	struct DataPacketHdr; struct CheckPacketHdr; struct ClosePacket;
 
@@ -509,14 +674,14 @@ protected:
 
 		// construction / destruction
 		Packet();
-		Packet(C4NetIOPacket RREF rnData, nr_t inNr);
+		Packet(C4NetIOPacket &&rnData, nr_t inNr);
 		~Packet();
 
 	protected:
 		// data
 		nr_t iNr;
 		C4NetIOPacket Data;
-		bool *pFragmentGot;
+		bool *pFragmentGot{nullptr};
 
 	public:
 		// data access
@@ -547,9 +712,9 @@ protected:
 
 	protected:
 		// packet list
-		Packet *pFront, *pBack;
+		Packet *pFront{nullptr}, *pBack{nullptr};
 		// packet counts
-		unsigned int iPacketCnt, iMaxPacketCnt;
+		unsigned int iPacketCnt{0}, iMaxPacketCnt;
 		// critical section
 		CStdCSecEx ListCSec;
 
@@ -679,11 +844,11 @@ protected:
 
 		// helpers
 		bool DoConn(bool fMC);
-		bool DoCheck(int iAskCnt = 0, int iMCAskCnt = 0, unsigned int *pAskList = NULL);
+		bool DoCheck(int iAskCnt = 0, int iMCAskCnt = 0, unsigned int *pAskList = nullptr);
 
 		// sending
 		bool SendDirect(const Packet &rPacket, unsigned int iNr = ~0);
-		bool SendDirect(C4NetIOPacket RREF rPacket);
+		bool SendDirect(C4NetIOPacket &&rPacket);
 
 		// events
 		void OnConn();
@@ -708,30 +873,30 @@ protected:
 	CStdCSec OutCSec;
 
 	// status
-	bool fInit;
-	bool fMultiCast;
+	bool fInit{false};
+	bool fMultiCast{false};
 	uint16_t iPort;
 
 	// peer list
-	Peer *pPeerList;
+	Peer *pPeerList{nullptr};
 
 	// currently initializing - do not process packets, save them back instead
-	bool fSavePacket;
+	bool fSavePacket{false};
 	C4NetIOPacket LastPacket;
 
 	// multicast support data
 	addr_t MCLoopbackAddr;
-	bool fDelayedLoopbackTest;
+	bool fDelayedLoopbackTest{false};
 
 	// check timing.
 	C4TimeMilliseconds tNextCheck;
 
 	// outgoing packet list (for multicast)
 	PacketList OPackets;
-	unsigned int iOPacketCounter;
+	unsigned int iOPacketCounter{0};
 
 	// statistics
-	int iBroadcastRate;
+	int iBroadcastRate{0};
 	CStdCSec StatCSec;
 
 	// callback proxy
@@ -741,7 +906,6 @@ protected:
 
 	// sending
 	bool BroadcastDirect(const Packet &rPacket, unsigned int iNr = ~0u); // (mt-safe)
-	bool SendDirect(C4NetIOPacket RREF rPacket); // (mt-safe)
 
 	// multicast related
 	bool DoLoopbackTest();
@@ -751,7 +915,7 @@ protected:
 	void AddPeer(Peer *pPeer);
 	Peer *GetPeer(const addr_t &addr);
 	Peer *ConnectPeer(const addr_t &PeerAddr, bool fFailCallback);
-	void OnShareFree(CStdCSecEx *pCSec);
+	void OnShareFree(CStdCSecEx *pCSec) override;
 
 	// connection check
 	void DoCheck();
@@ -769,7 +933,7 @@ protected:
 
 	// *** callbacks
 public:
-	virtual void SetCallback(CBClass *pnCallback) { pCB = pnCallback; };
+	void SetCallback(CBClass *pnCallback) override { pCB = pnCallback; };
 private:
 	CBClass *pCB;
 
@@ -786,7 +950,7 @@ class C4NetIOMan : public C4NetIO::CBClass, public StdSchedulerThread
 {
 public:
 	C4NetIOMan();
-	virtual ~C4NetIOMan();
+	~C4NetIOMan() override;
 
 	void Clear();
 
@@ -796,60 +960,41 @@ public:
 protected:
 
 	// net i/o list
-	int iNetIOCnt, iNetIOCapacity;
-	C4NetIO **ppNetIO;
+	int iNetIOCnt{0}, iNetIOCapacity{0};
+	C4NetIO **ppNetIO{nullptr};
 
 	// overridables
 	virtual void OnError(const char *strError, C4NetIO *pNetIO) { };
 
 private:
-	virtual void OnError(StdSchedulerProc *pProc);
+	void OnError(StdSchedulerProc *pProc) override;
 
 	void EnlargeIO(int iBy);
 };
-
-// helpers
-inline bool AddrEqual(const C4NetIO::addr_t addr1, const C4NetIO::addr_t addr2)
-{
-	return addr1.sin_addr.s_addr == addr2.sin_addr.s_addr &&
-	       addr1.sin_family      == addr2.sin_family      &&
-	       addr1.sin_port        == addr2.sin_port;
-}
-inline bool operator == (const C4NetIO::addr_t addr1, const C4NetIO::addr_t addr2) { return AddrEqual(addr1, addr2); }
-inline bool operator != (const C4NetIO::addr_t addr1, const C4NetIO::addr_t addr2) { return !AddrEqual(addr1, addr2); }
-
-// there seems to be no standard way to get these numbers, so let's do it the dirty way...
-inline uint8_t &in_addr_b(in_addr &addr, int i)
-{
-	assert(0 <= i && i < 4);
-	return *(reinterpret_cast<uint8_t *>(&addr.s_addr) + i);
-}
-
-inline void CompileFunc(in_addr &ip, StdCompiler *pComp)
-{
-	pComp->Value(in_addr_b(ip, 0)); pComp->Separator(StdCompiler::SEP_PART);
-	pComp->Value(in_addr_b(ip, 1)); pComp->Separator(StdCompiler::SEP_PART);
-	pComp->Value(in_addr_b(ip, 2)); pComp->Separator(StdCompiler::SEP_PART);
-	pComp->Value(in_addr_b(ip, 3));
-}
-
-inline void CompileFunc(C4NetIO::addr_t &addr, StdCompiler *pComp)
-{
-	pComp->Value(addr.sin_addr); pComp->Separator(StdCompiler::SEP_PART2);
-	uint16_t iPort = htons(addr.sin_port);
-	pComp->Value(iPort);
-	addr.sin_port = htons(iPort);
-	if (pComp->isCompiler())
-	{
-		addr.sin_family = AF_INET;
-		ZeroMem(addr.sin_zero, sizeof(addr.sin_zero));
-	}
-}
 
 #ifdef HAVE_WINSOCK
 bool AcquireWinSock();
 void ReleaseWinSock();
 #endif
-bool ResolveAddress(const char *szAddress, C4NetIO::addr_t *paddr, uint16_t iPort);
+
+// Class that keeps winsock loaded
+class WinSockHolder
+{
+public:
+	WinSockHolder()
+	{
+#ifdef HAVE_WINSOCK
+		AcquireWinSock();
+#endif
+	}
+
+	~WinSockHolder()
+	{
+#ifdef HAVE_WINSOCK
+		ReleaseWinSock();
+#endif
+	}
+};
+
 
 #endif

@@ -2,7 +2,7 @@
  * OpenClonk, http://www.openclonk.org
  *
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -16,15 +16,23 @@
 /* string table: holds all strings used by script engine */
 
 #ifndef C4STRINGTABLE_H
-
 #define C4STRINGTABLE_H
 
-class C4StringTable;
-class C4Group;
-
-class C4String
+class C4RefCnt
 {
-	int RefCnt;
+public:
+	C4RefCnt() = default;
+	virtual ~C4RefCnt() = default;
+	// Add/Remove Reference
+	void IncRef() { RefCnt++; }
+	void DecRef() { if (!--RefCnt) delete this; }
+protected:
+	// Reference counter
+	unsigned int RefCnt{0};
+};
+
+class C4String: public C4RefCnt
+{
 public:
 	unsigned int Hash;
 private:
@@ -36,11 +44,7 @@ private:
 
 	friend class C4StringTable;
 public:
-	~C4String();
-
-	// Add/Remove Reference
-	void IncRef() { ++RefCnt; }
-	void DecRef() { if (!--RefCnt) delete this; }
+	~C4String() override;
 
 	const char * GetCStr() const { return Data.getData(); }
 	StdStrBuf GetData() const { return Data.getRef(); }
@@ -52,13 +56,24 @@ class C4RefCntPointer
 {
 public:
 	C4RefCntPointer(T* p): p(p) { IncRef(); }
-	C4RefCntPointer(): p(0) { }
+	C4RefCntPointer(): p(nullptr) { }
+	C4RefCntPointer(const C4RefCntPointer<T> & r) : p(r.p) { IncRef(); }
 	template <class U> C4RefCntPointer(const C4RefCntPointer<U> & r): p(r.p) { IncRef(); }
-#ifdef HAVE_RVALUE_REF
 	// Move constructor
-	template <class U> C4RefCntPointer(C4RefCntPointer<U> RREF r): p(r.p) { r.p = 0; }
+	C4RefCntPointer(C4RefCntPointer<T> &&r) : p(r.p) { r.p = nullptr; }
+	template <class U> C4RefCntPointer(C4RefCntPointer<U> &&r): p(r.p) { r.p = 0; }
 	// Move assignment
-	template <class U> C4RefCntPointer& operator = (C4RefCntPointer<U> RREF r)
+	C4RefCntPointer& operator = (C4RefCntPointer<T> &&r)
+	{
+		if (p != r.p)
+		{
+			DecRef();
+			p = r.p;
+			r.p = nullptr;
+		}
+		return *this;
+	}
+	template <class U> C4RefCntPointer& operator = (C4RefCntPointer<U> &&r)
 	{
 		if (p != r.p)
 		{
@@ -68,7 +83,6 @@ public:
 		}
 		return *this;
 	}
-#endif
 	~C4RefCntPointer() { DecRef(); }
 	template <class U> C4RefCntPointer& operator = (U* new_p)
 	{
@@ -80,6 +94,10 @@ public:
 		}
 		return *this;
 	}
+	C4RefCntPointer& operator = (const C4RefCntPointer<T>& r)
+	{
+		return *this = r.p;
+	}
 	template <class U> C4RefCntPointer& operator = (const C4RefCntPointer<U>& r)
 	{
 		return *this = r.p;
@@ -90,6 +108,7 @@ public:
 	const T* operator -> () const { return p; }
 	operator T * () { return p; }
 	operator const T * () const { return p; }
+	T *Get() const { return p; }
 private:
 	void IncRef() { if (p) p->IncRef(); }
 	void DecRef() { if (p) p->DecRef(); }
@@ -98,8 +117,8 @@ private:
 
 template<typename T> class C4Set
 {
-	unsigned int Capacity;
-	unsigned int Size;
+	unsigned int Capacity{2};
+	unsigned int Size{0};
 	T * Table;
 	T * GetPlaceFor(T const & e)
 	{
@@ -117,23 +136,26 @@ template<typename T> class C4Set
 		*p = e;
 		return p;
 	}
-#ifdef HAVE_RVALUE_REF
 	T * AddInternal(T && e)
 	{
 		T * p = GetPlaceFor(e);
 		*p = std::move(e);
 		return p;
 	}
-#endif
+	void ClearTable()
+	{
+		for (unsigned int i = 0; i < Capacity; ++i)
+			Table[i] = nullptr;
+	}
 	void MaintainCapacity()
 	{
-		if (Capacity - Size < Max(2u, Capacity / 4))
+		if (Capacity - Size < std::max(2u, Capacity / 4))
 		{
 			unsigned int OCapacity = Capacity;
 			Capacity *= 2;
 			T * OTable = Table;
 			Table = new T[Capacity];
-			Clear();
+			ClearTable();
 			for (unsigned int i = 0; i < OCapacity; ++i)
 			{
 				if (OTable[i])
@@ -146,9 +168,9 @@ public:
 	template<typename H> static unsigned int Hash(const H &);
 	template<typename H> static bool Equals(const T &, const H &);
 	static bool Equals(const T & a, const T & b) { return a == b; }
-	C4Set(): Capacity(2), Size(0), Table(new T[Capacity])
+	C4Set(): Table(new T[Capacity])
 	{
-		Clear();
+		ClearTable();
 	}
 	~C4Set()
 	{
@@ -168,11 +190,11 @@ public:
 			Table[i] = b.Table[i];
 		return *this;
 	}
-	void CompileFunc(StdCompiler *pComp, C4ValueNumbers *);
+	void CompileFunc(class StdCompiler *pComp, class C4ValueNumbers *);
 	void Clear()
 	{
-		for (unsigned int i = 0; i < Capacity; ++i)
-			Table[i] = 0;
+		ClearTable();
+		Size = 0;
 	}
 	template<typename H> T & Get(H e) const
 	{
@@ -202,7 +224,6 @@ public:
 		++Size;
 		return r;
 	}
-#ifdef HAVE_RVALUE_REF
 	T * Add(T && e)
 	{
 		MaintainCapacity();
@@ -210,7 +231,6 @@ public:
 		++Size;
 		return r;
 	}
-#endif
 	template<typename H> void Remove(H e)
 	{
 		unsigned int h = Hash(e);
@@ -220,13 +240,13 @@ public:
 			r = &Table[++h % Capacity];
 		}
 		assert(*r);
-		*r = 0;
+		*r = nullptr;
 		--Size;
 		// Move entries which might have collided with e
 		while (*(r = &Table[++h % Capacity]))
 		{
 			T m = *r;
-			*r = 0;
+			*r = nullptr;
 			AddInternal(std::move(m));
 		}
 	}
@@ -237,7 +257,7 @@ public:
 		{
 			if (*p) return p;
 		}
-		return 0;
+		return nullptr;
 	}
 	void Swap(C4Set<T> * S2)
 	{
@@ -253,14 +273,14 @@ public:
 	}
 	static bool SortFunc(const T *p1, const T*p2)
 	{
-		// elements are guarantueed to be non-NULL
+		// elements are guarantueed to be non-nullptr
 		return *p1<*p2;
 	}
 	std::list<const T *> GetSortedListOfElementPointers() const
 	{
 		// return a list of pointers to all elements in this set sorted by the standard less-than operation
 		// of the elements
-		// elements of resulting lists are guarantueed to be non-NULL
+		// elements of resulting lists are guarantueed to be non-nullptr
 		// list remains valid as long as this set is not changed
 		std::list<const T *> result;
 		for (const T *p = First(); p; p = Next(p)) result.push_back(p);
@@ -291,6 +311,13 @@ enum C4PropertyName
 	P_Interval,
 	P_CommandTarget,
 	P_Time,
+	P_Construction,
+	P_Destruction,
+	P_Start,
+	P_Stop,
+	P_Timer,
+	P_Effect,
+	P_Damage,
 	P_Collectible,
 	P_Touchable,
 	P_ActMap,
@@ -299,7 +326,6 @@ enum C4PropertyName
 	P_Parallaxity,
 	P_LineColors,
 	P_LineAttach,
-	P_LineMaxDistance,		// unused?
 	P_PictureTransformation,
 	P_MeshTransformation,
 	P_Procedure,
@@ -312,10 +338,19 @@ enum C4PropertyName
 	P_Delay,
 	P_X,
 	P_Y,
+	P_x,
+	P_y,
 	P_Wdt,
 	P_Hgt,
+	P_wdt,
+	P_hgt,
+	P_Vertices,
+	P_Edges,
+	P_LineWidth,
 	P_OffX,
 	P_OffY,
+	P_proplist,
+	P_Proplist,
 	P_FacetBase,
 	P_FacetTopFace,
 	P_FacetTargetStretch,
@@ -348,14 +383,33 @@ enum C4PropertyName
 	P_Blasted,				// unused?
 	P_IncineratingObj,		// unused?
 	P_Plane,
+	P_BorderBound,
+	P_ContactCalls,
 	P_SolidMaskPlane,
 	P_Tooltip,
 	P_Placement,
+	P_ContainBlast,
 	P_BlastIncinerate,
 	P_ContactIncinerate,
+	P_MaterialIncinerate,
 	P_Global,
 	P_Scenario,
 	P_JumpSpeed,
+	P_BackgroundColor,
+	P_Decoration,
+	P_Symbol,
+	P_Target,
+	P_Std,
+	P_Text,
+	P_GraphicsName,
+	P_ID,
+	P_OnClick,
+	P_OnMouseIn,
+	P_OnMouseOut,
+	P_OnClose,
+	P_Style,
+	P_Player,
+	P_Margin,
 	P_Algo,
 	P_Layer,
 	P_Seed,
@@ -386,9 +440,105 @@ enum C4PropertyName
 	P_Phase,
 	P_Stretch,
 	P_CollisionVertex,
+	P_CollisionDensity,
 	P_OnCollision,
 	P_Distance,
 	P_Smoke,
+	P_Source,
+	P_Color,
+	P_EditCursorCommands,
+	P_IsPointContained,
+	P_GetRandomPoint,
+	P_Type,
+	P_Reverb_Density,
+	P_Reverb_Diffusion,
+	P_Reverb_Gain,
+	P_Reverb_GainHF,
+	P_Reverb_Decay_Time,
+	P_Reverb_Decay_HFRatio,
+	P_Reverb_Reflections_Gain,
+	P_Reverb_Reflections_Delay,
+	P_Reverb_Late_Reverb_Gain,
+	P_Reverb_Late_Reverb_Delay,
+	P_Reverb_Air_Absorption_GainHF,
+	P_Reverb_Room_Rolloff_Factor,
+	P_Reverb_Decay_HFLimit,
+	P_Echo_Delay,
+	P_Echo_LRDelay,
+	P_Echo_Damping,
+	P_Echo_Feedback,
+	P_Echo_Spread,
+	P_Equalizer_Low_Gain,
+	P_Equalizer_Low_Cutoff,
+	P_Equalizer_Mid1_Gain,
+	P_Equalizer_Mid1_Center,
+	P_Equalizer_Mid1_Width,
+	P_Equalizer_Mid2_Gain,
+	P_Equalizer_Mid2_Center,
+	P_Equalizer_Mid2_Width,
+	P_Equalizer_High_Gain,
+	P_Equalizer_High_Cutoff,
+	P_LightOffset,
+	P_PlayList,
+	P_MusicBreakMin,
+	P_MusicBreakMax,
+	P_MusicBreakChance,
+	P_MusicMaxPositionMemory,
+	P_InflameLandscape,
+	P_OptionKey,
+	P_ValueKey,
+	P_Value,
+	P_DefaultValueFunction,
+	P_Delegate,
+	P_VertexDelegate,
+	P_EdgeDelegate,
+	P_HorizontalFix,
+	P_VerticalFix,
+	P_StructureFix,
+	P_OnUpdate,
+	P_EditorPropertyChanged,
+	P_Min,
+	P_Max,
+	P_Set,
+	P_SetGlobal,
+	P_SetRoot,
+	P_Options,
+	P_Key,
+	P_AsyncGet,
+	P_Get,
+	P_Relative,
+	P_CanMoveCenter,
+	P_StartFromObject,
+	P_Storage,
+	P_Elements,
+	P_EditOnSelection,
+	P_EditorProps,
+	P_DefaultEditorProp,
+	P_EditorActions,
+	P_CopyDefault,
+	P_Display,
+	P_DefaultValue,
+	P_DefinitionPriority,
+	P_Group,
+	P_Command,
+	P_Select,
+	P_DescendPath,
+	P_EmptyName,
+	P_ShortName,
+	P_EditorHelp,
+	P_Description,
+	P_AllowEditing,
+	P_EditorInitialize,
+	P_EditorPlacementLimit,
+	P_EditorCollection,
+	P_Sorted,
+	P_Uniforms,
+	P_ForceSerialization,
+	P_DrawArrows,
+	P_SCENPAR,
+	P_Translatable,
+	P_Function,
+	P_Translate,
 // Default Action Procedures
 	DFA_WALK,
 	DFA_FLIGHT,
@@ -418,7 +568,7 @@ public:
 	C4String *RegString(StdStrBuf String);
 	C4String *RegString(const char * s) { return RegString(StdStrBuf(s)); }
 	// Find existing C4String
-	C4String *FindString(const char *strString);
+	C4String *FindString(const char *strString) const;
 
 private:
 	C4Set<C4String *> Set;

@@ -2,7 +2,7 @@
  * OpenClonk, http://www.openclonk.org
  *
  * Copyright (c) 2008-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -15,21 +15,19 @@
  */
 // game over dialog showing winners and losers
 
-#include <C4Include.h>
-#include <C4GameOverDlg.h>
+#include "C4Include.h"
+#include "gui/C4GameOverDlg.h"
 
-#include <C4Def.h>
-#include <C4DefList.h>
-#include <C4Game.h>
-#include <C4FullScreen.h>
-#include <C4Player.h>
-#include <C4PlayerInfo.h>
-#include <C4PlayerInfoListBox.h>
-#include <C4PlayerList.h>
-#include <C4GameObjects.h>
-#include <C4GameControl.h>
-#include "C4GraphicsResource.h"
-
+#include "control/C4GameControl.h"
+#include "game/C4Application.h"
+#include "game/C4FullScreen.h"
+#include "graphics/C4GraphicsResource.h"
+#include "gui/C4PlayerInfoListBox.h"
+#include "object/C4Def.h"
+#include "object/C4DefList.h"
+#include "object/C4GameObjects.h"
+#include "player/C4Player.h"
+#include "player/C4PlayerList.h"
 
 // ---------------------------------------------------
 // C4GoalDisplay
@@ -93,7 +91,7 @@ void C4GoalDisplay::SetGoals(const C4IDList &rAllGoals, const C4IDList &rFulfill
 	int32_t iGoalSymbolMargin = C4GUI_DefDlgSmallIndent;
 	int32_t iGoalSymbolAreaHeight = 2*iGoalSymbolMargin + iGoalSymbolHeight;
 	int32_t iGoalAreaWdt = GetClientRect().Wdt;
-	int32_t iGoalsPerRow = Max<int32_t>(1, iGoalAreaWdt / iGoalSymbolAreaHeight);
+	int32_t iGoalsPerRow = std::max<int32_t>(1, iGoalAreaWdt / iGoalSymbolAreaHeight);
 	int32_t iGoalCount = rAllGoals.GetNumberOfIDs();
 	int32_t iRowCount = (iGoalCount-1) / iGoalsPerRow + 1;
 	C4Rect rcNewBounds = GetBounds();
@@ -104,7 +102,7 @@ void C4GoalDisplay::SetGoals(const C4IDList &rAllGoals, const C4IDList &rFulfill
 	int32_t iGoal = 0;
 	for (int32_t iRow=0; iRow<iRowCount; ++iRow)
 	{
-		int32_t iColCount = Min<int32_t>(iGoalCount - iGoal, iGoalsPerRow);
+		int32_t iColCount = std::min<int32_t>(iGoalCount - iGoal, iGoalsPerRow);
 		C4GUI::ComponentAligner caGoalArea(caAll.GetFromTop(iGoalSymbolAreaHeight, iColCount*iGoalSymbolAreaHeight), iGoalSymbolMargin,iGoalSymbolMargin, false);
 		for (int32_t iCol=0; iCol<iColCount; ++iCol,++iGoal)
 		{
@@ -120,10 +118,10 @@ void C4GoalDisplay::SetGoals(const C4IDList &rAllGoals, const C4IDList &rFulfill
 
 bool C4GameOverDlg::is_shown = false;
 
-C4GameOverDlg::C4GameOverDlg() : C4GUI::Dialog( (C4GUI::GetScreenWdt() < 800) ? (C4GUI::GetScreenWdt()-10) : Min<int32_t>(C4GUI::GetScreenWdt()-150, 800),
-		    (C4GUI::GetScreenHgt() < 600) ? (C4GUI::GetScreenHgt()-10) : Min<int32_t>(C4GUI::GetScreenHgt()-150, 600),
+C4GameOverDlg::C4GameOverDlg() : C4GUI::Dialog( (C4GUI::GetScreenWdt() < 800) ? (C4GUI::GetScreenWdt()-10) : std::min<int32_t>(C4GUI::GetScreenWdt()-150, 800),
+		    (C4GUI::GetScreenHgt() < 600) ? (C4GUI::GetScreenHgt()-10) : std::min<int32_t>(C4GUI::GetScreenHgt()-150, 600),
 		    LoadResStr("IDS_TEXT_EVALUATION"),
-		    false), pNetResultLabel(NULL), fIsNetDone(false), fHasNextMissionButton(false)
+		    false)
 {
 	is_shown = true; // assume dlg will be shown, soon
 	UpdateOwnPos();
@@ -138,7 +136,7 @@ C4GameOverDlg::C4GameOverDlg() : C4GUI::Dialog( (C4GUI::GetScreenWdt() < 800) ? 
 	// lower button-area
 	C4GUI::ComponentAligner caBottom(caMain.GetFromBottom(iDefBtnHeight+iIndentY1*2), iIndentX1,0);
 	int32_t iBottomButtonSize = caBottom.GetInnerWidth();
-	iBottomButtonSize = Min<int32_t>(iBottomButtonSize/2-2*iIndentX1, ::GraphicsResource.CaptionFont.GetTextWidth("Quit it, baby! And some.")*2);
+	iBottomButtonSize = std::min<int32_t>(iBottomButtonSize/2-2*iIndentX1, ::GraphicsResource.CaptionFont.GetTextWidth("Quit it, baby! And some.")*2);
 	// goal display
 	const C4IDList &rGoals = Game.RoundResults.GetGoals();
 	const C4IDList &rFulfilledGoals = Game.RoundResults.GetFulfilledGoals();
@@ -153,14 +151,14 @@ C4GameOverDlg::C4GameOverDlg() : C4GUI::Dialog( (C4GUI::GetScreenWdt() < 800) ? 
 	// league/network result, present or pending
 	fIsNetDone = false;
 	bool fHasNetResult = Game.RoundResults.HasNetResult();
-	const char *szNetResult = NULL;
+	const char *szNetResult = nullptr;
 	if (Game.Parameters.isLeague() || fHasNetResult)
 	{
 		if (fHasNetResult)
 			szNetResult = Game.RoundResults.GetNetResultString();
 		else
 			szNetResult = LoadResStr("IDS_TEXT_LEAGUEWAITINGFOREVALUATIO");
-		pNetResultLabel = new C4GUI::Label(szNetResult, caMain.GetFromTop(::GraphicsResource.TextFont.GetLineHeight()*2, iMainTextWidth), ACenter, C4GUI_Caption2FontClr, NULL, false, false, true);
+		pNetResultLabel = new C4GUI::Label(szNetResult, caMain.GetFromTop(::GraphicsResource.TextFont.GetLineHeight()*2, iMainTextWidth), ACenter, C4GUI_Caption2FontClr, nullptr, false, false, true);
 		AddElement(pNetResultLabel);
 		// only add label - contents and fIsNetDone will be set in next update
 	}
@@ -175,16 +173,16 @@ C4GameOverDlg::C4GameOverDlg() : C4GUI::Dialog( (C4GUI::GetScreenWdt() < 800) ? 
 	{
 		int32_t iMaxHgt = caMain.GetInnerHeight() / 3; // max 1/3rd of height for extra data
 		C4GUI::MultilineLabel *pCustomStrings = new C4GUI::MultilineLabel(caMain.GetFromTop(0 /* resized later*/, iMainTextWidth), 0,0, "    ", true, true);
-		pCustomStrings->AddLine(szCustomEvaluationStrings, &::GraphicsResource.TextFont, C4GUI_MessageFontClr, true, false, NULL);
+		pCustomStrings->AddLine(szCustomEvaluationStrings, &::GraphicsResource.TextFont, C4GUI_MessageFontClr, true, false, nullptr);
 		C4Rect rcCustomStringBounds = pCustomStrings->GetBounds();
 		if (rcCustomStringBounds.Hgt > iMaxHgt)
 		{
 			// Buffer too large: Use a scrollbox instead
 			delete pCustomStrings;
 			rcCustomStringBounds.Hgt = iMaxHgt;
-			C4GUI::TextWindow *pCustomStringsWin = new C4GUI::TextWindow(rcCustomStringBounds, 0,0,0, 0,0,"    ",true, NULL,0, true);
-			pCustomStringsWin->SetDecoration(false, false, NULL, false);
-			pCustomStringsWin->AddTextLine(szCustomEvaluationStrings, &::GraphicsResource.TextFont, C4GUI_MessageFontClr, true, false, NULL);
+			C4GUI::TextWindow *pCustomStringsWin = new C4GUI::TextWindow(rcCustomStringBounds, 0,0,0, 0,0,"    ",true, nullptr,0, true);
+			pCustomStringsWin->SetDecoration(false, false, nullptr, false);
+			pCustomStringsWin->AddTextLine(szCustomEvaluationStrings, &::GraphicsResource.TextFont, C4GUI_MessageFontClr, true, false, nullptr);
 			caMain.ExpandTop(-iMaxHgt);
 			AddElement(pCustomStringsWin);
 		}
@@ -208,13 +206,8 @@ C4GameOverDlg::C4GameOverDlg() : C4GUI::Dialog( (C4GUI::GetScreenWdt() < 800) ? 
 	for (int32_t i=0; i<iPlrListCount; ++i)
 	{
 		ppPlayerLists[i] = new C4PlayerInfoListBox(caPlayerArea.GetGridCell(i,iPlrListCount,0,1), C4PlayerInfoListBox::PILBM_Evaluation, fSepTeamLists ? Game.Teams.GetTeamByIndex(i)->GetID() : 0);
-		/*if (fSepTeamLists) not necessary and popping up on too much area
-		  ppPlayerLists[i]->SetToolTip(FormatString(LoadResStr("IDS_DESC_TEAM"), Game.Teams.GetTeamByIndex(i)->GetName()).getData());
-		else
-		  ppPlayerLists[i]->SetToolTip(LoadResStr("IDS_DESC_LISTOFPLAYERSWHOPARTICIPA"));*/
-		//ppPlayerLists[i]->SetCustomFont(&::GraphicsResource.FontTooltip, 0xff000000); - display black on white?
 		ppPlayerLists[i]->SetSelectionDiabled(true);
-		ppPlayerLists[i]->SetDecoration(false, NULL, true, false);
+		ppPlayerLists[i]->SetDecoration(false, nullptr, true, false);
 		AddElement(ppPlayerLists[i]);
 	}
 	// add buttons

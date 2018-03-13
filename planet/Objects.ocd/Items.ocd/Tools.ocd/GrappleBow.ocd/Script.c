@@ -1,80 +1,46 @@
-/*
+/**
 	Grapple Bow
-	Author: Randrian
-
 	A crossbow which is enabled to fire grappling hooks, also has a winching system.
+	
+	@author Randrian
 */
 
-func Hit()
-{
-	Sound("GeneralHit?");
-}
+// Display the hook on the inventory HUD
+#include Library_HasExtraSlot
+// Do mind that IsContainer is set to false, so the hook can't be taken out via the interaction menu (very important)
+// See below in Callbacks for IsContainer
 
-local fAiming;
+#include Library_Flammable
 
+local is_aiming;
+local animation_set;
 local hook;
 local hook_attach;
 
-public func GetCarrySpecial(clonk) { if(fAiming) return "pos_hand2"; }
-public func GetCarryBone2(clonk) { return "main2"; }
-public func GetCarryMode(clonk) { if(hook && hook->Contained() == nil) return CARRY_Back; if(fAiming >= 0) return CARRY_Grappler; }
-
-/* +++++++++++ Controls ++++++++++++++ */
-
-// holding callbacks are made
-public func HoldingEnabled() { return true; }
-
-local animation_set;
+/*-- Engine Callbacks --*/
 
 func Initialize()
 {
+	// The aiming animation is done by adjusting the animation position to fit the angle.
 	animation_set = {
-		AimMode        = AIM_Position, // The aiming animation is done by adjusting the animation position to fit the angle
+		AimMode        = AIM_Position,
 		AnimationAim   = "CrossbowAimArms",
 		AnimationShoot = nil,
 		ShootTime      = 20,
 		TurnType       = 1,
 		WalkSpeed      = 84,
 		WalkBack       = 56,
-		AimSpeed       = 20,            // the speed of aiming
+		AimSpeed       = 20,
 	};
 	OnRopeBreak();
 }
 
-public func SetHook(object new_hook)
+func Hit()
 {
-	hook = new_hook;
+	Sound("Hits::GeneralHit?");
 }
 
-private func EnsureHook()
-{
-	// Create hook if it went missing
-	if(!hook) hook = CreateObject(GrappleHook, 0, 0, NO_OWNER);
-	return hook;
-}
-
-public func OnRopeBreak()
-{
-	if(hook_attach)
-		DetachMesh(hook_attach);
-
-	EnsureHook();
-	hook->Enter(this);
-	hook_attach = AttachMesh(hook, "bolt", "main");
-	PlayAnimation("Load", 5, Anim_Const(GetAnimationLength("Load")), Anim_Const(1000));
-}
-
-public func DrawRopeIn()
-{
-	if (hook)
-	{
-		var rope = hook->GetRope();
-		if (rope)
-			rope->DrawIn();
-	}
-}
-
-protected func Destruction()
+func Destruction()
 {
 	if (hook)
 	{
@@ -84,126 +50,19 @@ protected func Destruction()
 	}
 }
 
-protected func Departure()
+func Departure()
 {
 	if (hook)
 	{
 		var rope = hook->GetRope();
 		if (rope)
-			rope->DrawIn();
+			rope->BreakRope();
 	}
 }
-
-public func GetAnimationSet() { return animation_set; }
-
-public func ControlUseStart(object clonk, int x, int y)
-{
-	// Burned?
-	if (GetCon()<100) return false;
-	// Cut rope, or otherwise remove helper object.
-	EnsureHook();
-	if (hook->Contained() != this)
-	{
-		var rope = hook->GetRope();
-		if (rope)
-		{
-			rope->DrawIn();
-		//	rope->BreakRope();
-			return true;
-		}
-		else
-		{
-			hook->Enter(this);
-		}
-	}
-
-	// if the clonk doesn't have an action where he can use it's hands do nothing
-	if(!clonk->HasHandAction())
-	{
-		return true;
-	}
-
-	// Start aiming
-	fAiming = 1;
-
-	ControlUseHolding(clonk, x, y);
-
-	FinishedLoading(clonk);
-
-	return true;
-}
-
-// Callback from the clonk when loading is finished
-public func FinishedLoading(object clonk)
-{
-	clonk->~StartAim(this);
-	return true;
-}
-
-// Update the angle on mouse movement
-public func ControlUseHolding(object clonk, int x, int y)
-{
-	// Save new angle
-	var angle = Angle(0,0,x,y);
-	angle = Normalize(angle,-180);
-
-	if(angle >  160) angle =  160;
-	if(angle < -160) angle = -160;
-
-	clonk->SetAimPosition(angle);
-
-	return true;
-}
-
-// Stopping says the clonk to stop with aiming (he will go on untill he has finished loading and aiming at the given angle)
-public func ControlUseStop(object clonk, int x, int y)
-{
-	clonk->StopAim();
-	return true;
-}
-
-// Callback from the clonk, when he actually has stopped aiming
-public func FinishedAiming(object clonk, int angle)
-{
-	if (GetCon()<100) return false;
-	EnsureHook();
-	DetachMesh(hook_attach);
-	hook_attach = nil;
-
-	hook->Exit();
-	hook->Launch(angle, 100, clonk, this);
-	DetachMesh(hook_attach);
-	Sound("BowShoot?");
-
-	// Open the hand to let the string go and play the fire animation
-	PlayAnimation("Fire", 6, Anim_Linear(0, 0, GetAnimationLength("Fire"), animation_set["ShootTime"], ANIM_Hold), Anim_Const(1000));
-	clonk->StartShoot(this);
-	return true;
-}
-
-public func ControlUseCancel(object clonk, int x, int y)
-{
-	clonk->CancelAiming();
-	return true;
-}
-
-public func OnPauseAim(object clonk)
-{
-	Reset(clonk);
-}
-
-public func OnRestartAim(object clonk)
-{
-	ControlUseStart(clonk);
-	if(fAiming) return true;
-	return false;
-}
-
-/* Destroyed by fire? Make it visible. */
 
 func Incineration()
 {
-	// GrappleBow becomes unusable on incineration.
+	// Grapple bow becomes unusable on incineration.
 	if (hook)
 	{
 		var rope = hook->GetRope();
@@ -217,7 +76,7 @@ func Incineration()
 func Extinguishing()
 {
 	// If extinguished on the same frame it got incinerated, make it usable again
-	if (GetCon()>=100)
+	if (GetCon() >= 100)
 	{
 		EnsureHook();
 		SetClrModulation();
@@ -225,25 +84,206 @@ func Extinguishing()
 	return _inherited(...);
 }
 
-/* ++++++++ Animation functions ++++++++ */
+/*-- Callbacks --*/
 
-public func Reset(clonk)
+public func GetAnimationSet() { return animation_set; }
+
+// Callback from the clonk when loading is finished
+public func FinishedLoading(object clonk)
 {
-	fAiming = 0;
+	clonk->~StartAim(this);
+	return true;
+}
 
+// Callback from the clonk, when he actually has stopped aiming.
+public func FinishedAiming(object clonk, int angle)
+{
+	// Only shoot if the bow did not burn in the meantime.
+	if (GetCon() < 100)
+		return false;
+	
+	// Shoot the hook and detach the mesh from the bow.
+	EnsureHook();
+	hook->Exit();
+	hook->Launch(angle, 100, clonk, this);
+	hook_attach = nil;
+	DetachMesh(hook_attach);
+	Sound("Objects::Weapons::Bow::Shoot?");
+
+	// Open the hand to let the string go and play the fire animation.
+	PlayAnimation("Fire", 6, Anim_Linear(0, 0, GetAnimationLength("Fire"), animation_set["ShootTime"], ANIM_Hold));
+	clonk->StartShoot(this);
+	return true;
+}
+
+public func OnRopeBreak()
+{
+	if (hook_attach)
+		DetachMesh(hook_attach);
+
+	EnsureHook();
+	hook->Enter(this);
+	hook_attach = AttachMesh(hook, "bolt", "main");
+	PlayAnimation("Load", 5, Anim_Const(GetAnimationLength("Load")));
+}
+
+func IsContainer() { return false; } // See above for explanation
+
+/*-- Usage --*/
+
+public func HoldingEnabled() { return true; }
+
+public func RejectUse(object clonk)
+{
+	// Burned?
+	if (GetCon() < 100)
+		return true;
+	// Able to cut the hook? Then never reject the use.
+	if (hook->Contained() != this)
+		return false;
+	return !clonk->HasHandAction();
+}
+
+public func ControlUseStart(object clonk, int x, int y)
+{
+	// Cut rope, or otherwise remove helper object.
+	EnsureHook();
+	if (hook->Contained() != this)
+	{
+		var rope = hook->GetRope();
+		if (rope)
+		{
+			rope->DrawIn();
+			return true;
+		}
+		else
+		{
+			hook->Enter(this);
+		}
+	}
+
+	// Start aiming.
+	is_aiming = true;
+	ControlUseHolding(clonk, x, y);
+	FinishedLoading(clonk);
+	return true;
+}
+
+public func ControlUseHolding(object clonk, int x, int y)
+{
+	// Update the aiming angle on mouse movement.
+	var angle = Angle(0, 0, x, y);
+	angle = Normalize(angle, -180);
+	angle = BoundBy(angle, -160, 160);
+	clonk->SetAimPosition(angle);
+	return true;
+}
+
+public func ControlUseCancel(object clonk, int x, int y)
+{
+	clonk->CancelAiming();
+	return true;
+}
+
+// Stopping says the clonk to stop with aiming (he will go on untill he has finished loading and aiming at the given angle).
+public func ControlUseStop(object clonk, int x, int y)
+{
+	clonk->StopAim();
+	return true;
+}
+
+public func Reset(object clonk)
+{
+	is_aiming = 0;
 	clonk->StopAnimation(clonk->GetRootAnimation(11));
 	StopAnimation(GetRootAnimation(6));
 }
 
-func IsInventorProduct() { return true; }
+/*-- Bow Mechanics --*/
 
-func Definition(def) {
-	SetProperty("PictureTransformation",Trans_Mul(Trans_Translate(-700,400),Trans_Scale(1150),Trans_Rotate(180,0,1,0),Trans_Rotate(-30,-1,0,-1)),def);
+public func SetHook(object new_hook)
+{
+	hook = new_hook;
 }
+
+func EnsureHook()
+{
+	// Create hook if it went missing.
+	if (!hook) 
+		hook = CreateObject(GrappleHook);
+	return hook;
+}
+
+public func DrawRopeIn()
+{
+	if (hook)
+	{
+		var rope = hook->GetRope();
+		if (rope)
+			rope->DrawIn();
+	}
+}
+
+// If shot (e.g. by a cannon) the rope is drawn in.
+public func LaunchProjectile()
+{
+	if (hook)
+	{
+		var rope = hook->GetRope();
+		if (rope)
+			rope->DrawIn();
+	}
+	_inherited(...);
+}
+
+func RejectCollect(id whatever, object hopefully_hook)
+{
+	// The grapple bow will only its own hook, very picky thing
+	if (hopefully_hook != hook) return true;
+	return false;
+}
+
+/*-- Production --*/
+
+public func IsInventorProduct() { return true; }
+
+/*-- Display --*/
+
+public func GetCarryMode(object clonk, bool idle)
+{
+	if (idle) return CARRY_Back;
+
+	if (clonk->~IsJumping())
+		return CARRY_Hand;
+
+	return CARRY_Grappler;
+}
+
+public func GetCarryTransform(object clonk, bool idle, bool nohand)
+{
+	if (idle || nohand)
+		return Trans_Translate(0,3000);
+}
+
+public func GetCarrySpecial(object clonk)
+{
+	if (is_aiming)
+		return "pos_hand2";
+}
+
+public func GetCarryBone2(object clonk) { return "main2"; }
+
+func Definition(proplist def)
+{
+	def.PictureTransformation = Trans_Mul(Trans_Translate(-2500, 1000),Trans_Scale(1800),Trans_Rotate(-60,1,-1,1), Trans_Rotate(180, 0, 1, 0));
+}
+
+/*-- Properties --*/
+
 local Name = "$Name$";
 local Description = "$Description$";
-local UsageHelp = "$UsageHelp$";
 local Collectible = 1;
-local Rebuy = true;
+local Components = {Wood = 2, Metal = 1/*, Rope = 1*/};
 local BlastIncinerate = 30;
-local ContactIncinerate = 0;
+local MaterialIncinerate = true;
+local BurnDownTime = 140;

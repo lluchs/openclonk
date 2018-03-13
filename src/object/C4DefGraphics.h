@@ -2,7 +2,7 @@
  * OpenClonk, http://www.openclonk.org
  *
  * Copyright (c) 2004-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -18,12 +18,11 @@
 #ifndef INC_C4DefGraphics
 #define INC_C4DefGraphics
 
-#include "C4FacetEx.h"
-#include "C4Surface.h"
-#include "C4ObjectPtr.h"
-#include "C4InputValidation.h"
-#include "C4Id.h"
-#include "StdMeshUpdate.h"
+#include "graphics/C4Facet.h"
+#include "lib/C4InputValidation.h"
+#include "lib/StdMeshUpdate.h"
+#include "object/C4Id.h"
+#include "object/C4ObjectPtr.h"
 
 // defintion graphics
 class C4AdditionalDefGraphics;
@@ -41,6 +40,7 @@ protected:
 public:
 	enum GraphicsType
 	{
+		TYPE_None,
 		TYPE_Bitmap,
 		TYPE_Mesh
 	};
@@ -51,32 +51,32 @@ public:
 	{
 		struct
 		{
-			C4Surface *Bitmap, *BitmapClr;
+			C4Surface *Bitmap, *BitmapClr, *BitmapNormal;
 		} Bmp;
 		StdMesh *Mesh;
 	};
 
 	bool fColorBitmapAutoCreated;  // if set, the color-by-owner-bitmap has been created automatically by all blue shades of the bitmap
 
-	inline C4Surface *GetBitmap(DWORD dwClr=0) { if (Type != TYPE_Bitmap) return NULL; if (Bmp.BitmapClr) { Bmp.BitmapClr->SetClr(dwClr); return Bmp.BitmapClr; } else return Bmp.Bitmap; }
+	C4Surface *GetBitmap(DWORD dwClr=0); 
 
-	C4DefGraphics(C4Def *pOwnDef=NULL);  // ctor
+	C4DefGraphics(C4Def *pOwnDef=nullptr);  // ctor
 	virtual ~C4DefGraphics() { Clear(); }; // dtor
 
-	bool LoadBitmap(C4Group &hGroup, const char *szFilenamePNG, const char *szOverlayPNG, bool fColorByOwner); // load specified graphics from group
+	bool LoadBitmap(C4Group &hGroup, const char *szFilenamePNG, const char *szOverlayPNG, const char *szNormal, bool fColorByOwner); // load specified graphics from group
 	bool LoadBitmaps(C4Group &hGroup, bool fColorByOwner); // load graphics from group
 	bool LoadMesh(C4Group &hGroup, const char* szFilename, StdMeshSkeletonLoader& loader);
-	bool Load(C4Group &hGroup, bool fColorByOwner); // load graphics from group
+	bool LoadSkeleton(C4Group &hGroup, const char* szFilename, StdMeshSkeletonLoader& loader);
+	bool Load(C4Group &hGroup, StdMeshSkeletonLoader &loader, bool fColorByOwner); // load graphics from group
 	C4DefGraphics *Get(const char *szGrpName); // get graphics by name
 	void Clear(); // clear fields; delete additional graphics
 	bool IsMesh() const { return Type == TYPE_Mesh; }
 	bool IsColorByOwner() // returns whether ColorByOwner-surfaces have been created
-	{ return Type == TYPE_Mesh || !!Bmp.BitmapClr; } // Mesh can always apply PlayerColor (if used in its material)
-	bool CopyGraphicsFrom(C4DefGraphics &rSource); // copy bitmaps from source graphics
+	{ return Type == TYPE_Mesh || (Type == TYPE_Bitmap && !!Bmp.BitmapClr); } // Mesh can always apply PlayerColor (if used in its material)
 
 	void Draw(C4Facet &cgo, DWORD iColor, C4Object *pObj, int32_t iPhaseX, int32_t iPhaseY, C4DrawTransform* trans);
 
-	virtual const char *GetName() { return NULL; } // return name to be stored in safe game files
+	virtual const char *GetName() { return nullptr; } // return name to be stored in safe game files
 
 	C4AdditionalDefGraphics *GetNext() { return pNext; }
 
@@ -95,30 +95,56 @@ protected:
 
 public:
 	C4AdditionalDefGraphics(C4Def *pOwnDef, const char *szName);  // ctor
-	virtual const char *GetName() { return Name; }
+	const char *GetName() override { return Name; }
 };
 
 // backup class holding dead graphics pointers and names
-class C4DefGraphicsPtrBackup
+class C4DefGraphicsPtrBackupEntry
 {
 protected:
 	C4DefGraphics *pGraphicsPtr; // dead graphics ptr
 	C4Def *pDef;                 // definition of dead graphics
 	char Name[C4MaxName+1];        // name of graphics
-	C4DefGraphicsPtrBackup *pNext; // next member of linked list
-	StdMeshMaterialUpdate MeshMaterialUpdate; // Backup of dead mesh materials
 	StdMeshUpdate* pMeshUpdate;    // Dead mesh
 
 public:
-	C4DefGraphicsPtrBackup(C4DefGraphics *pSourceGraphics); // ctor
-	~C4DefGraphicsPtrBackup();                              // dtor
+	C4DefGraphicsPtrBackupEntry(C4DefGraphics *pSourceGraphics); // ctor
+	~C4DefGraphicsPtrBackupEntry();                              // dtor
 
-	void AssignUpdate(C4DefGraphics *pNewGraphics); // update all game objects with new graphics pointers
-	void AssignRemoval();                           // remove graphics of this def from all game objects
+	void AssignUpdate();   // update all game objects with new graphics pointers
+	void AssignRemoval();  // remove graphics of this def from all game objects
 
 private:
-	void UpdateMeshes();
+	void UpdateAttachedMeshes();
+	void UpdateAttachedMesh(StdMeshInstance* instance);
+};
+
+// On definition reload, all graphics updates need to be performed in one
+// batch using this class.
+class C4DefGraphicsPtrBackup
+{
+public:
+	C4DefGraphicsPtrBackup();
+	~C4DefGraphicsPtrBackup();
+
+	// Add a def graphics to the list of graphics to be updated.
+	// Also adds additional graphics linked from pGraphics.
+	void Add(C4DefGraphics *pGraphics);
+
+	void AssignUpdate();   // update all game objects with new graphics pointers
+	void AssignRemoval();  // remove graphics of all defs from all game objects
+
+	StdMeshMaterialUpdate &GetUpdater() { return MeshMaterialUpdate; }
+
+private:
 	void UpdateMesh(StdMeshInstance* instance);
+
+	StdMeshMaterialUpdate MeshMaterialUpdate; // Backup of dead mesh materials
+	StdMeshAnimationUpdate MeshAnimationUpdate; // Backup of animation names in the animation tree
+
+	std::list<C4DefGraphicsPtrBackupEntry*> Entries;
+
+	bool fApplied{false};
 };
 
 // Helper to compile C4DefGraphics-Pointer
@@ -132,12 +158,12 @@ public:
 	// Default checking / setting
 	bool operator == (C4DefGraphics *pDef2) { return pDefGraphics == pDef2; }
 	void operator = (C4DefGraphics *pDef2) { pDefGraphics = pDef2; }
-	ALLOW_TEMP_TO_REF(C4DefGraphicsAdapt)
 };
 
 // graphics overlay used to attach additional graphics to objects
 class C4GraphicsOverlay
 {
+	friend class C4DefGraphicsPtrBackupEntry;
 	friend class C4DefGraphicsPtrBackup;
 public:
 	enum Mode
@@ -153,55 +179,52 @@ public:
 		MODE_ObjectPicture=8    // draw the picture of source object
 	};
 protected:
-	Mode eMode;                // overlay mode
+	Mode eMode{MODE_None};                // overlay mode
 
-	C4DefGraphics *pSourceGfx; // source graphics - used for savegame saving and comparisons in ReloadDef
+	C4DefGraphics *pSourceGfx{nullptr}; // source graphics - used for savegame saving and comparisons in ReloadDef
 	char Action[C4MaxName+1];  // action used as overlay in source gfx
 	C4TargetFacet fctBlit; // current blit data for bitmap graphics
-	StdMeshInstance* pMeshInstance; // NoSave // - current blit data for mesh graphics 
-	uint32_t dwBlitMode;          // extra parameters for additive blits, etc.
-	uint32_t dwClrModulation;        // colormod for this overlay
+	StdMeshInstance* pMeshInstance{nullptr}; // NoSave // - current blit data for mesh graphics 
+	uint32_t dwBlitMode{0};          // extra parameters for additive blits, etc.
+	uint32_t dwClrModulation{0xffffff};        // colormod for this overlay
 	C4ObjectPtr OverlayObj; // object to be drawn as overlay in MODE_Object
 	C4DrawTransform Transform; // drawing transformation: Rotation, zoom, etc.
-	int32_t iPhase;                // action face for MODE_Action
-	bool fZoomToShape;             // if true, overlay will be zoomed to match the target object shape
+	int32_t iPhase{0};                // action face for MODE_Action
+	bool fZoomToShape{false};             // if true, overlay will be zoomed to match the target object shape
 
-	int32_t iID; // identification number for Z-ordering and script identification
+	int32_t iID{0}; // identification number for Z-ordering and script identification
 
-	C4GraphicsOverlay *pNext; // singly linked list
+	C4GraphicsOverlay *pNext{nullptr}; // singly linked list
 
 	void UpdateFacet();       // update fctBlit to reflect current data
 	void Set(Mode aMode, C4DefGraphics *pGfx, const char *szAction, DWORD dwBMode, C4Object *pOvrlObj);
 
 public:
-	C4GraphicsOverlay() : eMode(MODE_None), pSourceGfx(NULL), fctBlit(), pMeshInstance(NULL), dwBlitMode(0), dwClrModulation(0xffffff),
-			OverlayObj(NULL), Transform(+1),
-			iPhase(0), fZoomToShape(false), iID(0), pNext(NULL) { *Action=0; } // std ctor
+	C4GraphicsOverlay() : fctBlit(),
+			OverlayObj(nullptr), Transform(+1) { *Action=0; } // std ctor
 	~C4GraphicsOverlay(); // dtor
 
-	void Read(const char **ppInput);
-	void Write(char *ppOutput);
 	void CompileFunc(StdCompiler *pComp);
 
 	// object pointer management
 	void DenumeratePointers();
 
 	void SetAsBase(C4DefGraphics *pBaseGfx, DWORD dwBMode) // set in MODE_Base
-	{ Set(MODE_Base, pBaseGfx, NULL, dwBMode, NULL); }
+	{ Set(MODE_Base, pBaseGfx, nullptr, dwBMode, nullptr); }
 	void SetAsAction(C4DefGraphics *pBaseGfx, const char *szAction, DWORD dwBMode)
-	{ Set(MODE_Action, pBaseGfx, szAction, dwBMode, NULL); }
+	{ Set(MODE_Action, pBaseGfx, szAction, dwBMode, nullptr); }
 	void SetAsPicture(C4DefGraphics *pBaseGfx, DWORD dwBMode)
-	{ Set(MODE_Picture, pBaseGfx, NULL, dwBMode, NULL); }
+	{ Set(MODE_Picture, pBaseGfx, nullptr, dwBMode, nullptr); }
 	void SetAsIngamePicture(C4DefGraphics *pBaseGfx, DWORD dwBMode)
-	{ Set(MODE_IngamePicture, pBaseGfx, NULL, dwBMode, NULL); }
+	{ Set(MODE_IngamePicture, pBaseGfx, nullptr, dwBMode, nullptr); }
 	void SetAsObject(C4Object *pOverlayObj, DWORD dwBMode)
-	{ Set(MODE_Object, NULL, NULL, dwBMode, pOverlayObj); }
+	{ Set(MODE_Object, nullptr, nullptr, dwBMode, pOverlayObj); }
 	void SetAsObjectPicture(C4Object *pOverlayObj, DWORD dwBMode)
-	{ Set(MODE_ObjectPicture, NULL, NULL, dwBMode, pOverlayObj); }
+	{ Set(MODE_ObjectPicture, nullptr, nullptr, dwBMode, pOverlayObj); }
 	void SetAsExtraGraphics(C4DefGraphics *pGfx, DWORD dwBMode)
-	{ Set(MODE_ExtraGraphics, pGfx, NULL, dwBMode, NULL); }
+	{ Set(MODE_ExtraGraphics, pGfx, nullptr, dwBMode, nullptr); }
 	void SetAsRank(DWORD dwBMode, C4Object *rank_obj)
-	{ Set(MODE_Rank, NULL, NULL, dwBMode, rank_obj); }
+	{ Set(MODE_Rank, nullptr, nullptr, dwBMode, rank_obj); }
 
 	bool IsValid(const C4Object *pForObj) const;
 
@@ -240,7 +263,6 @@ public:
 	// Default checking / setting
 	bool operator == (C4GraphicsOverlay *pDefault) { return pOverlay == pDefault; }
 	void operator = (C4GraphicsOverlay *pDefault) { delete pOverlay; pOverlay = pDefault; }
-	ALLOW_TEMP_TO_REF(C4GraphicsOverlayListAdapt)
 };
 
 #endif // INC_C4DefGraphics

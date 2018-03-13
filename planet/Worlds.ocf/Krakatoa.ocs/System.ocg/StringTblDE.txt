@@ -1,0 +1,8 @@
+# Pilot Name
+PilotName=Kapitän Wilbur
+
+# Intro sequence messages
+MsgNearVolcano=Wir sind fast beim Vulkankrater. Wusstet Ihr, dass er einen Kern aus purem Gold hat?
+MsgEruption=Oh nein! Der Vulkan bricht aus, Notlandung einleiten.
+MsgEject=Wir sind getroffen ... Schleudersitze aktivieren!
+MsgConstructPlane=Unser Pilot ist weg und das Flugzeug kaputt. Lasst uns ein neues Flugzeug bauen, mit Gold füllen und von hier verschwinden.

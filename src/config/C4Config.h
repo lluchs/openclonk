@@ -3,7 +3,7 @@
  *
  * Copyright (c) 1998-2000, Matthes Bender
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -20,13 +20,12 @@
 #ifndef INC_C4Config
 #define INC_C4Config
 
-#include "C4Constants.h"
-#include "C4InputValidation.h"
-#include "C4PlayerControl.h"
-#include <list>
+#include "config/C4Constants.h"
+#include "lib/C4InputValidation.h"
+#include "control/C4PlayerControl.h"
 
 #define C4DEFAULT_FONT_NAME "Endeavour"
-enum { CFG_MaxString  = 1024 };
+enum { CFG_MaxString  = 1024, CFG_MaxEditorMRU = 8 };
 
 class C4ConfigGeneral
 {
@@ -55,6 +54,7 @@ public:
 	char UserDataPath[CFG_MaxString+1];
 	char SystemDataPath[CFG_MaxString+1];
 	char ScreenshotPath[CFG_MaxString+1];
+	char TempUpdatePath[CFG_MaxString+1];
 	bool GamepadEnabled;
 	bool FirstStart;
 	int32_t DebugRec;
@@ -81,8 +81,14 @@ class C4ConfigDeveloper
 {
 public:
 	int32_t AutoFileReload;
-	int32_t ExtraWarnings;
+	char TodoFilename[CFG_MaxString + 1];
+	char AltTodoFilename[CFG_MaxString + 1];
+	int32_t MaxScriptMRU; // maximum number of remembered elements in recently used scripts
+	int32_t DebugShapeTextures; // if nonzero, show messages about loaded shape textures
+	bool ShowHelp; // show help buttons and descriptions in editor
+	char RecentlyEditedSzenarios[CFG_MaxEditorMRU][CFG_MaxString + 1];
 	void CompileFunc(StdCompiler *pComp);
+	void AddRecentlyEditedScenario(const char *fn);
 };
 
 class C4ConfigGraphics
@@ -91,9 +97,6 @@ public:
 	int32_t SplitscreenDividers;
 	int32_t ShowStartupMessages;
 	int32_t VerboseObjectLoading;
-	int32_t ColorAnimation;
-	int32_t HighResLandscape;
-	int32_t VideoModule;
 	int32_t MenuTransparency;
 	int32_t UpperBoard;
 	int32_t ShowClock;
@@ -103,20 +106,16 @@ public:
 	int32_t Windowed; // 0: fullscreen, 1: windowed, 2: fullscreen in game, windowed in menu
 	int32_t ShowCrewNames; // show player name above clonks?
 	int32_t ShowCrewCNames; // show clonk names above clonks?
-	int32_t BitDepth; // used bit depth for newgfx
 	int32_t PXSGfx;     // show PXS-graphics (instead of sole pixels)
-	int32_t Gamma1, Gamma2, Gamma3; // gamma ramps
+	int32_t Gamma; // gamma value
 	int32_t Currency;   // default wealth symbolseb
-	int32_t RenderInactiveEM; // draw vieports even if inactive in CPEM
-	int32_t DisableGamma;
 	int32_t Monitor;    // monitor index to play on
-	int32_t FireParticles; // draw extended fire particles if enabled (default on)
 	int32_t MaxRefreshDelay; // minimum time after which graphics should be refreshed (ms)
-	int32_t EnableShaders; // enable pixel shaders on engines that support them
-	int32_t ClipManuallyE; // do manual clipping in the easy cases
 	int32_t NoOffscreenBlits; // if set, all blits to non-primary-surfaces are emulated
 	int32_t MultiSampling; // multisampling samples
 	int32_t AutoFrameSkip; // if true, gfx frames are skipped when they would slow down the game
+	int32_t DebugOpenGL; // if true, enables OpenGL debugging
+	int32_t MouseCursorSize; // size in pixels
 
 	void CompileFunc(StdCompiler *pComp);
 };
@@ -128,7 +127,6 @@ public:
 	int32_t RXMusic;
 	int32_t FEMusic;
 	int32_t FESamples;
-	int32_t FMMode;
 	int32_t Verbose;  // show music files names
 	int32_t MusicVolume;
 	int32_t SoundVolume;
@@ -153,6 +151,7 @@ public:
 	int32_t LeagueServerSignUp;
 	int32_t UseAlternateServer;
 	int32_t PortTCP,PortUDP,PortDiscovery,PortRefServer;
+	int32_t EnableUPnP;
 	int32_t ControlMode;
 	ValidatedStdCopyStrBuf<C4InVal::VAL_NameAllowEmpty> Nick;
 	int32_t MaxLoadFileSize;
@@ -166,6 +165,7 @@ public:
 	int32_t LastUpdateTime;
 #endif
 	int32_t AsyncMaxWait;
+	int32_t PacketLogging;
 public:
 	void CompileFunc(StdCompiler *pComp);
 	const char *GetLeagueServerAddress();
@@ -227,7 +227,7 @@ class C4ConfigControls
 {
 public:
 	int32_t GamepadGuiControl;
-	int32_t MouseAScroll; // auto scroll strength
+	int32_t MouseAutoScroll; // auto scroll strength
 	C4PlayerControlAssignmentSets UserSets;
 
 	void CompileFunc(StdCompiler *pComp);
@@ -265,11 +265,12 @@ public:
 	const char* GetSubkeyPath(const char *strSubkey);
 	void Default();
 	bool Save();
-	bool Load(const char *szConfigFile = NULL);
+	bool Load(const char *szConfigFile = nullptr);
 	bool Init();
 	bool Registered();
 	const char *AtExePath(const char *szFilename);
 	const char *AtTempPath(const char *szFilename);
+	const char *AtTempUpdatePath(const char *szFilename);
 	const char *AtNetworkPath(const char *szFilename);
 	const char *AtScreenshotPath(const char *szFilename);
 	const char *AtUserDataPath(const char *szFilename);
@@ -285,6 +286,8 @@ public:
 	bool IsModule(const char *szPath, char *szModules);
 	bool AddModule(const char *szPath, char *szModules);
 	void GetConfigFileName(StdStrBuf &filename, const char *szConfigFile);
+	void CleanupTempUpdateFolder();
+	const char *MakeTempUpdateFolder();
 
 	static void ExpandEnvironmentVariables(char *strPath, size_t iMaxLen);
 };

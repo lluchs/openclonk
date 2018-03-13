@@ -3,14 +3,19 @@
 #include Library_Structure
 #include Library_Ownable
 #include Library_Producer
+#include Library_LampPost
 
 local hold_production;
+
+public func LanternPosition(id def) { return [GetCalcDir()*19,-1]; }
 
 func Construction(object creator)
 {
 	SetAction("Default");
 	return _inherited(creator, ...);
 }
+
+public func IsHammerBuildable() { return true; }
 
 /*-- Production --*/
 
@@ -19,15 +24,8 @@ func IsProduct(id product_id)
 	return product_id->~IsKitchenProduct();
 }
 
-private func ProductionTime(id toProduce) { return 500; }
-private func PowerNeed() { return 0; }
-
-public func NeedRawMaterial(id rawmat_id)
-{
-	if (rawmat_id->~IsFuel() || rawmat_id == Flour)
-		return true;
-	return false;
-}
+private func ProductionTime(id product) { return _inherited(product, ...) ?? 500; }
+public func PowerNeed() { return 0; }
 
 public func OnProductionStart(id product)
 {
@@ -81,5 +79,8 @@ local ActMap = {
 
 local Name = "$Name$";
 local Description ="$Description$";
+local ContainBlast = true;
 local BlastIncinerate = 100;
+local FireproofContainer = true;
 local HitPoints = 70;
+local Components = {Wood = 3, Rock = 2, Metal = 1};

@@ -1,59 +1,68 @@
-/*-- Mushroom --*/
+/** 
+	Mushroom 
+	Can be picked and eaten.
+	
+	@author
+*/
 
 #include Library_Plant
-#include Library_Crop
+#include Library_Edible
 
-private func SeedChance() { return 400; }
-private func SeedArea() { return 150; }
-private func SeedAmount() { return 6; }
-private func SeedOffset() { return 10; }
+local plant_seed_chance = 17;
+local plant_seed_area = 150;
+local plant_seed_amount = 4;
+local plant_seed_offset = 5;
 
-/* Initialisation */
+private func Incineration()
+{
+	SetClrModulation(RGB(48, 32, 32));
+}
 
-func Construction()
+/*-- Initialization --*/
+
+protected func Construction()
 {
 	StartGrowth(3);
-	_inherited(...);
+	RootSurface();
+	this.MeshTransformation = Trans_Rotate(RandomX(0, 359), 0, 1, 0);
+	return _inherited(...);
 }
 
-private func Initialize()
+public func RootSurface()
 {
-	SetProperty("MeshTransformation", Trans_Rotate(RandomX(0,359),0,1,0));
+	// First move up until unstuck.
+	var max_move = 30;
+	while (Stuck() && --max_move >= 0)
+		SetPosition(GetX(), GetY() - 1);	
+	// Then move down until stuck.
+	max_move = 30;
+	while (!Stuck() && --max_move >= 0)
+		SetPosition(GetX(), GetY() + 1);
+	return;
 }
 
-/* Harvesting */
+/*-- Eating --*/
 
-private func IsCrop() { return true; }
-private func SickleHarvesting() { return false; }
+// Nutritional value depends on the completion of the mushroom.
+public func NutritionalValue() { return GetCon() / 10; }
 
-public func Harvest(object clonk)
+/*-- Display --*/
+
+public func GetCarryMode()
 {
-	this.Collectible = 1;
-	clonk->Collect(this);
-	return true;
+	return CARRY_Hand;
 }
 
-public func IsInteractable(object clonk)
+public func GetCarryTransform()
 {
-	return GetProperty("Collectible") != 1 && inherited(clonk);
+	return Trans_Scale(750);
 }
 
-public func GetInteractionMetaInfo(object clonk)
-{
-	return { Description = "$PickMushroom$" };
-}
-
-/* Eating */
-
-protected func ControlUse(object clonk, int iX, int iY)
-{
-	clonk->Eat(this);
-}
-
-public func NutritionalValue() { return 5; }
+/*-- Properties --*/
 
 local Name = "$Name$";
 local Description = "$Description$";
-local UsageHelp = "$UsageHelp$";
-local Collectible = 0;
+local Collectible = true;
+local BlastIncinerate = 5;
+local ContactIncinerate = 1;
 local Placement = 4;

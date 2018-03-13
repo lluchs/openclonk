@@ -3,7 +3,7 @@
  *
  * Copyright (c) 1998-2000, Matthes Bender
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -20,7 +20,7 @@
 #ifndef INC_C4ObjectList
 #define INC_C4ObjectList
 
-#include <C4Id.h>
+#include "object/C4Id.h"
 
 class C4ObjectLink
 {
@@ -32,11 +32,11 @@ public:
 class C4ObjectListChangeListener
 {
 public:
-	virtual void OnObjectRemove(C4ObjectList * pList, C4ObjectLink * pLnk) = 0;
-	virtual void OnObjectAdded(C4ObjectList * pList, C4ObjectLink * pLnk) = 0;
-	virtual void OnObjectRename(C4ObjectList * pList, C4ObjectLink * pLnk) = 0;
-	//virtual void OnObjectReorder(C4ObjectLink * pLnk1, C4ObjectLink * pLnk2) = 0;
-	virtual ~C4ObjectListChangeListener() { }
+	virtual void OnObjectRemove(C4ObjectList * pList, C4ObjectLink * pLnk) {};
+	virtual void OnObjectAdded(C4ObjectList * pList, C4ObjectLink * pLnk) {};
+	virtual void OnObjectRename(C4ObjectList * pList, C4ObjectLink * pLnk) {};
+	virtual void OnObjectContainerChanged(C4Object *obj, C4Object *old_container, C4Object *new_container) {};
+	virtual ~C4ObjectListChangeListener() = default;
 };
 
 extern C4ObjectListChangeListener & ObjectListChangeListener;
@@ -65,18 +65,43 @@ public:
 		C4Object * operator* ();
 		bool operator== (const iterator & iter) const;
 		bool operator!= (const iterator & iter) const;
+		// advance until end reached or link with target Obj found - return false in former case, true in latter
+		bool find(C4Object* target);
+		// return whether the iterator has reached the end
+		bool atEnd() const;
+		// advance the iterator position, either going forward or backward depending on the reverse flag
+		bool advance();
+		// reset the iterator to either the beginning or the end of the list, depending on the reverse flag
+		bool reset();
 
 		iterator& operator=(const iterator & iter);
 	private:
-		explicit iterator(C4ObjectList & List);
-		iterator(C4ObjectList & List, C4ObjectLink * pLink);
-		C4ObjectList & List;
-		C4ObjectLink * pLink;
+		iterator(const C4ObjectList & List, const C4ObjectLink * pLink, bool reverse);
+		const C4ObjectList & List;
+		// instead of pointing to the current link make a copy of it
+		C4ObjectLink link;
 		iterator * Next;
+		bool reverse;
 		friend class C4ObjectList;
 	};
-	iterator begin();
-	const iterator end();
+	iterator begin() const;
+	const iterator end() const;
+
+	// Helper object returned by reverse() - allows for iterating the C4ObjectList in reverse order, still using the for (x : list) syntax
+	class ReverseView
+	{
+	private:
+		const C4ObjectList& list;
+	public:
+		ReverseView(const C4ObjectList& list): list(list) {}
+		// return an iterator at the end of the list
+		iterator begin() const;
+		// return an iterator at the position before the first item in the list
+		iterator end() const;
+	};
+
+	// Return a temporary object allowing for reverse-order iteration of the C4ObjectList
+	const ReverseView reverse() const { return ReverseView(*this); }
 
 	virtual void Default();
 	virtual void Clear();
@@ -92,18 +117,17 @@ public:
 
 	typedef int SortProc(C4Object *, C4Object *);
 
-	virtual bool Add(C4Object *nObj, SortType eSort, C4ObjectList *pLstSorted = NULL);
+	virtual bool Add(C4Object *nObj, SortType eSort, C4ObjectList *pLstSorted = nullptr);
 	bool AddSortCustom(C4Object *nObj, SortProc &pSortProc);
 	virtual bool Remove(C4Object *pObj);
 
 	virtual bool AssignInfo();
 	virtual bool ValidateOwners();
 	StdStrBuf GetNameList(C4DefList &rDefs) const;
-	StdStrBuf GetDataString();
 	bool IsClear() const;
 	bool DenumeratePointers();
 	bool Write(char *szTarget);
-	void CompileFunc(StdCompiler *pComp, C4ValueNumbers * = 0);
+	void CompileFunc(StdCompiler *pComp, C4ValueNumbers * = nullptr);
 	void CompileFunc(StdCompiler *pComp, bool fSkipPlayerObjects, C4ValueNumbers *);
 	void Denumerate(C4ValueNumbers *);
 
@@ -113,9 +137,9 @@ public:
 	int MassCount();
 	int ListIDCount(int32_t dwCategory) const;
 
-	const C4Object* GetObject(int Index=0) const;
-	C4Object* GetObject(int Index=0)
-	{ return const_cast<C4Object*>(const_cast<const C4ObjectList*>(this)->GetObject(Index)); }
+	C4Object* GetObject(int Index=0) const;
+	C4Object* GetFirstObject() const { return First ? First->Obj : nullptr; }
+	C4Object* GetLastObject() const { return Last ? Last->Obj : nullptr; }
 	C4Object* Find(C4Def * def, int iOwner=ANY_OWNER, DWORD dwOCF=OCF_All);
 	C4Object* FindOther(C4ID id, int iOwner=ANY_OWNER);
 
@@ -138,9 +162,9 @@ protected:
 	virtual void InsertLinkBefore(C4ObjectLink *pLink, C4ObjectLink *pBefore);
 	virtual void InsertLink(C4ObjectLink *pLink, C4ObjectLink *pAfter);
 	virtual void RemoveLink(C4ObjectLink *pLnk);
-	iterator * FirstIter;
-	iterator * AddIter(iterator * iter);
-	void RemoveIter(iterator * iter);
+	mutable iterator * FirstIter{nullptr};
+	iterator * AddIter(iterator * iter) const;
+	void RemoveIter(iterator * iter) const;
 
 	friend class iterator;
 };
@@ -148,14 +172,14 @@ protected:
 class C4NotifyingObjectList: public C4ObjectList
 {
 public:
-	C4NotifyingObjectList() { }
-	C4NotifyingObjectList(const C4NotifyingObjectList &List): C4ObjectList(List) { }
+	C4NotifyingObjectList() = default;
+	C4NotifyingObjectList(const C4NotifyingObjectList &List) = default;
 	C4NotifyingObjectList(const C4ObjectList &List): C4ObjectList(List) { }
-	virtual ~C4NotifyingObjectList() { }
+	~C4NotifyingObjectList() override = default;
 protected:
-	virtual void InsertLinkBefore(C4ObjectLink *pLink, C4ObjectLink *pBefore);
-	virtual void InsertLink(C4ObjectLink *pLink, C4ObjectLink *pAfter);
-	virtual void RemoveLink(C4ObjectLink *pLnk);
+	void InsertLinkBefore(C4ObjectLink *pLink, C4ObjectLink *pBefore) override;
+	void InsertLink(C4ObjectLink *pLink, C4ObjectLink *pAfter) override;
+	void RemoveLink(C4ObjectLink *pLnk) override;
 };
 
 // This iterator is used to return objects of same ID and picture as grouped.
@@ -167,13 +191,12 @@ class C4ObjectListIterator
 private:
 	C4ObjectList & rList; // iterated list
 	C4ObjectList::iterator pCurr; // link to last returned object
-	//C4ObjectLink *pCurr;
 	C4ObjectList::iterator pCurrID; // link to head of link group with same ID
 
-	C4ObjectListIterator(const C4ObjectListIterator &rCopy); // no copy ctor
+	C4ObjectListIterator(const C4ObjectListIterator &rCopy) = delete; // no copy ctor
 public:
 	C4ObjectListIterator(C4ObjectList &rList) : rList(rList), pCurr(rList.end()), pCurrID(rList.begin()) {} // ctor
-	C4Object *GetNext(int32_t *piCount); // get next object; return NULL if end is reached
+	C4Object *GetNext(int32_t *piCount); // get next object; return nullptr if end is reached
 };
 
 #endif

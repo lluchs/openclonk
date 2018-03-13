@@ -3,7 +3,7 @@
  *
  * Copyright (c) 1998-2000, Matthes Bender
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -17,20 +17,18 @@
 
 /* Holds crew member information */
 
-#include <C4Include.h>
-#include <C4ObjectInfo.h>
+#include "C4Include.h"
+#include "object/C4ObjectInfo.h"
 
-#include <C4DefList.h>
-#include <C4Random.h>
-#include <C4Components.h>
-#include <C4Game.h>
-#include <C4Config.h>
-#include <C4Application.h>
-#include <C4RankSystem.h>
-#include <C4Log.h>
-#include <C4Player.h>
-#include <C4GraphicsResource.h>
-#include <C4PlayerList.h>
+#include "c4group/C4Components.h"
+#include "game/C4Application.h"
+#include "graphics/C4GraphicsResource.h"
+#include "lib/C4Random.h"
+#include "object/C4Def.h"
+#include "object/C4DefList.h"
+#include "player/C4Player.h"
+#include "player/C4PlayerList.h"
+#include "player/C4RankSystem.h"
 
 #ifdef _MSC_VER
 #define snprintf _snprintf
@@ -54,8 +52,8 @@ void C4ObjectInfo::Default()
 	HasDied=false;
 	ControlCount=0;
 	Filename[0]=0;
-	Next=NULL;
-	pDef = NULL;
+	Next=nullptr;
+	pDef = nullptr;
 }
 
 bool C4ObjectInfo::Load(C4Group &hMother, const char *szEntryname)
@@ -171,7 +169,7 @@ void C4ObjectInfo::Evaluate()
 
 void C4ObjectInfo::Clear()
 {
-	pDef=NULL;
+	pDef=nullptr;
 }
 
 void C4ObjectInfo::Recruit()
@@ -201,5 +199,5 @@ void C4ObjectInfo::Retire()
 
 void C4ObjectInfo::SetBirthday()
 {
-	Birthday=time(NULL);
+	Birthday=time(nullptr);
 }

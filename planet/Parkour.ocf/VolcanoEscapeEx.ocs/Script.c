@@ -22,8 +22,17 @@ protected func Initialize()
 	PlaceBatches([Firestone], 5, 100, 15);
 	PlaceBatches([Dynamite, Dynamite, Dynamite, DynamiteBox], 3, 50, 6);
 	PlaceBatches([Rock, Loam, Loam], 10, 200, 10);
+	// Some dead trees.
+	Tree_Coniferous_Burned->Place(4);	
+	Tree_Coniferous2_Burned->Place(2);	
+	Tree_Coniferous3_Burned->Place(2);	
+	Tree_Coniferous4_Burned->Place(2);
+	// At night with stars.
+	Time->Init();
+	Time->SetTime(24 * 60);
+	Time->SetCycleSpeed(0);
 	// Starting chest
-	var start_chest = CreateObject(Chest, w*2/5, h*94/100);
+	var start_chest = CreateObjectAbove(Chest, w*2/5, h*94/100);
 	if (start_chest)
 	{
 		start_chest->CreateContents(Loam,4);
@@ -32,11 +41,17 @@ protected func Initialize()
 		start_chest->CreateContents(DynamiteBox,2);
 	}
 	// Create big volcano
-	g_volcano=CreateObject(BigVolcano,0,0,NO_OWNER);
+	g_volcano=CreateObjectAbove(BigVolcano,0,0,NO_OWNER);
 	var h0 = h-10;
 	g_volcano->Activate(h0, h*10/100);
 	// Schedule script to update volcano speed multiplier
-	ScheduleCall(nil, Scenario.VolcanoTimer, 40, 99999);
+	
+	var fx_volcano = new Effect {
+		Name = "FxVolcano",
+		Timer = Scenario.VolcanoTimer
+	};
+	
+	CreateEffect(fx_volcano, 1, 40);
 	// Bottom is open, so put some stable lava here to prevent remaining lava from just flowing out of the map
 	DrawMaterialQuad("StableLava",0,h0,w,h0,w,h,0,h);
 	return;
@@ -57,10 +72,12 @@ func VolcanoTimer()
 			y_plr += crew->GetY();
 			++n_crew;
 		}
+	if (n_crew) y_plr = y_plr / n_crew;
 	// Calc rubber band
+	var rubber_length = 85 * y_plr / LandscapeHeight() + 65;
 	var new_multiplier;
 	if (n_crew)
-		new_multiplier = Max(1, (y_volcano - y_plr/n_crew) / 150);
+		new_multiplier = Max(1, (y_volcano - y_plr) / rubber_length);
 	else
 		new_multiplier = 1;
 	g_volcano->SetSpeedMultiplier(new_multiplier);
@@ -88,7 +105,7 @@ private func PlaceBatches(array item_ids, int n_per_batch, int batch_radius, int
 		if (loc = FindLocation(Loc_Material("Earth")))
 			for (var j=0; j<n_per_batch; ++j)
 				if (loc2 = FindLocation(Loc_InRect(loc.x-batch_radius,loc.y-batch_radius,batch_radius*2,batch_radius*2), Loc_Material("Earth")))
-					if (obj=CreateObject(item_ids[Random(n_item_ids)],loc2.x,loc2.y))
+					if (obj=CreateObjectAbove(item_ids[Random(n_item_ids)],loc2.x,loc2.y))
 					{
 						obj->SetPosition(loc2.x,loc2.y);
 						++n_created;

@@ -1,5 +1,5 @@
-/**
-	@author Dustin Ne� (dness.de)
+﻿/**
+	@author Dustin Neß (dness.de)
 */
 
 local fShine = false;
@@ -14,14 +14,16 @@ protected func Initialize()
 
 protected func Construction() {
 	SetProperty("MeshTransformation", Trans_Mul(Trans_Rotate(RandomX(-35,35),0,10), Trans_Scale(30)));
-	objShine = CreateObject(EnvPack_Candle_Shine, x, y + 10, -1);
+	objShine = CreateObjectAbove(EnvPack_Candle_Shine, x, y + 10, -1);
+	SetLightRange(80, 60);
+	SetLightColor(FIRE_LIGHT_COLOR);
 }
 
 private func Shining()
 {
 	CreateParticle("Fire", 0, -5, 0, PV_Random(-1, 1), 20, Particles_Fire(), 2);
 
-	//check if position changed
+	// check if position changed
 	if (x != GetX() && y != GetY())
 	{
 		x = GetX();
@@ -35,7 +37,7 @@ private func Shining()
 		fShine = true;
 }
 
-//flickering
+// flickering
 private func Noise()
 {
 	if (RandomX(5) <= 2)
@@ -49,7 +51,7 @@ public func SetOn(fOn)
 	if (fOn)
 	{
 		if (!FindObject(Find_ID(objShine)))
-			objShine = CreateObject(EnvPack_Candle_Shine, 0, -5, -1);
+			objShine = CreateObjectAbove(EnvPack_Candle_Shine, 0, -5, -1);
 		SetAction("Shine");
 		SetClrModulation(RGB(255, 255, 255));
 		fShine = true;
@@ -58,7 +60,7 @@ public func SetOn(fOn)
 	{
 		objShine->RemoveObject();
 		SetAction("Idle");
-		SetClrModulation(RGB(155, 155, 155)); //Turn modell darker
+		SetClrModulation(RGB(155, 155, 155)); // Turn model darker
 		fShine = false;
 	}
 	return true;

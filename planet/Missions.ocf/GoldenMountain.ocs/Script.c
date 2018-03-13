@@ -5,7 +5,7 @@ func Initialize()
 	// Goal
 	var goal = FindObject(Find_ID(Goal_SellGems));
 	if (!goal) goal = CreateObject(Goal_SellGems);
-	goal->SetTargetAmount(30);
+	goal->SetTargetAmount(26);
 	// Rules
 	if (!ObjectCount(Find_ID(Rule_TeamAccount))) CreateObject(Rule_TeamAccount);
 	if (!ObjectCount(Find_ID(Rule_BuyAtFlagpole))) CreateObject(Rule_BuyAtFlagpole);
@@ -42,21 +42,21 @@ private func InitBase(int owner)
 {
 	// Create standard base owned by player
 	var y=200;
-	var flag = CreateObject(Flagpole, 590,y, owner);
-	var windgen = CreateObject(WindGenerator, 500,y, owner);
-	var chemlab = CreateObject(ChemicalLab, 560,y, owner);
-	var invlab = CreateObject(InventorsLab, 660,y, owner);
+	var flag = CreateObjectAbove(Flagpole, 590,y, owner);
+	var windgen = CreateObjectAbove(WindGenerator, 500,y, owner);
+	var chemlab = CreateObjectAbove(ChemicalLab, 560,y, owner);
+	var invlab = CreateObjectAbove(InventorsLab, 660,y, owner);
 	if (invlab)
 	{
 		invlab->SetClrModulation(0xff804000);
 	}
-	var toolsw = CreateObject(ToolsWorkshop, 620,y, owner);
+	var toolsw = CreateObjectAbove(ToolsWorkshop, 620,y, owner);
 	if (toolsw)
 	{
 		toolsw->CreateContents(Wood, 5);
 		toolsw->CreateContents(Metal, 2);
 	}
-	var lorry = CreateObject(Lorry, 690,y-2, owner);
+	var lorry = CreateObjectAbove(Lorry, 690,y-2, owner);
 	if (lorry)
 	{
 		//lorry->CreateContents(GrappleBow, GetStartupPlayerCount());
@@ -68,4 +68,10 @@ private func InitBase(int owner)
 		lorry->CreateContents(Dynamite, 2);
 	}
 	return true;
+}
+
+func OnGoalsFulfilled()
+{
+	GainScenarioAchievement("Done");
+	return false;
 }

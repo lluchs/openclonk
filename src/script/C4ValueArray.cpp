@@ -2,7 +2,7 @@
  * OpenClonk, http://www.openclonk.org
  *
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -13,27 +13,20 @@
  * To redistribute this file separately, substitute the full license texts
  * for the above references.
  */
-#include <C4Include.h>
-#include <C4ValueArray.h>
-#include <algorithm>
+#include "C4Include.h"
+#include "script/C4ValueArray.h"
 
-#include <C4Aul.h>
-#include <C4FindObject.h>
-#include <C4Object.h>
+#include "object/C4FindObject.h"
+#include "script/C4Aul.h"
 
-C4ValueArray::C4ValueArray()
-		: iRefCnt(0), iSize(0), iCapacity(0), pData(NULL)
-{
-}
+C4ValueArray::C4ValueArray() = default;
 
 C4ValueArray::C4ValueArray(int32_t inSize)
-		: iRefCnt(0), iSize(0), iCapacity(0), pData(NULL)
 {
 	SetSize(inSize);
 }
 
 C4ValueArray::C4ValueArray(const C4ValueArray &ValueArray2)
-		: iSize(0), iCapacity(0), pData(NULL)
 {
 	SetSize(ValueArray2.GetSize());
 	for (int32_t i = 0; i < iSize; i++)
@@ -42,7 +35,7 @@ C4ValueArray::C4ValueArray(const C4ValueArray &ValueArray2)
 
 C4ValueArray::~C4ValueArray()
 {
-	delete[] pData; pData = NULL;
+	delete[] pData; pData = nullptr;
 	iSize = iCapacity = 0;
 }
 
@@ -77,6 +70,7 @@ public:
 
 void C4ValueArray::Sort(class C4SortObject &rSort)
 {
+	assert(!constant);
 	if (rSort.PrepareCache(this))
 	{
 		// Initialize position array
@@ -89,7 +83,7 @@ void C4ValueArray::Sort(class C4SortObject &rSort)
 			pPos[i] = reinterpret_cast<intptr_t>(pData[pPos[i]]._getObj());
 		// Set the values
 		for (i = 0; i < iSize; i++)
-			pData[i].SetPropList(reinterpret_cast<C4Object *>(pPos[i]));
+			pData[i].SetPropList(reinterpret_cast<C4PropList *>(pPos[i]));
 		delete [] pPos;
 	}
 	else
@@ -102,12 +96,15 @@ struct C4ValueArraySortStringscomp
 {
 	bool operator ()(const C4Value &v1, const C4Value &v2)
 	{
-		return v1.getStr() && v2.getStr() && v1._getStr()->GetData() < v2._getStr()->GetData();
+		if (v1.getStr() && v2.getStr())
+			return std::strcmp(v1._getStr()->GetCStr(), v2._getStr()->GetCStr()) < 0;
+		return v2.getStr() != nullptr;
 	}
 };
 
 void C4ValueArray::SortStrings()
 {
+	assert(!constant);
 	std::stable_sort(pData, pData+iSize, C4ValueArraySortStringscomp());
 }
 
@@ -124,6 +121,7 @@ struct C4ValueArraySortcomp
 
 void C4ValueArray::Sort(bool descending)
 {
+	assert(!constant);
 	// sort by whatever type the values have
 	std::stable_sort(pData, pData+iSize, C4ValueArraySortcomp());
 	if (descending) std::reverse(pData, pData+iSize);
@@ -144,6 +142,7 @@ struct C4ValueArraySortPropertycomp
 
 bool C4ValueArray::SortByProperty(C4String *prop_name, bool descending)
 {
+	assert(!constant);
 	// expect this to be an array of proplists and sort by given property
 	// make sure we're all proplists before
 	for (int32_t i=0; i<iSize; ++i)
@@ -168,6 +167,7 @@ struct C4ValueArraySortArrayElementcomp
 bool C4ValueArray::SortByArrayElement(int32_t element_idx, bool descending)
 {
 	assert(element_idx>=0);
+	assert(!constant);
 	// expect this to be an array of arrays and sort by given element
 	// make sure we're all arrays before
 	for (int32_t i=0; i<iSize; ++i)
@@ -187,6 +187,7 @@ C4Value &C4ValueArray::operator[](int32_t iElem)
 {
 	assert(iElem < MaxSize);
 	assert(iElem >= 0);
+	assert(!constant);
 	if (iElem >= iSize && iElem < MaxSize) this->SetSize(iElem + 1);
 	// out-of-memory? This might not get caught, but it's better than a segfault
 	assert(iElem < iSize);
@@ -196,15 +197,16 @@ C4Value &C4ValueArray::operator[](int32_t iElem)
 
 void C4ValueArray::SetItem(int32_t iElem, const C4Value &Value)
 {
+	assert(!constant);
 	// enlarge
 	if (iElem < -iSize)
-		throw new C4AulExecError("array access: index out of range");
+		throw C4AulExecError("array access: index out of range");
 	else if (iElem < 0)
 		iElem = iSize + iElem;
 	else if (iElem >= iSize && iElem < MaxSize) this->SetSize(iElem + 1);
 	// out-of-memory? This might not get caught, but it's better than a segfault
 	if (iElem >= iSize)
-		throw new C4AulExecError("array access: index too large");
+		throw C4AulExecError("array access: index too large");
 	// set
 	pData[iElem]=Value;
 }
@@ -212,6 +214,7 @@ void C4ValueArray::SetItem(int32_t iElem, const C4Value &Value)
 void C4ValueArray::SetSize(int32_t inSize)
 {
 	if(inSize == iSize) return;
+	assert(!constant);
 
 	// array not larger than allocated memory? Well, just ignore the additional allocated mem then
 	if (inSize <= iCapacity)
@@ -242,7 +245,7 @@ void C4ValueArray::SetSize(int32_t inSize)
 
 bool C4ValueArray::operator==(const C4ValueArray& IntList2) const
 {
-	for (int32_t i=0; i<Max(iSize, IntList2.GetSize()); i++)
+	for (int32_t i=0; i<std::max(iSize, IntList2.GetSize()); i++)
 		if (GetItem(i) != IntList2.GetItem(i))
 			return false;
 
@@ -251,7 +254,7 @@ bool C4ValueArray::operator==(const C4ValueArray& IntList2) const
 
 void C4ValueArray::Reset()
 {
-	delete[] pData; pData = NULL;
+	delete[] pData; pData = nullptr;
 	iSize = iCapacity = 0;
 }
 
@@ -272,7 +275,7 @@ void C4ValueArray::CompileFunc(class StdCompiler *pComp, C4ValueNumbers * number
 	// Separator
 	pComp->Separator(StdCompiler::SEP_SEP2);
 	// Allocate
-	if (pComp->isCompiler()) this->SetSize(inSize);
+	if (pComp->isDeserializer()) this->SetSize(inSize);
 	// Values
 	pComp->Value(mkArrayAdaptMap(pData, iSize, C4Value(), mkParAdaptMaker(numbers)));
 }
@@ -283,11 +286,11 @@ C4ValueArray * C4ValueArray::GetSlice(int32_t startIndex, int32_t endIndex)
 {
 	// adjust indices so that the default end index works and that negative numbers count backwards from the end of the string
 	if (startIndex > iSize) startIndex = iSize;
-	else if (startIndex < -iSize) throw new C4AulExecError("array slice: start index out of range");
+	else if (startIndex < -iSize) throw C4AulExecError("array slice: start index out of range");
 	else if (startIndex < 0) startIndex += iSize;
 
 	if (endIndex > iSize) endIndex = iSize; // this also processes the MAX_INT default if no parameter is given in script
-	else if (endIndex < -iSize) throw new C4AulExecError("array slice: end index out of range");
+	else if (endIndex < -iSize) throw C4AulExecError("array slice: end index out of range");
 	else if (endIndex < 0) endIndex += iSize;
 
 	C4ValueArray* NewArray = new C4ValueArray(std::max(0, endIndex - startIndex));
@@ -300,15 +303,15 @@ C4ValueArray * C4ValueArray::GetSlice(int32_t startIndex, int32_t endIndex)
 void C4ValueArray::SetSlice(int32_t startIndex, int32_t endIndex, const C4Value &Val)
 {
 	// maximum bounds
-	if(startIndex >= MaxSize) throw new C4AulExecError("array slice: start index exceeds maximum capacity");
+	if(startIndex >= MaxSize) throw C4AulExecError("array slice: start index exceeds maximum capacity");
 
 	// index from back
 	if(startIndex < 0) startIndex += iSize;
 	if(endIndex < 0) endIndex += iSize;
 
 	// ensure relevant bounds
-	if(startIndex < 0) throw new C4AulExecError("array slice: start index out of range");
-	if(endIndex < 0) throw new C4AulExecError("array slice: end index out of range");
+	if(startIndex < 0) throw C4AulExecError("array slice: start index out of range");
+	if(endIndex < 0) throw C4AulExecError("array slice: end index out of range");
 	if(endIndex < startIndex)
 		endIndex = startIndex;
 
@@ -318,11 +321,11 @@ void C4ValueArray::SetSlice(int32_t startIndex, int32_t endIndex, const C4Value 
 		const C4ValueArray &Other = *Val._getArray(); // Remember that &Other could be equal to this, carefull with modifying pData
 
 		// Calculcate new size
-		int32_t iNewEnd = Min(startIndex + Other.GetSize(), (int32_t)MaxSize);
+		int32_t iNewEnd = std::min(startIndex + Other.GetSize(), (int32_t)MaxSize);
 		int32_t iNewSize = iNewEnd;
 		if(endIndex < iSize)
 			iNewSize += iSize - endIndex;
-		iNewSize = Min(iNewSize, (int32_t)MaxSize);
+		iNewSize = std::min(iNewSize, (int32_t)MaxSize);
 		int32_t iOtherSize = Other.GetSize();
 
 		if(iNewSize != iSize)
@@ -347,7 +350,10 @@ void C4ValueArray::SetSlice(int32_t startIndex, int32_t endIndex, const C4Value 
 			}
 
 			// Copy the data
-			for(i = startIndex, j = 0; i < iNewEnd; ++i, ++j)
+			// Since pnData and pData can be the same, we can not copy with
+			//for(i = startIndex, j = 0; i < iNewEnd; ++i, ++j)
+			// but have to start from the end of the copied sequence. That works, since j <= i
+			for(i = iNewEnd - 1, j = iNewEnd - startIndex - 1; i >= startIndex; --i, --j)
 			{
 				assert(j < iOtherSize);
 				pnData[i] = Other.pData[j];

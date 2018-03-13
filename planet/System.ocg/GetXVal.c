@@ -1,14 +1,16 @@
-/*--
-		GetXVal.c
-		Authors:
-		
-		Some functions which request information from the GetXVal family.
-		Attention: These functions directly access internal values of the engine.
-		The usage might, under certain circumstances, lead to desynchronisation in
-		either network games or save games. The most dangerous functions are marked
-		with //(!).
---*/
+/**
+	GetXVal.c
+	Some functions which request information from the GetXVal family.
+	Attention: These functions directly access internal values of the engine.
+	The usage might, under certain circumstances, lead to desynchronisation in
+	either network games or save games. The most dangerous functions are marked
+	with //(!).
+	These functions are also very slow. Values should be cached if possible.
 
+	@author 
+*/
+
+// documented in /docs/sdk/script/fn
 global func GetActMapVal(string entry, string action, id def, int num)
 {
 	if (!def)
@@ -20,36 +22,29 @@ global func GetActMapVal(string entry, string action, id def, int num)
 
 // GetDefCoreVal
 global func GetDefCategory()    { return GetDefCoreVal("Category", "DefCore"); }
-global func GetDefWidth()       { return GetDefCoreVal("Width", "DefCore"); }
-global func GetDefHeight()      { return GetDefCoreVal("Height", "DefCore"); }
 global func GetDefOffset(nr)   { return GetDefCoreVal("Offset", "DefCore", nr); }
 global func GetDefValue()       { return GetDefCoreVal("Value", "DefCore"); }
 global func GetDefMass()        { return GetDefCoreVal("Mass", "DefCore"); }
 global func GetDefComponents(nr) { return GetDefCoreVal("Components", "DefCore", nr); }
 global func GetDefCollection(nr) { return GetDefCoreVal("Collection", "DefCore", nr); }
-global func GetDefFireTop()     { return GetDefCoreVal("FireTop", "DefCore"); }
+global func GetDefColorByOwner(){ return GetDefCoreVal("ColorByOwner", "DefCore"); }
 global func GetDefLine()        { return GetDefCoreVal("Line", "DefCore"); }
 global func GetDefCrewMember()  { return GetDefCoreVal("CrewMember", "DefCore"); }
 global func GetDefConstruction(){ return GetDefCoreVal("Construction", "DefCore"); }
-global func GetDefConstructTo() { return GetDefCoreVal("ConstructTo", "DefCore"); }
-global func GetDefGrab()        { return GetDefCoreVal("Grab", "DefCore"); }
 global func GetDefGrabPutGet()  { return GetDefCoreVal("GrabPutGet", "DefCore"); }
 global func GetDefRotate()      { return GetDefCoreVal("Rotate", "DefCore"); }
 global func GetDefFloat()       { return GetDefCoreVal("Float", "DefCore"); }
-global func GetDefContainBlast(){ return GetDefCoreVal("ContainBlast", "DefCore"); }
 global func GetDefHorizontalFix() { return GetDefCoreVal("HorizontalFix", "DefCore"); }
-global func GetDefBorderBound() { return GetDefCoreVal("BorderBound", "DefCore"); }
 global func GetDefLiftTop()     { return GetDefCoreVal("LiftTop", "DefCore"); }
 global func GetDefUprightAttach() { return GetDefCoreVal("UprightAttach", "DefCore"); }
 global func GetDefStretchGrowth() { return GetDefCoreVal("StretchGrowth", "DefCore"); }
 global func GetDefIncompleteActivity()  { return GetDefCoreVal("IncompleteActivity", "DefCore"); }
-global func GetDefAttractLightning()  { return GetDefCoreVal("AttractLightning", "DefCore"); }
 global func GetDefOversize()    { return GetDefCoreVal("Oversize", "DefCore"); }
 global func GetDefFragile()     { return GetDefCoreVal("Fragile", "DefCore"); }
 global func GetDefProjectile()  { return GetDefCoreVal("Projectile", "DefCore"); }
 global func GetDefNoPushEnter() { return GetDefCoreVal("NoPushEnter", "DefCore"); }
 global func GetDefVehicleControl()  { return GetDefCoreVal("VehicleControl", "DefCore"); }
-global func GetDefNoComponentMass() { return GetDefCoreVal("NoComponentMass", "DefCore"); }
+global func GetDefNoMassFromContents() { return GetDefCoreVal("NoMassFromContents", "DefCore"); }
 global func GetDefClosedContainer() { return GetDefCoreVal("ClosedContainer", "DefCore"); }
 global func GetDefSilentCommands() { return GetDefCoreVal("SilentCommands", "DefCore"); }
 global func GetDefTemporaryCrew() { return GetDefCoreVal("TemporaryCrew", "DefCore"); }
@@ -62,7 +57,6 @@ global func GetObjFixX()       { return GetObjectVal("FixX", nil); }
 global func GetObjFixY()       { return GetObjectVal("FixY", nil); }
 global func GetObjWidth()      { return GetObjectVal("Width", nil); }
 global func GetObjHeight()     { return GetObjectVal("Height", nil); }
-global func GetObjFireTop()    { return GetObjectVal("FireTop", nil); }
 global func GetObjMobile()     { return GetObjectVal("Mobile", nil); }
 global func GetObjOnFire()     { return GetObjectVal("OnFire", nil); }
 global func GetObjInLiquid()   { return GetObjectVal("InLiquid", nil); }

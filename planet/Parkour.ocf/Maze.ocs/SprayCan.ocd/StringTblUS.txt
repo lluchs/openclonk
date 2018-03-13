@@ -1,2 +1,0 @@
-Name=Spray can
-UsageHelp=Let out the little artist in you!

@@ -43,65 +43,36 @@ protected func Initialize()
 		cp->ClearCPBack();
 	}
 	
+	MapBottomFix();
+	
 	/* --Environmental Effects-- */
 
 	// Time
-	var time = CreateObject(Environment_Time);
+	var time = CreateObject(Time);
 	time->SetCycleSpeed(0);
 	time->SetTime(900);
 
-	// Clouds
-	//	for (var i = 0; i < 30; i++)
-	//		CreateObject(CloudEffect, Random(LandscapeWidth()), Random(LandscapeHeight()))->Show(nil, nil, 5000, true);
 	// Snow
 	AddEffect("Snowfall", nil, 1, 2);
 	//Wind
-	Sound("WindLoop",true,40,nil,+1);
+	Sound("Environment::WindLoop", true, 40, nil, +1);
 
-	MapBottomFix();
-
-	var i = 0;
-	while(i < 10)
-	{
+	// Spawn some chests with items around the map.
+	for (var i = 0; i < 10; i++)
 		PlaceChest();
-		i++;
-	}
 
 	return;
 }
 
-global func PlaceChest()
+private func PlaceChest()
 {
-	// Place powderkegs and dynamite boxes
-	var spawnlist = [PowderKeg, DynamiteBox, Dynamite, Loam, Pickaxe, Ropeladder];
+	var pos = FindLocation(Loc_Material("Tunnel"), Loc_Wall(CNAT_Bottom));
+	var chest = CreateObjectAbove(Chest, pos.x, pos.y);
 
-	var pos = FindPosInMat("Tunnel", 0, 0, LandscapeWidth(), LandscapeHeight());
-	var chest = CreateObject(Chest, pos[0], pos[1]);
-
-	for(var i; i < 5; i++)
+	var spawnlist = [PowderKeg, DynamiteBox, Dynamite, Loam, Pickaxe, Ropeladder, Torch];
+	for (var i = 0; i < 5; i++)
 		chest->CreateContents(spawnlist[Random(GetLength(spawnlist))]);
-}
-
-protected func InitializePlayer(int player)
-{
-	SetPlayerTeam(player,1);
 	return;
-}
-
-// Callback from parkour goal: give the player useful tools on respawn.
-protected func OnPlayerRespawn(int plr, object cp)
-{
-	var clonk = GetCrew(plr);
-	clonk->CreateContents(Shovel);
-	clonk->CreateContents(Loam);
-	clonk->CreateContents(Dynamite);
-	return;
-}
-
-global func FxSnowfallTimer(object target, effect, int timer)
-{
-	CastPXS("Snow", 5, 1, RandomX(0, LandscapeWidth()), 1);
-	return 1;
 }
 
 private func MapBottomFix()
@@ -114,3 +85,30 @@ private func MapBottomFix()
 	}
 	return;
 }
+
+protected func InitializePlayer(int player)
+{
+	SetPlayerTeam(player, 1);
+	return;
+}
+
+// Callback from parkour goal: give the player useful tools on respawn.
+protected func OnPlayerRespawn(int plr, object cp)
+{
+	var clonk = GetCrew(plr);
+	clonk->CreateContents(Shovel);
+	clonk->CreateContents(Loam);
+	clonk->CreateContents(Dynamite);
+	clonk->CreateContents(Torch);
+	return;
+}
+
+global func FxSnowfallTimer(object target, effect, int timer)
+{
+	CastPXS("Snow", 5, 1, RandomX(0, LandscapeWidth()), 1);
+	return 1;
+}
+
+// This scenario has day and night but no celestial objects.
+public func HasNoCelestials() { return true; }
+

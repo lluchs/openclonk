@@ -3,7 +3,7 @@
  *
  * Copyright (c) 1998-2000, Matthes Bender
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2013, The OpenClonk Team and contributors
+ * Copyright (c) 2013-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -17,33 +17,29 @@
 
 /* The C4Action class is merely a simple data structure */
 
-#include <C4Include.h>
-#include <C4Object.h>
+#include "C4Include.h"
+#include "object/C4Object.h"
 
 C4Action::C4Action()
 {
 	Default();
 }
 
-C4Action::~C4Action()
-{
-
-}
+C4Action::~C4Action() = default;
 
 void C4Action::Default()
 {
-	//pActionDef = 0;
 	Dir=DIR_None;
 	DrawDir=Dir;
 	ComDir=COMD_Stop;
 	Time=0;
 	Data=0;
-	Target=Target2=NULL;
+	Target=Target2=nullptr;
 	Phase=PhaseDelay=0;
 	Facet.Default();
 	FacetX=FacetY=0;
 	t_attach=CNAT_None;
-	Animation = NULL;
+	Animation = nullptr;
 }
 
 void C4Action::CompileFunc(StdCompiler *pComp)

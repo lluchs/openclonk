@@ -2,7 +2,7 @@
  * OpenClonk, http://www.openclonk.org
  *
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -14,21 +14,19 @@
  * for the above references.
  */
 #include "C4Include.h"
-#include "C4GameParameters.h"
+#include "control/C4GameParameters.h"
 
-#include "C4Log.h"
-#include "C4Components.h"
-#include "C4Def.h"
-#include <C4DefList.h>
-#include <C4Game.h>
-#include <C4GameObjects.h>
-#include <C4Network2.h>
+#include "c4group/C4Components.h"
+#include "object/C4Def.h"
+#include "object/C4DefList.h"
+#include "game/C4Application.h"
+#include "network/C4Network2.h"
 
 // *** C4GameRes
 
 
 C4GameRes::C4GameRes()
-		: eType(NRT_Null), pResCore(NULL), pNetRes(NULL)
+		: pNetRes(nullptr)
 {
 
 }
@@ -64,8 +62,8 @@ void C4GameRes::Clear()
 	File.Clear();
 	if (pResCore && !pNetRes)
 		delete pResCore;
-	pResCore = NULL;
-	pNetRes = NULL;
+	pResCore = nullptr;
+	pNetRes = nullptr;
 }
 
 void C4GameRes::SetFile(C4Network2ResType enType, const char *sznFile)
@@ -93,15 +91,15 @@ void C4GameRes::SetNetRes(C4Network2Res::Ref pnNetRes)
 
 void C4GameRes::CompileFunc(StdCompiler *pComp)
 {
-	bool fCompiler = pComp->isCompiler();
+	bool deserializing = pComp->isDeserializer();
 	// Clear previous data for compiling
-	if (fCompiler) Clear();
+	if (deserializing) Clear();
 	// Core is needed to decompile something meaningful
-	if (!fCompiler) assert(pResCore);
+	if (!deserializing) assert(pResCore);
 	// De-/Compile core
 	pComp->Value(mkPtrAdaptNoNull(const_cast<C4Network2ResCore * &>(pResCore)));
 	// Compile: Set type accordingly
-	if (fCompiler)
+	if (deserializing)
 		eType = pResCore->getType();
 }
 
@@ -114,7 +112,7 @@ bool C4GameRes::Publish(C4Network2ResList *pNetResList)
 	bool fAllowUnloadable = false;
 	if (eType == NRT_Definitions) fAllowUnloadable = true;
 	// Add to network resource list
-	C4Network2Res::Ref pNetRes = pNetResList->AddByFile(File.getData(), false, eType, -1, NULL, fAllowUnloadable);
+	C4Network2Res::Ref pNetRes = pNetResList->AddByFile(File.getData(), false, eType, -1, nullptr, fAllowUnloadable);
 	if (!pNetRes) return false;
 	// Set resource
 	SetNetRes(pNetRes);
@@ -200,8 +198,8 @@ C4GameRes *C4GameResList::iterRes(C4GameRes *pLast, C4Network2ResType eType)
 				return pResList[i];
 		}
 		else if (pLast == pResList[i])
-			pLast = NULL;
-	return NULL;
+			pLast = nullptr;
+	return nullptr;
 }
 
 void C4GameResList::Clear()
@@ -210,7 +208,7 @@ void C4GameResList::Clear()
 	for (int32_t i = 0; i < iResCount; i++)
 		delete pResList[i];
 	delete [] pResList;
-	pResList = NULL;
+	pResList = nullptr;
 	iResCount = iResCapacity = 0;
 }
 
@@ -236,7 +234,8 @@ void C4GameResList::LoadFoldersWithLocalDefs(const char *szPath)
 		SCopy(szPath,szFoldername,iBackslash);
 		// Open folder
 		if (SEqualNoCase(GetExtension(szFoldername),"ocf"))
-			if (hGroup.Open(szFoldername))
+		{
+			if (Reloc.Open(hGroup, szFoldername))
 			{
 				// Check for contained defs
 				// do not, however, add them to the group set:
@@ -250,6 +249,11 @@ void C4GameResList::LoadFoldersWithLocalDefs(const char *szPath)
 				// Close folder
 				hGroup.Close();
 			}
+			else
+			{
+				LogF("Internal WARNING: Could not inspect folder %s for definitions.", szFoldername);
+			}
+		}
 	}
 }
 
@@ -272,7 +276,7 @@ bool C4GameResList::Load(C4Group &hGroup, C4Scenario *pScenario, const char * sz
 	// add System.ocg
 	CreateByFile(NRT_System, C4CFN_System);
 	// add all instances of Material.ocg, except those inside the scenario file
-	C4Group *pMatParentGrp = NULL;
+	C4Group *pMatParentGrp = nullptr;
 	while ((pMatParentGrp = Game.GroupSet.FindGroup(C4GSCnt_Material, pMatParentGrp)))
 		if (pMatParentGrp != &Game.ScenarioFile)
 		{
@@ -351,13 +355,13 @@ void C4GameResList::Add(C4GameRes *pRes)
 
 void C4GameResList::CompileFunc(StdCompiler *pComp)
 {
-	bool fCompiler = pComp->isCompiler();
+	bool deserializing = pComp->isDeserializer();
 	// Clear previous data
-	if (fCompiler) Clear();
+	if (deserializing) Clear();
 	// Compile resource count
 	pComp->Value(mkNamingCountAdapt(iResCount, "Resource"));
 	// Create list
-	if (fCompiler)
+	if (deserializing)
 	{
 		pResList = new C4GameRes *[iResCapacity = iResCount];
 		ZeroMem(pResList, sizeof(*pResList) * iResCount);
@@ -365,22 +369,18 @@ void C4GameResList::CompileFunc(StdCompiler *pComp)
 	// Compile list
 	pComp->Value(
 	  mkNamingAdapt(
-	    mkArrayAdaptMap(pResList, iResCount, /*(C4GameRes *)NULL, */ mkPtrAdaptNoNull<C4GameRes>),
+	    mkArrayAdaptMap(pResList, iResCount, mkPtrAdaptNoNull<C4GameRes>),
 	    "Resource"));
 	mkPtrAdaptNoNull<C4GameRes>(*pResList);
 }
 
+
+
 // *** C4GameParameters
 
-C4GameParameters::C4GameParameters()
-{
+C4GameParameters::C4GameParameters() = default;
 
-}
-
-C4GameParameters::~C4GameParameters()
-{
-
-}
+C4GameParameters::~C4GameParameters() = default;
 
 void C4GameParameters::Clear()
 {
@@ -394,9 +394,10 @@ void C4GameParameters::Clear()
 	PlayerInfos.Clear();
 	RestorePlayerInfos.Clear();
 	Teams.Clear();
+	ScenarioParameters.Clear();
 }
 
-bool C4GameParameters::Load(C4Group &hGroup, C4Scenario *pScenario, const char *szGameText, C4LangStringTable *pLang, const char *DefinitionFilenames)
+bool C4GameParameters::Load(C4Group &hGroup, C4Scenario *pScenario, const char *szGameText, C4LangStringTable *pLang, const char *DefinitionFilenames, C4ScenarioParameters *pStartupScenarioParameters)
 {
 	// Clear previous data
 	Clear();
@@ -454,7 +455,10 @@ bool C4GameParameters::Load(C4Group &hGroup, C4Scenario *pScenario, const char *
 		IsNetworkGame = Game.NetworkActive;
 
 		// Auto frame skip by options
-		AutoFrameSkip = ::Config.Graphics.AutoFrameSkip;
+		AutoFrameSkip = !!::Config.Graphics.AutoFrameSkip;
+
+		// custom parameters from startup
+		if (pStartupScenarioParameters) ScenarioParameters = *pStartupScenarioParameters;
 	}
 
 
@@ -472,6 +476,11 @@ void C4GameParameters::EnforceLeagueRules(C4Scenario *pScenario)
 	Teams.EnforceLeagueRules();
 	AllowDebug = false;
 	if (pScenario) MaxPlayers = pScenario->Head.MaxPlayerLeague;
+	// forced league values in custom scenario parameters
+	size_t idx=0; const C4ScenarioParameterDef *pdef; int32_t val;
+	while ((pdef = ::Game.ScenarioParameterDefs.GetParameterDefByIndex(idx++)))
+		if ((val = pdef->GetLeagueValue()))
+			ScenarioParameters.SetValue(pdef->GetID(), val, false);
 }
 
 bool C4GameParameters::Save(C4Group &hGroup, C4Scenario *pScenario)
@@ -507,6 +516,7 @@ void C4GameParameters::CompileFunc(StdCompiler *pComp, C4Scenario *pScenario)
 	pComp->Value(mkNamingAdapt(MaxPlayers,        "MaxPlayers",       !pScenario ? 0 : pScenario->Head.MaxPlayer));
 	pComp->Value(mkNamingAdapt(AllowDebug,        "AllowDebug",       true));
 	pComp->Value(mkNamingAdapt(IsNetworkGame,     "IsNetworkGame",    false));
+	pComp->Value(mkNamingAdapt(IsEditor,          "IsEditor",         !!::Application.isEditor));
 	pComp->Value(mkNamingAdapt(ControlRate,       "ControlRate",      -1));
 	pComp->Value(mkNamingAdapt(AutoFrameSkip,     "AutoFrameSkip",    false));
 	pComp->Value(mkNamingAdapt(Rules,             "Rules",            !pScenario ? C4IDList() : pScenario->Game.Rules));
@@ -529,9 +539,11 @@ void C4GameParameters::CompileFunc(StdCompiler *pComp, C4Scenario *pScenario)
 
 	pComp->Value(Clients);
 
+	pComp->Value(mkNamingAdapt(ScenarioParameters, "ScenarioParameters"));
+
 }
 
-StdStrBuf C4GameParameters::GetGameGoalString()
+StdStrBuf C4GameParameters::GetGameGoalString() const
 {
 	// getting game goals from the ID list
 	// unfortunately, names cannot be deduced before object definitions are loaded

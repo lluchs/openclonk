@@ -3,7 +3,7 @@
  *
  * Copyright (c) 1998-2000, Matthes Bender
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -17,29 +17,26 @@
 // a wrapper class to DirectDraw surfaces
 
 #include "C4Include.h"
-#include <CSurface8.h>
-#include <Bitmap256.h>
-#include <StdPNG.h>
-#include <C4Draw.h>
-#include <CStdFile.h>
-#include <Bitmap256.h>
+#include "graphics/CSurface8.h"
 
-#include "limits.h"
+#include "graphics/Bitmap256.h"
+#include "c4group/CStdFile.h"
+#include "lib/StdColors.h"
 
 CSurface8::CSurface8()
 {
 	Wdt=Hgt=Pitch=0;
 	ClipX=ClipY=ClipX2=ClipY2=0;
-	Bits=NULL;
-	pPal=NULL;
+	Bits=nullptr;
+	pPal=nullptr;
 }
 
 CSurface8::CSurface8(int iWdt, int iHgt)
 {
 	Wdt=Hgt=Pitch=0;
 	ClipX=ClipY=ClipX2=ClipY2=0;
-	Bits=NULL;
-	pPal=NULL;
+	Bits=nullptr;
+	pPal=nullptr;
 	Create(iWdt, iHgt);
 }
 
@@ -51,10 +48,10 @@ CSurface8::~CSurface8()
 void CSurface8::Clear()
 {
 	// clear bitmap-copy
-	delete [] Bits; Bits=NULL;
+	delete [] Bits; Bits=nullptr;
 	// clear pal
 	delete pPal;
-	pPal=NULL;
+	pPal=nullptr;
 }
 
 void CSurface8::Box(int iX, int iY, int iX2, int iY2, int iCol)
@@ -69,8 +66,8 @@ void CSurface8::NoClip()
 
 void CSurface8::Clip(int iX, int iY, int iX2, int iY2)
 {
-	ClipX=BoundBy(iX,0,Wdt-1); ClipY=BoundBy(iY,0,Hgt-1);
-	ClipX2=BoundBy(iX2,0,Wdt-1); ClipY2=BoundBy(iY2,0,Hgt-1);
+	ClipX=Clamp(iX,0,Wdt-1); ClipY=Clamp(iY,0,Hgt-1);
+	ClipX2=Clamp(iX2,0,Wdt-1); ClipY2=Clamp(iY2,0,Hgt-1);
 }
 
 void CSurface8::HLine(int iX, int iX2, int iY, int iCol)
@@ -88,6 +85,7 @@ bool CSurface8::Create(int iWdt, int iHgt)
 	// create pal
 	pPal = new CStdPalette;
 	if (!pPal) return false;
+	memset(pPal->Colors, 0, sizeof(pPal->Colors));
 
 	Bits=new BYTE[Wdt*Hgt];
 	if (!Bits) return false;
@@ -116,9 +114,6 @@ bool CSurface8::Read(CStdStream &hGroup)
 		if (BitmapInfo.Info.biBitCount != 24) return false;
 		if (!hGroup.Advance(((C4BMPInfo) BitmapInfo).FileBitsOffset())) return false;
 	}
-	// no 8bpp-surface in newgfx!
-	// needs to be kept for some special surfaces
-	//f8BitSfc=false;
 
 	// Create and lock surface
 	if (!Create(BitmapInfo.Info.biWidth,BitmapInfo.Info.biHeight)) return false;
@@ -173,7 +168,8 @@ bool CSurface8::Save(const char *szFilename, CStdPalette *bpPalette)
 		{ return false; }
 
 	// Write lines
-	char bpEmpty[4]; int iEmpty = DWordAligned(Wdt)-Wdt;
+	char bpEmpty[4]; ZeroMem(bpEmpty, 4);
+	const int iEmpty = DWordAligned(Wdt)-Wdt;
 	for (int cnt=Hgt-1; cnt>=0; cnt--)
 	{
 		if (!hFile.Write(Bits+(Pitch*cnt),Wdt))
@@ -196,7 +192,7 @@ void CSurface8::MapBytes(BYTE *bpMap)
 	for (int cnt=0; cnt<Wdt*Hgt; cnt++) SetPix(cnt%Wdt, cnt/Wdt, bpMap[GetPix(cnt%Wdt, cnt/Wdt)]);
 }
 
-void CSurface8::GetSurfaceSize(int &irX, int &irY)
+void CSurface8::GetSurfaceSize(int &irX, int &irY) const
 {
 	// simply assign stored values
 	irX=Wdt;
@@ -254,6 +250,6 @@ void CSurface8::SetBuffer(BYTE *pbyToBuf, int Wdt, int Hgt, int Pitch)
 
 void CSurface8::ReleaseBuffer()
 {
-	this->Bits = NULL;
+	this->Bits = nullptr;
 	Clear();
 }

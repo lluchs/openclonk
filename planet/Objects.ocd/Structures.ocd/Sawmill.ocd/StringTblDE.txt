@@ -1,2 +1,6 @@
-Name=S‰gewerk
-Description=Das S‰gewerk kann B‰ume effizient in Holz zers‰gen, braucht dazu aber Strom. 
+Name=S√§gewerk
+Description=Das S√§gewerk kann B√§ume effizient in Holz zers√§gen, braucht dazu aber Strom. 
+
+AutoProduction=Das S√§gewerk verarbeitet automatisch B√§ume oder h√∂lzerne Objekte zu Holz.
+WoodInQueue=Holz in Produktion
+Production=Produktion

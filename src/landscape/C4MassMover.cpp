@@ -3,7 +3,7 @@
  *
  * Copyright (c) 1998-2000, Matthes Bender
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -17,15 +17,14 @@
 
 /* Move liquids in the landscape using individual transport spots */
 
-#include <C4Include.h>
-#include <C4MassMover.h>
+#include "C4Include.h"
+#include "landscape/C4MassMover.h"
 
-#include <C4Components.h>
-#include <C4Random.h>
-#include <C4Material.h>
-#include <C4Game.h>
-#include <C4Landscape.h>
-#include <C4Record.h>
+#include "c4group/C4Components.h"
+#include "control/C4Record.h"
+#include "landscape/C4Material.h"
+#include "landscape/C4Landscape.h"
+#include "lib/C4Random.h"
 
 // Note: creation optimized using advancing CreatePtr, so sequential
 // creation does not keep rescanning the complete set for a free
@@ -96,15 +95,12 @@ bool C4MassMoverSet::Create(int32_t x, int32_t y, bool fExecute)
 
 void C4MassMoverSet::Draw()
 {
-	/*int32_t cnt;
-	for (cnt=0; cnt<C4MassMoverChunk; cnt++)
-	  if (Set[cnt].Mat!=MNone)*/
 }
 
 bool C4MassMover::Init(int32_t tx, int32_t ty)
 {
 	// Out of bounds check
-	if (!Inside<int32_t>(tx,0,GBackWdt-1) || !Inside<int32_t>(ty,0,GBackHgt-1))
+	if (!Inside<int32_t>(tx,0,::Landscape.GetWidth()-1) || !Inside<int32_t>(ty,0,::Landscape.GetHeight()-1))
 		return false;
 	// Check mat
 	Mat=GBackMat(tx,ty);
@@ -141,7 +137,7 @@ bool C4MassMover::Execute()
 		if (Corrosion(+0,+1) || Corrosion(-1,+0) || Corrosion(+1,+0))
 		{
 			// material has been used up
-			::Landscape.ExtractMaterial(x,y);
+			::Landscape.ExtractMaterial(x,y,false);
 			return true;
 		}
 
@@ -158,7 +154,7 @@ bool C4MassMover::Execute()
 	    }*/
 
 	// Transfer mass
-	int32_t mat = ::Landscape.ExtractMaterial(x,y);
+	int32_t mat = ::Landscape.ExtractMaterial(x,y,false);
 	if (Random(10))
 		::Landscape.InsertDeadMaterial(mat, tx, ty);
 	else
@@ -178,7 +174,7 @@ bool C4MassMover::Corrosion(int32_t dx, int32_t dy)
 	if (pReact)
 	{
 		C4Real xdir=Fix0, ydir=Fix0;
-		if ((*pReact->pFunc)(pReact, x,y, x+dx,y+dy, xdir,ydir, Mat,tmat, meeMassMove, NULL))
+		if ((*pReact->pFunc)(pReact, x,y, x+dx,y+dy, xdir,ydir, Mat,tmat, meeMassMove, nullptr))
 			return true;
 	}
 	return false;

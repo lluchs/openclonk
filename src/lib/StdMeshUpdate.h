@@ -1,7 +1,7 @@
 /*
  * OpenClonk, http://www.openclonk.org
  *
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -15,9 +15,6 @@
 
 #ifndef INC_StdMeshUpdate
 #define INC_StdMeshUpdate
-
-#include <StdMesh.h>
-#include <StdMeshMaterial.h>
 
 // This is a helper class to fix pointers after an update of StdMeshMaterials.
 // To update one or more materials, remove them from the MaterialManager with
@@ -33,7 +30,7 @@ public:
 	StdMeshMaterialUpdate(StdMeshMatManager& manager);
 
 	void Update(StdMesh* mesh) const;
-	void Update(StdMeshInstance* instance) const; // not this is NOT recursive
+	void Update(StdMeshInstance* instance) const; // note this is NOT recursive
 
 	void Cancel() const;
 
@@ -45,24 +42,44 @@ private:
 };
 
 // This is a helper class to update the underlying StdMesh of certain mesh
-// instances. It tries to preserve all animations, attached meshes etc.,
-// however might not be able to do so in which case animations/attached
-// meshes are removed.
+// instances. It updated the StdMeshInstance::Mesh pointer, and tries to
+// preserve attached meshes, however might not be able to do so in which case
+// attached meshes are removed.
 class StdMeshUpdate
 {
 public:
 	StdMeshUpdate(const StdMesh& old_mesh);
 
+	// Not recursive for attached meshes
 	void Update(StdMeshInstance* instance, const StdMesh& new_mesh) const;
 
 	const StdMesh& GetOldMesh() const { return *OldMesh; }
+
 private:
-	bool UpdateAnimationNode(StdMeshInstance* instance, const StdMesh& new_mesh, StdMeshInstance::AnimationNode* node) const;
+	bool UpdateAnimationNode(StdMeshInstance* instance, StdMeshInstanceAnimationNode* node) const;
 
 	const StdMesh* OldMesh;
 
-	std::map<const StdMeshAnimation*, StdCopyStrBuf> AnimationNames;
 	std::vector<StdCopyStrBuf> BoneNamesByIndex;
+};
+
+// This is a helper class to update the animation state of all mesh instances
+// after a definition reload. It tries to keep the animation state by
+// animation name and removes animations if that is not possible.
+class StdMeshAnimationUpdate
+{
+public:
+	StdMeshAnimationUpdate(const StdMeshSkeletonLoader& skeleton_loader);
+
+	// Note that this is not recursive for attached meshes, and that the
+	// pointer to the StdMesh object must already have been fixed with
+	// a call to StdMeshUpdate::Update().
+	void Update(StdMeshInstance* instance) const;
+
+private:
+	bool UpdateAnimationNode(StdMeshInstance* instance, StdMeshInstanceAnimationNode* node) const;
+
+	std::map<const StdMeshAnimation*, StdCopyStrBuf> AnimationNames;
 };
 
 #endif

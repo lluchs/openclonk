@@ -1,6 +1,6 @@
 # OpenClonk, http://www.openclonk.org
 #
-# Copyright (c) 2013, The OpenClonk Team and contributors
+# Copyright (c) 2013-2016, The OpenClonk Team and contributors
 #
 # Distributed under the terms of the ISC license; see accompanying file
 # "COPYING" for details.
@@ -16,6 +16,6 @@ macro(REQUIRE_CXX_SOURCE_COMPILES _code _var)
 	CHECK_CXX_SOURCE_COMPILES("${_code}" ${_var})
 	if(NOT ${_var})
 		unset(${_var} CACHE)
-		MESSAGE(FATAL_ERROR "${_var} is required for this project to build properly. Aborting.")
+		MESSAGE(FATAL_ERROR "${_var} is required for this project to build properly.${ARGN} Aborting.")
 	endif()
 endmacro()

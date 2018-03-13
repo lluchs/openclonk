@@ -2,7 +2,7 @@
  * OpenClonk, http://www.openclonk.org
  *
  * Copyright (c) 2001-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2009-2013, The OpenClonk Team and contributors
+ * Copyright (c) 2009-2016, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -14,13 +14,13 @@
  * for the above references.
  */
 
-#include "C4Value.h"
+#include "script/C4Value.h"
 
 #ifndef INC_C4ValueList
 #define INC_C4ValueList
 
 // reference counted array of C4Values
-class C4ValueArray
+class C4ValueArray: public C4RefCnt
 {
 public:
 	enum { MaxSize = 1000000 }; // ye shalt not create arrays larger than that!
@@ -29,7 +29,7 @@ public:
 	C4ValueArray(int32_t inSize);
 	C4ValueArray(const C4ValueArray &);
 
-	~C4ValueArray();
+	~C4ValueArray() override;
 
 	C4ValueArray &operator =(const C4ValueArray&);
 
@@ -45,12 +45,22 @@ public:
 			return C4VNull;
 	}
 
+	const C4Value &_GetItem(int32_t iElem) const // unchecked access; not auto-increasing array
+	{
+		return pData[iElem];
+	}
+
 	C4Value operator[](int32_t iElem) const { return GetItem(iElem); }
 	C4Value &operator[](int32_t iElem); // interface for the engine, asserts that 0 <= index < MaxSize
 
 	void Reset();
 	void SetItem(int32_t iElemNr, const C4Value &Value); // interface for script
 	void SetSize(int32_t inSize); // (enlarge only!)
+
+	// for arrays declared in script constants
+	void Freeze() { constant = true; }
+	void Thaw() { constant = false; }
+	bool IsFrozen() const { return constant; }
 
 	void Denumerate(C4ValueNumbers *);
 
@@ -59,11 +69,6 @@ public:
 
 	// Compilation
 	void CompileFunc(class StdCompiler *pComp, C4ValueNumbers *);
-
-
-	// Add/Remove Reference
-	void IncRef() { iRefCnt++; }
-	void DecRef() { if (!--iRefCnt) delete this;  }
 
 	// Return sub-array [startIndex, endIndex). Throws C4AulExecError.
 	C4ValueArray * GetSlice(int32_t startIndex, int32_t endIndex);
@@ -77,10 +82,9 @@ public:
 	bool SortByArrayElement(int32_t array_idx, bool descending=false); // checks that this is an array of all arrays and sorts by array elements at index. returns false if an element is not an array or smaller than array_idx+1
 
 private:
-	// Reference counter
-	unsigned int iRefCnt;
-	int32_t iSize, iCapacity;
-	C4Value* pData;
+	C4Value* pData{nullptr};
+	int32_t iSize{0}, iCapacity{0};
+	bool constant{false}; // if true, this array is not changeable
 };
 
 #endif
