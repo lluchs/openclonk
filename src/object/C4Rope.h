@@ -19,7 +19,7 @@
 #define INC_C4Rope
 
 #include <stdexcept>
-#include <C4Object.h>
+#include "object/C4Object.h"
 
 // All units in pixels and frames
 
@@ -154,19 +154,12 @@ private:
 	C4Real BackPull;
 };
 
-class C4RopeAul: public C4AulScript
+class C4RopeAul: public C4PropListStaticMember
 {
+	static constexpr const char* NAME = "Rope";
 public:
 	C4RopeAul();
-	virtual ~C4RopeAul();
-
-	virtual bool Delete() { return false; }
-	virtual C4PropListStatic* GetPropList() { return RopeDef; }
-
-	void InitFunctionMap(C4AulScriptEngine* pEngine);
-
-protected:
-	C4PropListStatic* RopeDef;
+	void InitFunctionMap(C4AulScriptEngine* engine);
 };
 
 class C4RopeList

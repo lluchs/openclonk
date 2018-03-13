@@ -15,14 +15,13 @@
  * See clonk_trademark_license.txt for full license.
  */
 
-#include <C4Include.h>
-#include <C4Rope.h>
-#include <C4AulDefFunc.h>
+#include "C4Include.h"
+#include "object/C4Rope.h"
+#include "script/C4AulDefFunc.h"
 
-static C4Void FnRemove(C4Rope* Rope)
+static void FnRemove(C4Rope* Rope)
 {
 	Game.Ropes.RemoveRope(Rope);
-	return C4Void();
 }
 
 static C4Object* FnGetFront(C4Rope* Rope)
@@ -35,72 +34,51 @@ static C4Object* FnGetBack(C4Rope* Rope)
 	return Rope->GetBack()->GetObject();
 }
 
-static C4Void FnSetFront(C4Rope* Rope, C4Object* obj, Nillable<int> x, Nillable<int> y)
+static void FnSetFront(C4Rope* Rope, C4Object* obj, Nillable<int> x, Nillable<int> y)
 {
 	Rope->SetFront(obj, x.IsNil() ? Fix0 : itofix(x), y.IsNil() ? Fix0 : itofix(y));
-	return C4Void();
 }
 
-static C4Void FnSetBack(C4Rope* Rope, C4Object* obj, Nillable<int> x, Nillable<int> y)
+static void FnSetBack(C4Rope* Rope, C4Object* obj, Nillable<int> x, Nillable<int> y)
 {
 	Rope->SetBack(obj, x.IsNil() ? Fix0 : itofix(x), y.IsNil() ? Fix0 : itofix(y));
-	return C4Void();
 }
 
-static C4Void FnSetFrontAutoSegmentation(C4Rope* Rope, int max)
+static void FnSetFrontAutoSegmentation(C4Rope* Rope, int max)
 {
 	Rope->SetFrontAutoSegmentation(itofix(max));
-	return C4Void();
 }
 
-static C4Void FnSetBackAutoSegmentation(C4Rope* Rope, int max)
+static void FnSetBackAutoSegmentation(C4Rope* Rope, int max)
 {
 	Rope->SetBackAutoSegmentation(itofix(max));
-	return C4Void();
 }
 
-static C4Void FnSetFrontFixed(C4Rope* Rope, bool fixed)
+static void FnSetFrontFixed(C4Rope* Rope, bool fixed)
 {
 	Rope->SetFrontFixed(fixed);
-	return C4Void();
 }
 
-static C4Void FnSetBackFixed(C4Rope* Rope, bool fixed)
+static void FnSetBackFixed(C4Rope* Rope, bool fixed)
 {
 	Rope->SetBackFixed(fixed);
-	return C4Void();
 }
 
-static C4Void FnPullFront(C4Rope* Rope, int force)
+static void FnPullFront(C4Rope* Rope, int force)
 {
 	Rope->PullFront(itofix(force));
-	return C4Void();
 }
 
-static C4Void FnPullBack(C4Rope* Rope, int force)
+static void FnPullBack(C4Rope* Rope, int force)
 {
 	Rope->PullBack(itofix(force));
-	return C4Void();
 }
 
-C4RopeAul::C4RopeAul():
-	RopeDef(NULL)
-{
-}
+C4RopeAul::C4RopeAul() : C4PropListStaticMember(nullptr, nullptr, ::Strings.RegString(NAME)) {}
 
-C4RopeAul::~C4RopeAul()
+void C4RopeAul::InitFunctionMap(C4AulScriptEngine* engine)
 {
-	delete RopeDef;
-}
-
-void C4RopeAul::InitFunctionMap(C4AulScriptEngine* pEngine)
-{
-	delete RopeDef;
-	RopeDef = C4PropList::NewStatic(NULL, NULL, ::Strings.RegString("Rope"));
-	RopeDef->SetName("Rope");
-	pEngine->RegisterGlobalConstant("Rope", C4VPropList(RopeDef));
-
-	Reg2List(pEngine);
+	engine->RegisterGlobalConstant(NAME, C4VPropList(this));
 
 	::AddFunc(this, "Remove", FnRemove);
 	::AddFunc(this, "GetFront", FnGetFront);
@@ -113,5 +91,6 @@ void C4RopeAul::InitFunctionMap(C4AulScriptEngine* pEngine)
 	::AddFunc(this, "SetBackFixed", FnSetBackFixed);
 	::AddFunc(this, "PullFront", FnPullFront);
 	::AddFunc(this, "PullBack", FnPullBack);
-	RopeDef->Freeze();
+
+	Freeze();
 }

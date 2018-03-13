@@ -113,6 +113,17 @@ template <> struct ThisImpl<C4Object>
 			throw NeedObjectContext(func->GetName());
 	}
 };
+template <> struct ThisImpl<C4Rope>
+{
+	static C4Rope* Conv(C4PropList* _this, C4AulFunc* func)
+	{
+		C4Rope* Rope = _this ? dynamic_cast<C4Rope*>(_this) : nullptr;
+		if (Rope)
+			return Rope;
+		else
+			throw NeedRopeContext(func->GetName());
+	}
+};
 template <> struct ThisImpl<C4PropList>
 {
 	static C4PropList* Conv(C4PropList* _this, C4AulFunc* func)

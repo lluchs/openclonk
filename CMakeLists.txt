@@ -714,6 +714,7 @@ set(OC_CLONK_SOURCES
 	src/object/C4ObjectMenu.cpp
 	src/object/C4ObjectMenu.h
 	src/object/C4ObjectScript.cpp
+	src/object/C4Rope.cpp
 	src/platform/C4App.cpp
 	src/platform/C4App.h
 	src/platform/C4AppWin32Impl.h
@@ -1145,7 +1146,6 @@ add_library(libopenclonk
 	src/object/C4Movement.cpp
 	src/object/C4ObjectPtr.cpp
 	src/object/C4ObjectPtr.h
-	src/object/C4Rope.cpp
 	src/object/C4Rope.h
 	src/object/C4RopeScript.cpp
 	src/object/C4Sector.cpp

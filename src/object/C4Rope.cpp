@@ -17,9 +17,11 @@
 
 #include <queue>
 
-#include <C4Include.h>
-#include <C4Landscape.h>
-#include <C4Rope.h>
+#include "C4Include.h"
+#include "landscape/C4Landscape.h"
+#include "object/C4Def.h"
+#include "object/C4Rope.h"
+#include "graphics/C4DrawGL.h"
 
 //#define C4ROPE_DRAW_DEBUG
 
@@ -74,6 +76,7 @@ namespace
 		out4.y = v2.y + w/2.0f * (v1.x - v2.x) / l;
 	}
 
+#ifndef USE_CONSOLE
 	// Copied from StdGL.cpp... actually the rendering code should be moved
 	// there so we don't need to duplicate it here.
 	bool ApplyZoomAndTransform(float ZoomX, float ZoomY, float Zoom, C4BltTransform* pTransform)
@@ -102,6 +105,7 @@ namespace
 
 		return true;
 	}
+#endif // USE_CONSOLE
 
 	struct point_t { point_t(int x_, int y_): x(x_), y(y_) {} int x, y; };
 	struct point_p { point_p(int x_, int y_, unsigned int f_): x(x_), y(y_), f(f_) {} int x, y; unsigned int f; };
@@ -136,10 +140,10 @@ namespace
 		// Instead, we use an path finding algorithm on a small grid. This is
 		// good enough for our case, since distances we search are
 		// usually very small.
-		int min_x = Min(from_x, to_x) - abs(to_x - from_x) / 2;
-		int max_x = Max(from_x, to_x) + abs(to_x - from_x) / 2;
-		int min_y = Min(from_y, to_y) - abs(to_y - from_y) / 2;
-		int max_y = Max(from_y, to_y) + abs(to_y - from_y) / 2;
+		int min_x = std::min(from_x, to_x) - abs(to_x - from_x) / 2;
+		int max_x = std::max(from_x, to_x) + abs(to_x - from_x) / 2;
+		int min_y = std::min(from_y, to_y) - abs(to_y - from_y) / 2;
+		int max_y = std::max(from_y, to_y) + abs(to_y - from_y) / 2;
 
 		// Make a grid of at least 21x21 pixels
 		static const unsigned int GRID_N = 21u;
@@ -278,7 +282,7 @@ namespace
 	{
 		int px = from_x;
 		int py = from_y;
-		const int max_p = Max(abs(to_x - from_x), abs(to_y - from_y));
+		const int max_p = std::max(abs(to_x - from_x), abs(to_y - from_y));
 		for(int i = 1; i <= max_p; ++i)
 		{
 			const int inter_x = from_x + i * (to_x - from_x) / max_p;
@@ -464,7 +468,7 @@ void C4RopeElement::ScanAndInsertLinks(C4RopeElement* from, C4RopeElement* to, i
 		}
 
 		// Way too long...
-		if(len > Max(15u, 2*direct_len)) return;
+		if(len > std::max(15u, 2*direct_len)) return;
 	}
 
 	assert(remaining_waypoints.size() >= 2);
@@ -848,10 +852,10 @@ C4Real C4Rope::GetL(const C4RopeElement* prev, const C4RopeElement* next) const
 
 	if(FrontAutoSegmentation > Fix0)
 		if(prev == Front || next == Front)
-			return Min(itofix(5), Len(dx, dy));
+			return std::min(itofix(5), Len(dx, dy));
 	if(BackAutoSegmentation > Fix0)
 		if(prev == Back || next == Back)
-			return Min(itofix(5), Len(dx, dy));
+			return std::min(itofix(5), Len(dx, dy));
 
 	return l;
 }
@@ -1027,8 +1031,8 @@ void C4Rope::Solve(C4RopeElement* prev, C4RopeElement* next)
 	// non-end rope segments!
 
 	// Don't apply gravity to objects since it's applied already in C4Object execution.
-	prev->AddForce(Fix0, (prev->GetObject() ? Fix0 : prev->GetMass() * ::Landscape.Gravity/5));
-	next->AddForce(Fix0, (prev->GetObject() ? Fix0 : next->GetMass() * ::Landscape.Gravity/5));
+	prev->AddForce(Fix0, (prev->GetObject() ? Fix0 : prev->GetMass() * ::Landscape.GetGravity()/5));
+	next->AddForce(Fix0, (prev->GetObject() ? Fix0 : next->GetMass() * ::Landscape.GetGravity()/5));
 }
 
 void C4Rope::Execute()
@@ -1064,7 +1068,7 @@ void C4Rope::Execute()
 				d = Len(dx, dy);
 				if(d != Fix0)
 					cur->AddForce(-dx/d * FrontPull, -dy/d * FrontPull);
-			} while(cur->Next != NULL && d < itofix(5,10*l));
+			} while(cur->Next != NULL && d < itofix(5,10));
 		}
 
 		if(BackPull != Fix0)
@@ -1080,7 +1084,7 @@ void C4Rope::Execute()
 				d = Len(dx, dy);
 				if(d != Fix0)
 					cur->AddForce(-dx/d * BackPull, -dy/d * BackPull);
-			} while(cur->Prev != NULL && d < itofix(5,10*l));
+			} while(cur->Prev != NULL && d < itofix(5,10));
 		}
 
 		// Apply forces
@@ -1147,6 +1151,7 @@ void C4Rope::ClearPointers(C4Object* obj)
 // TODO: Move this to StdGL
 void C4Rope::Draw(C4TargetFacet& cgo, C4BltTransform* pTransform)
 {
+#ifndef USE_CONSOLE
 #ifndef C4ROPE_DRAW_DEBUG
 	Vertex Tmp[4];
 	DrawVertex* Vertices = new DrawVertex[SegmentCount*2+4]; // TODO: Use a vbo and map it into memory instead?
@@ -1204,10 +1209,10 @@ void C4Rope::Draw(C4TargetFacet& cgo, C4BltTransform* pTransform)
 		float dx2 = Vertices[i-1].x - Vertices[i-2].x;
 		float dy2 = Vertices[i-1].y - Vertices[i-2].y;
 		const float d = (dx2*dx2+dy2*dy2)/(dx*dx2+dy*dy2);
-		Vertices[i  ].x = ( (Tmp[2].x + Tmp[3].x)/2.0f) - BoundBy((Tmp[3].x - Tmp[2].x)*d, -Width, Width)/2.0f;
-		Vertices[i  ].y = ( (Tmp[2].y + Tmp[3].y)/2.0f) - BoundBy((Tmp[3].y - Tmp[2].y)*d, -Width, Width)/2.0f;
-		Vertices[i+1].x = ( (Tmp[2].x + Tmp[3].x)/2.0f) + BoundBy((Tmp[3].x - Tmp[2].x)*d, -Width, Width)/2.0f;
-		Vertices[i+1].y = ( (Tmp[2].y + Tmp[3].y)/2.0f) + BoundBy((Tmp[3].y - Tmp[2].y)*d, -Width, Width)/2.0f;
+		Vertices[i  ].x = ( (Tmp[2].x + Tmp[3].x)/2.0f) - Clamp((Tmp[3].x - Tmp[2].x)*d, -Width, Width)/2.0f;
+		Vertices[i  ].y = ( (Tmp[2].y + Tmp[3].y)/2.0f) - Clamp((Tmp[3].y - Tmp[2].y)*d, -Width, Width)/2.0f;
+		Vertices[i+1].x = ( (Tmp[2].x + Tmp[3].x)/2.0f) + Clamp((Tmp[3].x - Tmp[2].x)*d, -Width, Width)/2.0f;
+		Vertices[i+1].y = ( (Tmp[2].y + Tmp[3].y)/2.0f) + Clamp((Tmp[3].y - Tmp[2].y)*d, -Width, Width)/2.0f;
 
 		accl += fixtof(GetL(cur->Prev, cur));
 		Vertices[i].u = 0.0f; //parity ? 0.0f : 1.0f;
@@ -1229,7 +1234,7 @@ void C4Rope::Draw(C4TargetFacet& cgo, C4BltTransform* pTransform)
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
 	glEnable(GL_TEXTURE_2D);
-	glBindTexture(GL_TEXTURE_2D, (*Graphics->GetBitmap()->ppTex)->texName);
+	glBindTexture(GL_TEXTURE_2D, Graphics->GetBitmap()->texture->texName);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
@@ -1280,7 +1285,7 @@ void C4Rope::Draw(C4TargetFacet& cgo, C4BltTransform* pTransform)
 		if(v > 0.1)
 		{
 			glBegin(GL_TRIANGLES);
-			glColor3f(BoundBy(v/2.5f, 0.0f, 1.0f), 0.0f, 1.0f);
+			glColor3f(Clamp(v/2.5f, 0.0f, 1.0f), 0.0f, 1.0f);
 			glVertex2f(fixtof(cur->GetX()) + vx/v*4.0f, fixtof(cur->GetY()) + vy/v*4.0f);
 			glVertex2f(fixtof(cur->GetX()) - vy/v*1.5f, fixtof(cur->GetY()) + vx/v*1.5f);
 			glVertex2f(fixtof(cur->GetX()) + vy/v*1.5f, fixtof(cur->GetY()) - vx/v*1.5f);
@@ -1293,7 +1298,7 @@ void C4Rope::Draw(C4TargetFacet& cgo, C4BltTransform* pTransform)
 		if(f > 0.1)
 		{
 			glBegin(GL_TRIANGLES);
-			glColor3f(0.0f, 1.0f, BoundBy(v/2.5f, 0.0f, 1.0f));
+			glColor3f(0.0f, 1.0f, Clamp(v/2.5f, 0.0f, 1.0f));
 			glVertex2f(fixtof(cur->GetX()) + fx/f*4.0f, fixtof(cur->GetY()) + fy/f*4.0f);
 			glVertex2f(fixtof(cur->GetX()) - fy/f*1.5f, fixtof(cur->GetY()) + fx/f*1.5f);
 			glVertex2f(fixtof(cur->GetX()) + fy/f*1.5f, fixtof(cur->GetY()) - fx/f*1.5f);
@@ -1306,14 +1311,15 @@ void C4Rope::Draw(C4TargetFacet& cgo, C4BltTransform* pTransform)
 		if(r > 0.1)
 		{
 			glBegin(GL_TRIANGLES);
-			glColor3f(0.0f, BoundBy(r/2.5f, 0.0f, 1.0f), 1.0f);
+			glColor3f(0.0f, Clamp(r/2.5f, 0.0f, 1.0f), 1.0f);
 			glVertex2f(fixtof(cur->x) + rx/r*4.0f, fixtof(cur->y) + ry/r*4.0f);
 			glVertex2f(fixtof(cur->x) - ry/r*1.5f, fixtof(cur->y) + rx/r*1.5f);
 			glVertex2f(fixtof(cur->x) + ry/r*1.5f, fixtof(cur->y) - rx/r*1.5f);
 			glEnd();
 		}
 	}
-#endif
+#endif // C4ROPE_DRAW_DEBUG
+#endif // USE_CONSOLE
 }
 
 C4RopeList::C4RopeList()
@@ -1324,7 +1330,7 @@ C4RopeList::C4RopeList()
 
 C4Rope* C4RopeList::CreateRope(C4Object* first_obj, C4Object* second_obj, C4Real segment_length, C4DefGraphics* graphics)
 {
-	Ropes.push_back(new C4Rope(RopeAul.GetPropList(), first_obj, second_obj, segment_length, graphics));
+	Ropes.push_back(new C4Rope(&RopeAul, first_obj, second_obj, segment_length, graphics));
 	return Ropes.back();
 }
 
@@ -1352,6 +1358,7 @@ void C4RopeList::Execute()
 
 void C4RopeList::Draw(C4TargetFacet& cgo, C4BltTransform* pTransform)
 {
+#ifndef USE_CONSOLE
 	ZoomData z;
 	pDraw->GetZoom(&z);
 
@@ -1363,6 +1370,7 @@ void C4RopeList::Draw(C4TargetFacet& cgo, C4BltTransform* pTransform)
 		Ropes[i]->Draw(cgo, pTransform);
 
 	glPopMatrix();
+#endif // USE_CONSOLE
 }
 
 void C4RopeList::ClearPointers(C4Object* obj)
