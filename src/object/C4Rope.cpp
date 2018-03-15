@@ -27,15 +27,13 @@
 
 namespace
 {
-	struct Vertex {
+	struct Vertex
+	{
 		Vertex() {}
 		Vertex(float x, float y): x(x), y(y) {}
 
 		float x;
 		float y;
-	};
-
-	struct DrawVertex: Vertex {
 		float u;
 		float v;
 	};
@@ -75,37 +73,6 @@ namespace
 		out4.x = v2.x - w/2.0f * (v1.y - v2.y) / l;
 		out4.y = v2.y + w/2.0f * (v1.x - v2.x) / l;
 	}
-
-#ifndef USE_CONSOLE
-	// Copied from StdGL.cpp... actually the rendering code should be moved
-	// there so we don't need to duplicate it here.
-	bool ApplyZoomAndTransform(float ZoomX, float ZoomY, float Zoom, C4BltTransform* pTransform)
-	{
-		// Apply zoom
-		glTranslatef(ZoomX, ZoomY, 0.0f);
-		glScalef(Zoom, Zoom, 1.0f);
-		glTranslatef(-ZoomX, -ZoomY, 0.0f);
-
-		// Apply transformation
-		if (pTransform)
-		{
-			const GLfloat transform[16] = { pTransform->mat[0], pTransform->mat[3], 0, pTransform->mat[6], pTransform->mat[1], pTransform->mat[4], 0, pTransform->mat[7], 0, 0, 1, 0, pTransform->mat[2], pTransform->mat[5], 0, pTransform->mat[8] };
-			glMultMatrixf(transform);
-
-			// Compute parity of the transformation matrix - if parity is swapped then
-			// we need to cull front faces instead of back faces.
-			const float det = transform[0]*transform[5]*transform[15]
-			                  + transform[4]*transform[13]*transform[3]
-			                  + transform[12]*transform[1]*transform[7]
-			                  - transform[0]*transform[13]*transform[7]
-			                  - transform[4]*transform[1]*transform[15]
-			                  - transform[12]*transform[5]*transform[3];
-			return det > 0;
-		}
-
-		return true;
-	}
-#endif // USE_CONSOLE
 
 	struct point_t { point_t(int x_, int y_): x(x_), y(y_) {} int x, y; };
 	struct point_p { point_p(int x_, int y_, unsigned int f_): x(x_), y(y_), f(f_) {} int x, y; unsigned int f; };
@@ -1153,104 +1120,131 @@ void C4Rope::Draw(C4TargetFacet& cgo, C4BltTransform* pTransform)
 {
 #ifndef USE_CONSOLE
 #ifndef C4ROPE_DRAW_DEBUG
-	Vertex Tmp[4];
-	DrawVertex* Vertices = new DrawVertex[SegmentCount*2+4]; // TODO: Use a vbo and map it into memory instead?
-
-	VertexPos(Vertices[0], Vertices[1], Tmp[0], Tmp[1],
-	          Vertex(fixtof(Front->GetX()), fixtof(Front->GetY())),
-	          Vertex(fixtof(Front->Next->GetX()), fixtof(Front->Next->GetY())), Width);
-
-	Vertices[0].u = 0.0f;
-	Vertices[0].v = 0.0f;
-	Vertices[1].u = 1.0f;
-	Vertices[1].v = 0.0f;
-
-	const float rsl = 1.0f/Width * Graphics->GetBitmap()->Wdt / Graphics->GetBitmap()->Hgt; // rope segment length mapped to Gfx bitmap
-	float accl = 0.0f;
-
-	unsigned int i = 2;
-	bool parity = true;
-	for(C4RopeElement* cur = Front->Next; cur->Next != NULL; cur = cur->Next, i += 2)
+	if (!vbo)
 	{
-		Vertex v1(fixtof(cur->GetX()),
-		          fixtof(cur->GetY()));
-		Vertex v2(fixtof(cur->Next->GetX()),// ? cur->Next->GetX() : Back->GetX()), 
-		          fixtof(cur->Next->GetY()));// ? cur->Next->GetY() : Back->GetY()));
-		Vertex v3(fixtof(cur->Prev->GetX()),// ? cur->Prev->GetX() : Front->GetX()),
-		          fixtof(cur->Prev->GetY()));// ? cur->Prev->GetY() : Front->GetY()));
+		glGenBuffers(1, &vbo);
+		vaoID = pGL->GenVAOID();
+	}
+	glBindBuffer(GL_ARRAY_BUFFER, vbo);
+	pGL->ObjectLabel(GL_BUFFER, vbo, -1, "<Rope>/VBO");
 
-		//const C4Real l = GetL(cur->Prev, cur);
-		//const float rsl = fixtof(l)/fixtof(Width) * Graphics->GetBitmap()->Wdt / Graphics->GetBitmap()->Hgt; // rope segment length mapped to Gfx bitmap
+	do {
+		Vertex Tmp[4];
+		//DrawVertex* Vertices = new DrawVertex[SegmentCount*2+4]; // TODO: Use a vbo and map it into memory instead?
+		glBufferData(GL_ARRAY_BUFFER, (SegmentCount*2+4) * sizeof(Vertex), nullptr, GL_DYNAMIC_DRAW);
+		void *buffer = glMapBuffer(GL_ARRAY_BUFFER, GL_READ_WRITE);
+		auto Vertices = static_cast<Vertex*>(buffer);
 
-		// Parity -- parity swaps for each pointed angle (<90 deg)
-		float cx = v1.x - v3.x;
-		float cy = v1.y - v3.y;
-		float ex = v1.x - v2.x;
-		float ey = v1.y - v2.y;
-		
-		// TODO: Another way to draw this would be to insert a "pseudo" segment so that there are no pointed angles at all
-		if(cx*ex+cy*ey > 0)
-			parity = !parity;
+		VertexPos(Vertices[0], Vertices[1], Tmp[0], Tmp[1],
+				  Vertex(fixtof(Front->GetX()), fixtof(Front->GetY())),
+				  Vertex(fixtof(Front->Next->GetX()), fixtof(Front->Next->GetY())), Width);
 
-		// Obtain vertex positions
-		if(parity)
-			VertexPos(Tmp[2], Tmp[3], Vertices[i+2], Vertices[i+3], v1, v2, Width);
-		else
-			VertexPos(Tmp[3], Tmp[2], Vertices[i+3], Vertices[i+2], v1, v2, Width);
+		Vertices[0].u = 0.0f;
+		Vertices[0].v = 0.0f;
+		Vertices[1].u = 1.0f;
+		Vertices[1].v = 0.0f;
 
-		Tmp[2].x = (Tmp[0].x + Tmp[2].x)/2.0f;
-		Tmp[2].y = (Tmp[0].y + Tmp[2].y)/2.0f;
-		Tmp[3].x = (Tmp[1].x + Tmp[3].x)/2.0f;
-		Tmp[3].y = (Tmp[1].y + Tmp[3].y)/2.0f;
+		const float rsl = 1.0f/Width * Graphics->GetBitmap()->Wdt / Graphics->GetBitmap()->Hgt; // rope segment length mapped to Gfx bitmap
+		float accl = 0.0f;
 
-		// renormalize
-		float dx = Tmp[3].x - Tmp[2].x;
-		float dy = Tmp[3].y - Tmp[2].y;
-		float dx2 = Vertices[i-1].x - Vertices[i-2].x;
-		float dy2 = Vertices[i-1].y - Vertices[i-2].y;
-		const float d = (dx2*dx2+dy2*dy2)/(dx*dx2+dy*dy2);
-		Vertices[i  ].x = ( (Tmp[2].x + Tmp[3].x)/2.0f) - Clamp((Tmp[3].x - Tmp[2].x)*d, -Width, Width)/2.0f;
-		Vertices[i  ].y = ( (Tmp[2].y + Tmp[3].y)/2.0f) - Clamp((Tmp[3].y - Tmp[2].y)*d, -Width, Width)/2.0f;
-		Vertices[i+1].x = ( (Tmp[2].x + Tmp[3].x)/2.0f) + Clamp((Tmp[3].x - Tmp[2].x)*d, -Width, Width)/2.0f;
-		Vertices[i+1].y = ( (Tmp[2].y + Tmp[3].y)/2.0f) + Clamp((Tmp[3].y - Tmp[2].y)*d, -Width, Width)/2.0f;
+		unsigned int i = 2;
+		bool parity = true;
+		for(C4RopeElement* cur = Front->Next; cur->Next != NULL; cur = cur->Next, i += 2)
+		{
+			Vertex v1(fixtof(cur->GetX()),
+					  fixtof(cur->GetY()));
+			Vertex v2(fixtof(cur->Next->GetX()),// ? cur->Next->GetX() : Back->GetX()), 
+					  fixtof(cur->Next->GetY()));// ? cur->Next->GetY() : Back->GetY()));
+			Vertex v3(fixtof(cur->Prev->GetX()),// ? cur->Prev->GetX() : Front->GetX()),
+					  fixtof(cur->Prev->GetY()));// ? cur->Prev->GetY() : Front->GetY()));
 
-		accl += fixtof(GetL(cur->Prev, cur));
+			//const C4Real l = GetL(cur->Prev, cur);
+			//const float rsl = fixtof(l)/fixtof(Width) * Graphics->GetBitmap()->Wdt / Graphics->GetBitmap()->Hgt; // rope segment length mapped to Gfx bitmap
+
+			// Parity -- parity swaps for each pointed angle (<90 deg)
+			float cx = v1.x - v3.x;
+			float cy = v1.y - v3.y;
+			float ex = v1.x - v2.x;
+			float ey = v1.y - v2.y;
+			
+			// TODO: Another way to draw this would be to insert a "pseudo" segment so that there are no pointed angles at all
+			if(cx*ex+cy*ey > 0)
+				parity = !parity;
+
+			// Obtain vertex positions
+			if(parity)
+				VertexPos(Tmp[2], Tmp[3], Vertices[i+2], Vertices[i+3], v1, v2, Width);
+			else
+				VertexPos(Tmp[3], Tmp[2], Vertices[i+3], Vertices[i+2], v1, v2, Width);
+
+			Tmp[2].x = (Tmp[0].x + Tmp[2].x)/2.0f;
+			Tmp[2].y = (Tmp[0].y + Tmp[2].y)/2.0f;
+			Tmp[3].x = (Tmp[1].x + Tmp[3].x)/2.0f;
+			Tmp[3].y = (Tmp[1].y + Tmp[3].y)/2.0f;
+
+			// renormalize
+			float dx = Tmp[3].x - Tmp[2].x;
+			float dy = Tmp[3].y - Tmp[2].y;
+			float dx2 = Vertices[i-1].x - Vertices[i-2].x;
+			float dy2 = Vertices[i-1].y - Vertices[i-2].y;
+			const float d = (dx2*dx2+dy2*dy2)/(dx*dx2+dy*dy2);
+			Vertices[i  ].x = ( (Tmp[2].x + Tmp[3].x)/2.0f) - Clamp((Tmp[3].x - Tmp[2].x)*d, -Width, Width)/2.0f;
+			Vertices[i  ].y = ( (Tmp[2].y + Tmp[3].y)/2.0f) - Clamp((Tmp[3].y - Tmp[2].y)*d, -Width, Width)/2.0f;
+			Vertices[i+1].x = ( (Tmp[2].x + Tmp[3].x)/2.0f) + Clamp((Tmp[3].x - Tmp[2].x)*d, -Width, Width)/2.0f;
+			Vertices[i+1].y = ( (Tmp[2].y + Tmp[3].y)/2.0f) + Clamp((Tmp[3].y - Tmp[2].y)*d, -Width, Width)/2.0f;
+
+			accl += fixtof(GetL(cur->Prev, cur));
+			Vertices[i].u = 0.0f; //parity ? 0.0f : 1.0f;
+			Vertices[i].v = accl * rsl;
+			Vertices[i+1].u = 1.0f; //parity ? 1.0f : 0.0f;
+			Vertices[i+1].v = accl * rsl;
+
+			Tmp[0] = Vertices[i+2];
+			Tmp[1] = Vertices[i+3];
+		}
+
+		accl += fixtof(GetL(Back->Prev, Back));
 		Vertices[i].u = 0.0f; //parity ? 0.0f : 1.0f;
 		Vertices[i].v = accl * rsl;
 		Vertices[i+1].u = 1.0f; //parity ? 1.0f : 0.0f;
 		Vertices[i+1].v = accl * rsl;
 
-		Tmp[0] = Vertices[i+2];
-		Tmp[1] = Vertices[i+3];
-	}
+	} while (glUnmapBuffer(GL_ARRAY_BUFFER) == GL_FALSE);
 
-	accl += fixtof(GetL(Back->Prev, Back));
-	Vertices[i].u = 0.0f; //parity ? 0.0f : 1.0f;
-	Vertices[i].v = accl * rsl;
-	Vertices[i+1].u = 1.0f; //parity ? 1.0f : 0.0f;
-	Vertices[i+1].v = accl * rsl;
+	C4ShaderCall call(pGL->GetSpriteShader(true, false, false));
+
+	const GLint texUnit = call.AllocTexUnit(C4SSU_BaseTex);
+	glBindTexture(GL_TEXTURE_2D, Graphics->GetBitmap()->texture->texName);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	StdProjectionMatrix modelview = StdProjectionMatrix::Identity();
+	// go to correct output position (note the normal matrix is unaffected
+	// by this)
+	pGL->SetupMultiBlt(call, nullptr, texUnit, 0, 0, 0, &modelview);
+	Translate(modelview, cgo.X-cgo.TargetX, cgo.Y-cgo.TargetY, 0.0f);
+
+	// set up the vertex array structure
+	GLuint vao;
+	const bool has_vao = pGL->GetVAO(vaoID, vao);
+	glBindVertexArray(vao);
+	if (!has_vao)
+	{
+		pGL->ObjectLabel(GL_VERTEX_ARRAY, vao, -1, "<rope>/VAO");
+
+		const int stride = sizeof(Vertex);
+		glEnableVertexAttribArray(call.GetAttribute(C4SSA_Position));
+		glEnableVertexAttribArray(call.GetAttribute(C4SSA_TexCoord));
+		glVertexAttribPointer(call.GetAttribute(C4SSA_Position), 2, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<GLvoid*>(offsetof(Vertex, x)));
+		glVertexAttribPointer(call.GetAttribute(C4SSA_TexCoord), 2, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<GLvoid*>(offsetof(Vertex, u)));
+	}
 
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-	glEnable(GL_TEXTURE_2D);
-	glBindTexture(GL_TEXTURE_2D, Graphics->GetBitmap()->texture->texName);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-
-	glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-	glVertexPointer(2, GL_FLOAT, sizeof(DrawVertex), &Vertices->x);
-	glTexCoordPointer(2, GL_FLOAT, sizeof(DrawVertex), &Vertices->u);
-	glEnableClientState(GL_VERTEX_ARRAY);
-	glEnableClientState(GL_TEXTURE_COORD_ARRAY);
-	glDisableClientState(GL_COLOR_ARRAY);
-	glDrawArrays(GL_QUAD_STRIP, 0, SegmentCount*2+4);
+	glDrawArrays(GL_TRIANGLE_STRIP, 0, SegmentCount*2+4);
 
 	glDisable(GL_TEXTURE_2D);
 	//glDisable(GL_BLEND);
-	glDisableClientState(GL_TEXTURE_COORD_ARRAY);
-
-	delete[] Vertices;
 
 #else
 	// Debug:
@@ -1358,19 +1352,10 @@ void C4RopeList::Execute()
 
 void C4RopeList::Draw(C4TargetFacet& cgo, C4BltTransform* pTransform)
 {
-#ifndef USE_CONSOLE
-	ZoomData z;
-	pDraw->GetZoom(&z);
-
-	glPushMatrix();
-	ApplyZoomAndTransform(z.X, z.Y, z.Zoom, pTransform);
-	glTranslatef(cgo.X-cgo.TargetX, cgo.Y-cgo.TargetY, 0.0f);
-
+	pDraw->DeactivateBlitModulation();
+	pDraw->ResetBlitMode();
 	for(unsigned int i = 0; i < Ropes.size(); ++i)
 		Ropes[i]->Draw(cgo, pTransform);
-
-	glPopMatrix();
-#endif // USE_CONSOLE
 }
 
 void C4RopeList::ClearPointers(C4Object* obj)

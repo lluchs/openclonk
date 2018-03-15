@@ -139,6 +139,10 @@ private:
 	C4DefGraphics* Graphics;
 	int32_t SegmentCount;
 
+	// OpenGL buffers
+	unsigned int vbo{ 0 };
+	unsigned int vaoID{ 0 };
+
 	C4Real l; // spring length in equilibrium
 	C4Real k; // spring constant
 	C4Real mu; // outer friction constant
