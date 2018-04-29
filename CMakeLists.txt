@@ -366,19 +366,24 @@ if(NOT C4GROUP_TOOL_ONLY)
 	set(HAVE_SDL ${SDL2_FOUND})
 	include_directories(SYSTEM ${SDL2_INCLUDE_DIRS})
 
-	# Qt5 for editor
+	# Qt5 for editor and launcher
 	find_path(Qt5DIR qt.pro PATHS ${CMAKE_ADDITIONAL_DEPS_PATH}/qt-5.5.0)
 	find_package(Qt5Widgets 5.4 PATHS ${Qt5DIR}/qtbase/lib/cmake/Qt5Widgets)
+	find_package(Qt5Network 5.4 PATHS ${Qt5DIR}/qtbase/lib/cmake/Qt5Network)
 	if(Qt5Widgets_FOUND)
 		SET(WITH_QT_EDITOR ${Qt5Widgets_FOUND} "Qt editor dialogues available")
+		if(Qt5Network_FOUND)
+			SET(WITH_LAUNCHER ${WITH_AUTOMATIC_UPDATE} "launcher available")
+		endif()
 		set(CMAKE_AUTOMOC ON)
 		set(CMAKE_AUTOUIC ON)
 		# As moc files are generated in the binary dir, tell CMake
 		# to always look for includes there:
 		set(CMAKE_INCLUDE_CURRENT_DIR ON)
 	else()
-		message("Qt5Widgets not found. Building openclonk without editor.")		
+		message("Qt5Widgets not found. Building openclonk without editor and launcher.")		
 		UNSET(WITH_QT_EDITOR)
+		UNSET(WITH_LAUNCHER)
 	endif()
 endif()
 
@@ -805,6 +810,14 @@ if(WITH_QT_EDITOR)
   )
 endif()
 
+if(WITH_LAUNCHER)
+  set(LAUNCHER_SOURCES
+    src/launcher/C4Launcher.cpp
+    src/launcher/C4Launcher.h
+	src/launcher/C4LauncherWindow.ui
+  )
+endif()
+
 set(MAPE_BASE_SOURCES
 	src/C4Include.cpp
 	src/landscape/C4MapCreatorS2.cpp
@@ -969,6 +982,9 @@ if(WITH_AUTOMATIC_UPDATE)
 		src/gui/C4UpdateDlg.cpp
 		src/gui/C4UpdateDlg.h
 	)
+endif()
+if(WITH_LAUNCHER)
+  list(APPEND OC_GUI_SOURCES ${LAUNCHER_SOURCES})
 endif()
 
 if(PROJECT_FOLDERS)
@@ -1218,9 +1234,16 @@ if(NOT HEADLESS_ONLY AND NOT C4GROUP_TOOL_ONLY)
 		target_link_libraries(openclonk "-framework Cocoa -framework AppKit -framework Quartz -framework OpenAL -framework AudioToolbox")
 	endif()
 
-	if(WITH_QT_EDITOR)
-		set_target_properties(openclonk PROPERTIES COMPILE_DEFINITIONS WITH_QT_EDITOR)
+	if(WITH_QT_EDITOR OR WITH_LAUNCHER)
+		# These need to be defined here instead of in config.h to make automoc work.
+		target_compile_definitions(openclonk PRIVATE
+			$<$<BOOL:${WITH_QT_EDITOR}>:WITH_QT_EDITOR>
+			$<$<BOOL:${WITH_LAUNCHER}>:WITH_LAUNCHER>
+		)
 		target_link_libraries(openclonk Qt5::Widgets)
+		if(WITH_LAUNCHER)
+			target_link_libraries(openclonk Qt5::Network)
+		endif()
 
 		# Deploy dependency libraries and platforms/ folder
 		if(DEPLOY_QT_LIBRARIES)

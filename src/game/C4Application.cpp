@@ -22,6 +22,7 @@
 #include "game/C4Application.h"
 
 #include "C4Version.h"
+#include "launcher/C4Launcher.h"
 #include "editor/C4Console.h"
 #include "game/C4FullScreen.h"
 #include "game/C4GraphicsSystem.h"
@@ -109,6 +110,20 @@ bool C4Application::DoInit(int argc, char * argv[])
 
 	// Initialize game data paths
 	Reloc.Init();
+
+#ifdef WITH_LAUNCHER
+	// Show launcher only if started without arguments.
+	if (argc == 1)
+	{
+		Log("Starting launcher...");
+		C4Launcher launcher;
+		if (!launcher.Run())
+		{
+			Log("Exit from launcher");
+			return false;
+		}
+	}
+#endif
 
 	// init system group
 	if (!Reloc.Open(SystemGroup, C4CFN_System))

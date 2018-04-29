@@ -242,6 +242,13 @@ public:
 	void CompileFunc(StdCompiler *pComp);
 };
 
+class C4ConfigLauncher
+{
+public:
+	std::string Git2GroupURL;
+	void CompileFunc(StdCompiler *comp);
+};
+
 class C4Config
 {
 public:
@@ -259,6 +266,7 @@ public:
 	C4ConfigControls  Controls;
 	C4ConfigStartup   Startup;
 	C4ConfigSecurity  Security;
+	C4ConfigLauncher  Launcher;
 	bool fConfigLoaded; // true if config has been successfully loaded
 	StdStrBuf ConfigFilename; // set for configs loaded from a nondefault config file
 public:

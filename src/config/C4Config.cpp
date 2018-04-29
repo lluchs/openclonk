@@ -217,6 +217,11 @@ void C4ConfigSecurity::CompileFunc(StdCompiler *pComp)
 #endif
 }
 
+void C4ConfigLauncher::CompileFunc(StdCompiler *comp)
+{
+	comp->Value(mkNamingAdapt(mkStringAdapt(Git2GroupURL),  "Git2GroupURL",  "http://localhost:8000"));
+}
+
 void C4ConfigGamepad::CompileFunc(StdCompiler *pComp, bool fButtonsOnly)
 {
 	/* The defaults here are for a Logitech Dual Action under Linux-SDL. Better than nothing, I guess. */
@@ -766,6 +771,7 @@ void C4Config::CompileFunc(StdCompiler *pComp)
 	pComp->Value(mkNamingAdapt(Developer,   "Developer"   ));
 	pComp->Value(mkNamingAdapt(Startup,     "Startup"     ));
 	pComp->Value(mkNamingAdapt(Security,    "Security"    ));
+	pComp->Value(mkNamingAdapt(Launcher,    "Launcher"    ));
 }
 
 bool C4Config::AddModule(const char *szPath, char *szModules)
