@@ -24,6 +24,7 @@
 #undef new
 #undef delete
 #include <QDialog>
+#include <QJsonObject>
 #include <QNetworkAccessManager>
 #include "ui_C4LauncherWindow.h"
 
@@ -102,6 +103,7 @@ private:
 
 	QNetworkAccessManager qnam;
 	class QNetworkReply *reply;
+	QJsonObject groupsJson;
 
 	QVector<C4LauncherGroup*> groups;
 };

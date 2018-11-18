@@ -23,9 +23,8 @@
 #include <QMessageBox>
 #include <QVBoxLayout>
 #include <QNetworkReply>
-#include <QJsonDocument>
 #include <QJsonArray>
-#include <QJsonObject>
+#include <QJsonDocument>
 
 int C4Launcher::Run()
 {
@@ -82,7 +81,9 @@ void C4LauncherGroup::ReadFileSignature()
 
 bool C4LauncherGroup::NeedsUpdate() const
 {
-	return !failed && (hash != prevHash || !signature.size() || signature != prevSignature);
+	return !failed &&
+		((prevHash.size() && hash != prevHash) ||
+		 !signature.size() || signature != prevSignature);
 }
 
 void C4LauncherGroup::Download(QNetworkAccessManager& qnam)
@@ -121,6 +122,7 @@ void C4LauncherGroup::downloadFinished()
 		statusLabel->setText(tr("Download failed: %1").arg(reply->errorString()));
 		LogF("Launcher: %s", tr("Download failed: %1").arg(reply->errorString()).toUtf8().data());
 		failed = true;
+		downloadFile->remove();
 		reply->deleteLater(); reply = nullptr;
 		return;
 	}
@@ -193,6 +195,10 @@ void C4LauncherWindow::GroupsListFinished()
 		return;
 	}
 	ui.groupsStatusLabel->setText("");
+	ui.groupsStatusLabel->hide();
+
+	groupsJson[QStringLiteral("revision")] = QStringLiteral(C4REVISION_RAW);
+	groupsJson[QStringLiteral("expected")] = jsonGroups.array();
 
 	int idx = 0;
 	for (const auto group : jsonGroups.array())
@@ -202,9 +208,12 @@ void C4LauncherWindow::GroupsListFinished()
 		ui.groupsContainerLayout->addWidget(statusLabel, idx, 0);
 		auto nameLabel = new QLabel(ui.groupsContainer);
 		ui.groupsContainerLayout->addWidget(nameLabel, idx++, 1);
-		auto name = groupobj[QString("Name")].toString();
+		auto name = groupobj[QStringLiteral("Name")].toString();
 		nameLabel->setText(name);
-		groups.append(new C4LauncherGroup(this, statusLabel, name, groupobj[QString("Hash")].toString()));
+
+		auto lg = new C4LauncherGroup(this, statusLabel, name, groupobj[QStringLiteral("Hash")].toString());
+		groups.append(lg);
+		connect(lg, &C4LauncherGroup::DownloadFinished, this, &C4LauncherWindow::GroupUpdateFinished);
 	}
 	ReadGroupsStatus();
 	UpdateGroups();
@@ -218,8 +227,8 @@ void C4LauncherWindow::UpdateGroups()
 	{
 		if (group->NeedsUpdate())
 		{
+			LogF("Launcher: Downloading %s...", group->GetName().toUtf8().data());
 			group->Download(qnam);
-			connect(group, &C4LauncherGroup::DownloadFinished, this, &C4LauncherWindow::GroupUpdateFinished);
 			break;
 		}
 	}
@@ -246,10 +255,11 @@ void C4LauncherWindow::ReadGroupsStatus()
 	}
 	auto doc = QJsonDocument::fromJson(file.readAll());
 	auto obj = doc.object();
+	auto status = obj[QStringLiteral("status")].toObject();
 	for (auto& group : groups)
 	{
 		group->ReadFileSignature();
-		group->Read(obj[group->GetName()].toObject());
+		group->Read(status[group->GetName()].toObject());
 	}
 }
 
@@ -268,6 +278,7 @@ void C4LauncherWindow::WriteGroupsStatus() const
 		group->Write(gobj);
 		obj[group->GetName()] = gobj;
 	}
-	QJsonDocument doc(obj);
-	file.write(doc.toJson());
+	QJsonObject json(groupsJson);
+	json[QStringLiteral("status")] = obj;
+	file.write(QJsonDocument(json).toJson());
 }
