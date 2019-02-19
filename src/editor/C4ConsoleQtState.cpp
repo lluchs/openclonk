@@ -627,29 +627,8 @@ bool C4ConsoleGUIState::CreateConsoleWindow(C4AbstractApp *app)
 	// No Qt main loop execution during console creation
 	ExecRecursionCheck no_qt_recursion;
 
-	// Initialize OpenGL.
-	QSurfaceFormat format;
-	format.setMajorVersion(/*REQUESTED_GL_CTX_MAJOR*/ 3);
-	format.setMinorVersion(/*REQUESTED_GL_CTX_MINOR*/ 2);
-	format.setRedBufferSize(8);
-	format.setGreenBufferSize(8);
-	format.setBlueBufferSize(8);
-	format.setDepthBufferSize(8);
-	format.setProfile(QSurfaceFormat::CoreProfile);
-	format.setSwapInterval(0); // turn off vsync because otherwise each viewport causes an extra 1/(refesh rate) delay
-	if (Config.Graphics.DebugOpenGL)
-		format.setOption(QSurfaceFormat::DebugContext);
-	QSurfaceFormat::setDefaultFormat(format);
-	QCoreApplication::setAttribute(Qt::AA_ShareOpenGLContexts);
-
-
 	// Basic Qt+Main window setup from .ui file
-	// Note that QApplication needs at least one valid argument which must
-	// stay valid over the lifetime of the application.
-	static int fake_argc = 1;
-	static const char *fake_argv[] = { "openclonk" };
-	application = std::make_unique<QApplication>(fake_argc, const_cast<char **>(fake_argv));
-	application->installTranslator(&qt_translator);
+	Application.QtApp->installTranslator(&qt_translator);
 	window = std::make_unique<C4ConsoleQtMainWindow>(app, this);
 	ui.setupUi(window.get());
 
@@ -803,7 +782,6 @@ void C4ConsoleGUIState::DeleteConsoleWindow()
 	property_delegate_factory.reset(nullptr);
 	property_model.reset(nullptr);
 	window.reset(nullptr);
-	application.reset(nullptr);
 }
 
 void C4ConsoleGUIState::Execute(bool redraw_only)

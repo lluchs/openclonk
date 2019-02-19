@@ -26,6 +26,7 @@
 #include "platform/C4SoundSystem.h"
 
 class C4ApplicationGameTimer;
+class QCoreApplication;
 
 /* Main class to initialize configuration and execute the game */
 
@@ -45,6 +46,10 @@ public:
 	C4InteractiveThread InteractiveThread;
 	// IRC client for global chat
 	C4Network2IRCClient &IRCClient;
+#ifdef WITH_QT_EDITOR
+	// Qt Application necessary for all Qt stuff.
+	std::unique_ptr<QCoreApplication> QtApp;
+#endif
 	// clear app
 	void Clear() override;
 	void ClearCommandLine();

@@ -42,6 +42,10 @@
 
 #include <getopt.h>
 
+#ifdef WITH_QT_EDITOR
+#include "editor/C4ConsoleQt.h"
+#endif
+
 static C4Network2IRCClient ApplicationIRCClient;
 const std::string C4Application::Revision{ C4REVISION };
 
@@ -150,6 +154,34 @@ bool C4Application::DoInit(int argc, char * argv[])
 
 	// activate
 	Active=true;
+
+#ifdef WITH_QT_EDITOR
+	// For the editor, we need a full QApplication for Qt Widgets support.
+	if (isEditor)
+	{
+		// Initialize OpenGL. This has to happen before creating the QApplication because Qt's
+		// global context is created then (Qt::AA_ShareOpenGLContexts option).
+		QSurfaceFormat format;
+		format.setMajorVersion(/*REQUESTED_GL_CTX_MAJOR*/ 3);
+		format.setMinorVersion(/*REQUESTED_GL_CTX_MINOR*/ 2);
+		format.setRedBufferSize(8);
+		format.setGreenBufferSize(8);
+		format.setBlueBufferSize(8);
+		format.setDepthBufferSize(8);
+		format.setProfile(QSurfaceFormat::CoreProfile);
+		format.setSwapInterval(0); // turn off vsync because otherwise each viewport causes an extra 1/(refesh rate) delay
+		if (Config.Graphics.DebugOpenGL)
+			format.setOption(QSurfaceFormat::DebugContext);
+		QSurfaceFormat::setDefaultFormat(format);
+		QCoreApplication::setAttribute(Qt::AA_ShareOpenGLContexts);
+
+		QtApp = std::make_unique<QApplication>(argc, argv);
+	}
+	else
+	{
+		QtApp = std::make_unique<QCoreApplication>(argc, argv);
+	}
+#endif
 
 	// Init carrier window
 	if (!isEditor)
@@ -605,6 +637,9 @@ void C4Application::Clear()
 	// Close window
 	FullScreen.Clear();
 	Console.Clear();
+#ifdef WITH_QT_EDITOR
+	QtApp.reset(nullptr);
+#endif
 	// There might be pending saves - do them after the fullscreen windows got closed
 	// so the app just remains as a lingering process until saving is done
 	CPNGFile::WaitForSaves();

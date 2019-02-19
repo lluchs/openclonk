@@ -184,7 +184,6 @@ public slots:
 class C4ConsoleGUIState // Avoid direct declaration of C4ConsoleGUI::State because qmake doesn't like some declarations in the nested class
 {
 public:
-	std::unique_ptr<QApplication> application;
 	std::unique_ptr<C4ConsoleQtMainWindow> window;
 	std::unique_ptr<class C4ConsoleQtPropListModel> property_model;
 	std::unique_ptr<class C4PropertyDelegateFactory> property_delegate_factory;
