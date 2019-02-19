@@ -397,6 +397,11 @@ if(NOT C4GROUP_TOOL_ONLY)
 		message("Qt5Widgets not found. Building openclonk without editor.")		
 		UNSET(WITH_QT_EDITOR)
 	endif()
+
+	# Autoupdate support for AppImages
+	if(WITH_APPDIR_INSTALLATION AND WITH_QT_EDITOR)
+		add_subdirectory(thirdparty/AppImageUpdaterBridge)
+	endif()
 endif()
 
 ############################################################################
