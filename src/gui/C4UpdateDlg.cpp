@@ -2,7 +2,7 @@
  * OpenClonk, http://www.openclonk.org
  *
  * Copyright (c) 2007-2009, RedWolf Design GmbH, http://www.clonk.de/
- * Copyright (c) 2010-2016, The OpenClonk Team and contributors
+ * Copyright (c) 2010-2019, The OpenClonk Team and contributors
  *
  * Distributed under the terms of the ISC license; see accompanying file
  * "COPYING" for details.
@@ -22,6 +22,8 @@
 #include "c4group/C4Components.h"
 #include "game/C4Application.h"
 #include "gui/C4DownloadDlg.h"
+#include "gui/C4UpdateDlg.h"
+#include "gui/C4UpdateAppImageDlg.h"
 
 #ifdef _WIN32
 #include <shellapi.h>
@@ -35,6 +37,7 @@
 int C4UpdateDlg::pid;
 int C4UpdateDlg::c4group_output[2];
 bool C4UpdateDlg::succeeded;
+AppImageUpdateProgressDialog *C4UpdateDlg::appimageupdate{nullptr};
 
 // --------------------------------------------------
 // C4UpdateDlg
@@ -150,6 +153,10 @@ void C4UpdateDlg::RedirectToDownloadPage()
 
 bool C4UpdateDlg::DoUpdate(const char *szUpdateURL, C4GUI::Screen *pScreen)
 {
+#ifdef WITH_APPDIR_INSTALLATION
+	return DoAppImageUpdate(pScreen);
+#endif
+
 	if(szUpdateURL == nullptr || strlen(szUpdateURL) == 0)
 	{
 		pScreen->ShowMessageModal(LoadResStr("IDS_MSG_NEWRELEASEAVAILABLE"), LoadResStr("IDS_TYPE_UPDATE"),C4GUI::MessageDialog::btnOK, C4GUI::Ico_Ex_Update);
@@ -380,3 +387,12 @@ bool C4UpdateDlg::CheckForUpdates(C4GUI::Screen *pScreen, bool fAutomatic)
 	// Done (and no update has been done)
 	return false;
 }
+
+#ifdef WITH_APPDIR_INSTALLATION
+
+bool C4UpdateDlg::DoAppImageUpdate(C4GUI::Screen *screen)
+{
+ 	appimageupdate = new AppImageUpdateProgressDialog(screen);
+	return true;
+}
+#endif

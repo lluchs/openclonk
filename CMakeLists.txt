@@ -385,7 +385,7 @@ if(NOT C4GROUP_TOOL_ONLY)
 	include_directories(SYSTEM ${SDL2_INCLUDE_DIRS})
 
 	# Qt5 for editor
-	find_package(Qt5 5.4 CONFIG COMPONENTS Core Widgets)
+	find_package(Qt5 5.4 CONFIG COMPONENTS Core Widgets Network)
 	if(TARGET Qt5::Core)
 		SET(WITH_QT_EDITOR ON "Qt editor dialogues available")
 		set(CMAKE_AUTOMOC ON)
@@ -401,6 +401,7 @@ if(NOT C4GROUP_TOOL_ONLY)
 	# Autoupdate support for AppImages
 	if(WITH_APPDIR_INSTALLATION AND WITH_QT_EDITOR)
 		add_subdirectory(thirdparty/AppImageUpdaterBridge)
+		include_directories(SYSTEM thirdparty/AppImageUpdaterBridge)
 	endif()
 endif()
 
@@ -991,6 +992,12 @@ if(WITH_AUTOMATIC_UPDATE)
 		src/gui/C4UpdateDlg.cpp
 		src/gui/C4UpdateDlg.h
 	)
+	if(WITH_APPDIR_INSTALLATION)
+		list(APPEND OC_GUI_SOURCES
+			src/gui/C4UpdateAppImageDlg.cpp
+			src/gui/C4UpdateAppImageDlg.h
+		)
+	endif()
 endif()
 
 if(PROJECT_FOLDERS)
@@ -1253,6 +1260,9 @@ if(NOT HEADLESS_ONLY AND NOT C4GROUP_TOOL_ONLY)
 				include(DeployQt)
 				macdeployqt(nitroshare-client)
 			endif()
+		endif()
+		if(WITH_APPDIR_INSTALLATION)
+			target_link_libraries(openclonk AppImageUpdaterBridge Qt5::Network)
 		endif()
 	endif()
 

@@ -24,7 +24,6 @@
 #include "gui/C4Gui.h"
 #include "network/C4Network2Reference.h"
 
-// dialog showing info about a connected client
 class C4UpdateDlg : public C4GUI::InfoDialog
 {
 protected:
@@ -39,6 +38,8 @@ protected:
 	static int c4group_output[2];
 	static bool succeeded;
 
+	static class AppImageUpdateProgressDialog *appimageupdate;
+
 public:
 	C4UpdateDlg(); // ctor
 
@@ -52,6 +53,8 @@ public:
 	static bool DoUpdate(const char *szUpdateURL, C4GUI::Screen *pScreen); // Static funtion for downloading and applying updates
 	static bool ApplyUpdate(const char *strUpdateFile, bool fDeleteUpdate, C4GUI::Screen *pScreen); // Static funtion for applying updates
 	static void RedirectToDownloadPage(); // open browser with download page
+
+	static bool DoAppImageUpdate(C4GUI::Screen *pScreen); // Static funtion for downloading and applying updates via AppImageUpdate
 };
 
 #endif // WITH_AUTOMATIC_UPDATE

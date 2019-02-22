@@ -28,7 +28,7 @@ trap "kill -SIGINT $COPROC_PID" EXIT
 read -r -u "${COPROC[0]}" mount_path
 PATH="$mount_path/usr/bin:$PATH"
 
-linuxdeployqt appdir/usr/share/applications/openclonk.desktop -bundle-non-qt-libs \
+linuxdeployqt appdir/usr/share/applications/openclonk.desktop -bundle-non-qt-libs -unsupported-allow-new-glibc \
 	|| error "linuxdeployqt has failed"
 
 appimagetool appdir --verbose -n -u "zsync|https://releases.openclonk.org/snapshots/latest-$branch/OpenClonk-x86_64.AppImage.zsync" \

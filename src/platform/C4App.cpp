@@ -77,8 +77,8 @@ bool C4AbstractApp::DoScheduleProcs(int iTimeout)
 #ifdef WITH_QT_EDITOR
 void C4AbstractApp::ProcessQtEvents()
 {
-	if (Application.isEditor)
-		QApplication::processEvents();
+	//if (Application.isEditor)
+		QCoreApplication::processEvents();
 }
 #endif
 

@@ -179,7 +179,10 @@ bool C4Application::DoInit(int argc, char * argv[])
 	}
 	else
 	{
+		LogF("argc = %d argv[0] = %s", argc, argv[0]);
 		QtApp = std::make_unique<QCoreApplication>(argc, argv);
+		auto args = QCoreApplication::arguments();
+		LogF("args.size = %d, args[0] = %s", args.size(), args.at(0).toUtf8().constData());
 	}
 #endif
 
