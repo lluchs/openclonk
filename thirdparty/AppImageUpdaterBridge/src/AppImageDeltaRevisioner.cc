@@ -38,8 +38,8 @@
  * via Qt's signals and slots.
  *
 */
-#include <AppImageDeltaRevisioner_p.hpp>
-#include <AppImageDeltaRevisioner.hpp>
+#include "AppImageDeltaRevisioner_p.hpp"
+#include "AppImageDeltaRevisioner.hpp"
 
 using namespace AppImageUpdaterBridge;
 

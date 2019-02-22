@@ -35,7 +35,7 @@
  * zsync control file and produce us with a more sensible data to work with.
  * This also produces information for ZsyncWriterPrivate.
 */
-#include <ZsyncRemoteControlFileParser_p.hpp>
+#include "ZsyncRemoteControlFileParser_p.hpp"
 
 using namespace AppImageUpdaterBridge;
 

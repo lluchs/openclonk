@@ -33,10 +33,10 @@
  * @description : This the main class which manages all block requests and reply
  * also emits the progress overall , This is where the class is implemented.
 */
-#include <ZsyncBlockRangeDownloader_p.hpp>
-#include <ZsyncBlockRangeReply_p.hpp>
-#include <ZsyncRemoteControlFileParser_p.hpp>
-#include <ZsyncWriter_p.hpp>
+#include "ZsyncBlockRangeDownloader_p.hpp"
+#include "ZsyncBlockRangeReply_p.hpp"
+#include "ZsyncRemoteControlFileParser_p.hpp"
+#include "ZsyncWriter_p.hpp"
 
 using namespace AppImageUpdaterBridge;
 

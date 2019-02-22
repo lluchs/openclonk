@@ -33,7 +33,7 @@
  * @description : This is where the extraction of embeded update information
  * from AppImages is implemented.
 */
-#include <AppImageUpdateInformation_p.hpp>
+#include "AppImageUpdateInformation_p.hpp"
 #include <QBuffer>
 
 using namespace AppImageUpdaterBridge;

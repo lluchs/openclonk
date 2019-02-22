@@ -40,8 +40,8 @@
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
-#include <ZsyncRemoteControlFileParser_p.hpp>
-#include <ZsyncWriter_p.hpp>
+#include "ZsyncRemoteControlFileParser_p.hpp"
+#include "ZsyncWriter_p.hpp"
 
 namespace AppImageUpdaterBridge
 {

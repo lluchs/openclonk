@@ -1,4 +1,4 @@
-#include <AppImageUpdaterDialog.hpp>
+#include "AppImageUpdaterDialog.hpp"
 
 #define THREAD_SAFE_AREA(code , m) if(m.tryLock()) { \
 				      code \

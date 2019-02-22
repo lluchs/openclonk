@@ -46,8 +46,8 @@
 #include <QObject>
 #include <QString>
 #include <QSharedPointer>
-#include <AppImageUpdaterBridgeErrorCodes.hpp>
-#include <AppImageUpdaterBridgeStatusCodes.hpp>
+#include "AppImageUpdaterBridgeErrorCodes.hpp"
+#include "AppImageUpdaterBridgeStatusCodes.hpp"
 
 namespace AppImageUpdaterBridge
 {

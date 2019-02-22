@@ -19,9 +19,9 @@
 #include <QMessageBox>
 
 /* AppImage Updater Bridge libraries. */
-#include <AppImageDeltaRevisioner.hpp>
-#include <AppImageUpdaterBridgeErrorCodes.hpp>
-#include <AppImageUpdaterBridgeStatusCodes.hpp>
+#include "AppImageDeltaRevisioner.hpp"
+#include "AppImageUpdaterBridgeErrorCodes.hpp"
+#include "AppImageUpdaterBridgeStatusCodes.hpp"
 
 namespace AppImageUpdaterBridge
 {

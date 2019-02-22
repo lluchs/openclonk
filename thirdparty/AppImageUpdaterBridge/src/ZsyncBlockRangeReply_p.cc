@@ -36,8 +36,8 @@
  * a simple way to control a single QNetworkReply via signals and slots and
  * also submits the download data on the fly to ZsyncWriterPrivate.
 */
-#include <ZsyncBlockRangeReply_p.hpp>
-#include <ZsyncWriter_p.hpp>
+#include "ZsyncBlockRangeReply_p.hpp"
+#include "ZsyncWriter_p.hpp"
 
 using namespace AppImageUpdaterBridge;
 

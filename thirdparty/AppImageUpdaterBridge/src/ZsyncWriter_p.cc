@@ -32,7 +32,7 @@
  * @filename    : ZsyncWriter_p.cc
  * @description : This is where the main zsync algorithm is implemented.
 */
-#include <ZsyncWriter_p.hpp>
+#include "ZsyncWriter_p.hpp"
 
 /*
  * Prints to the log.

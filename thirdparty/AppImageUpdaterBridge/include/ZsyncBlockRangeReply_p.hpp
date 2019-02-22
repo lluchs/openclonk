@@ -41,7 +41,7 @@
 #include <QtGlobal>
 #include <QObject>
 #include <QNetworkReply>
-#include <ZsyncWriter_p.hpp>
+#include "ZsyncWriter_p.hpp"
 
 namespace AppImageUpdaterBridge
 {

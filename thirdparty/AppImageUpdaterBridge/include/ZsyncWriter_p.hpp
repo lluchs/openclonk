@@ -50,9 +50,9 @@
 #include <QTime>
 #include <QTimer>
 #include <QTemporaryFile>
-#include <AppImageUpdaterBridgeErrorCodes.hpp>
-#include <AppImageUpdaterBridgeStatusCodes.hpp>
-#include <ZsyncInternalStructures_p.hpp>
+#include "AppImageUpdaterBridgeErrorCodes.hpp"
+#include "AppImageUpdaterBridgeStatusCodes.hpp"
+#include "ZsyncInternalStructures_p.hpp"
 
 namespace AppImageUpdaterBridge
 {

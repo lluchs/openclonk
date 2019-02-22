@@ -51,9 +51,9 @@
 #include <QNetworkAccessManager>
 #include <QNetworkRequest>
 #include <QNetworkReply>
-#include <AppImageUpdaterBridgeErrorCodes.hpp>
-#include <AppImageUpdaterBridgeStatusCodes.hpp>
-#include <ZsyncInternalStructures_p.hpp>
+#include "AppImageUpdaterBridgeErrorCodes.hpp"
+#include "AppImageUpdaterBridgeStatusCodes.hpp"
+#include "ZsyncInternalStructures_p.hpp"
 
 namespace AppImageUpdaterBridge
 {
