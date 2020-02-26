@@ -65,17 +65,17 @@ int main(int argc, char *argv[])
 		if (argc - optind != 0)
 			return usage(argv[0]);
 		if (check)
-			return c4s_checkstring(runstring);
+			return c4s_checkstring(runstring, nullptr);
 		else
-			return c4s_runstring(runstring);
+			return c4s_runstring(runstring, nullptr);
 	}
 	else
 	{
 		if (argc - optind != 1)
 			return usage(argv[0]);
 		if (check)
-			return c4s_checkfile(argv[optind]);
+			return c4s_checkfile(argv[optind], nullptr);
 		else
-			return c4s_runfile(argv[optind]);
+			return c4s_runfile(argv[optind], nullptr);
 	}
 }

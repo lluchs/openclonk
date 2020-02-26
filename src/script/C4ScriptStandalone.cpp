@@ -31,6 +31,35 @@ void C4DefList::SortByPriority() {}
 void C4DefList::CallEveryDefinition() {}
 void C4DefList::ResetIncludeDependencies() {}
 
+// Script error handler that forwards errors and warnings to C functions.
+struct ForwardToCErrorHandler : public C4AulErrorHandler
+{
+	c4s_errorhandlers *handlers;
+
+	ForwardToCErrorHandler(c4s_errorhandlers *handlers)
+		: handlers(handlers)
+	{
+		assert(handlers != nullptr);
+		::ScriptEngine.RegisterErrorHandler(this);
+	}
+
+	virtual ~ForwardToCErrorHandler() { }
+
+	void OnError(const char *msg)
+	{
+		if (handlers->errors)
+			handlers->errors(handlers->ctx, msg);
+		++::ScriptEngine.errCnt;
+	}
+
+	void OnWarning(const char *msg)
+	{
+		if (handlers->warnings)
+			handlers->warnings(handlers->ctx, msg);
+		++::ScriptEngine.warnCnt;
+	}
+};
+
 static void InitializeC4Script()
 {
 	InitCoreFunctionMap(&ScriptEngine);
@@ -54,7 +83,7 @@ static C4Value RunLoadedC4Script()
 	return result;
 }
 
-static int RunFile(const char * filename, bool checkOnly)
+static int RunFile(const char * filename, c4s_errorhandlers *handlers, bool checkOnly)
 {
 	C4Group File;
 	if (!File.Open(GetWorkingDirectory()))
@@ -73,26 +102,36 @@ static int RunFile(const char * filename, bool checkOnly)
 	}
 
 	InitializeC4Script();
-	GameScript.Load(File, fn.getData(), nullptr, nullptr);
-	if (!checkOnly)
-		RunLoadedC4Script();
+	{
+		std::unique_ptr<ForwardToCErrorHandler> errorhandler;
+		if (handlers)
+			errorhandler = std::make_unique<ForwardToCErrorHandler>(handlers);
+		GameScript.Load(File, fn.getData(), nullptr, nullptr);
+		if (!checkOnly)
+			RunLoadedC4Script();
+	}
 	ClearC4Script();
 	return ScriptEngine.errCnt;
 }
 
-static int RunString(const char *script, bool checkOnly)
+static int RunString(const char *script, c4s_errorhandlers *handlers, bool checkOnly)
 {
 	InitializeC4Script();
-	GameScript.LoadData("<memory>", script, nullptr);
-	if (!checkOnly)
-		RunLoadedC4Script();
+	{
+		std::unique_ptr<ForwardToCErrorHandler> errorhandler;
+		if (handlers)
+			errorhandler = std::make_unique<ForwardToCErrorHandler>(handlers);
+		GameScript.LoadData("<memory>", script, nullptr);
+		if (!checkOnly)
+			RunLoadedC4Script();
+	}
 	ClearC4Script();
 	return ScriptEngine.errCnt;
 }
 
 
-int c4s_runfile(const char *filename) { return RunFile(filename, false); }
-int c4s_runstring(const char *script) { return RunString(script, false); }
+int c4s_runfile(const char *filename, c4s_errorhandlers *handlers) { return RunFile(filename, handlers, false); }
+int c4s_runstring(const char *script, c4s_errorhandlers *handlers) { return RunString(script, handlers, false); }
 
-int c4s_checkfile(const char *filename) { return RunFile(filename, true); }
-int c4s_checkstring(const char *script) { return RunString(script, true); }
+int c4s_checkfile(const char *filename, c4s_errorhandlers *handlers) { return RunFile(filename, handlers, true); }
+int c4s_checkstring(const char *script, c4s_errorhandlers *handlers) { return RunString(script, handlers, true); }

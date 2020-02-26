@@ -20,11 +20,19 @@
 extern "C" {
 #endif
 
-int c4s_runfile(const char *filename);
-int c4s_runstring(const char *script);
+typedef void (*c4s_errorhandlerfn)(void *ctx, const char *);
 
-int c4s_checkfile(const char *filename);
-int c4s_checkstring(const char *script);
+struct c4s_errorhandlers
+{
+	c4s_errorhandlerfn errors, warnings;
+	void *ctx;
+};
+
+int c4s_runfile(const char *filename, struct c4s_errorhandlers *handlers);
+int c4s_runstring(const char *script, struct c4s_errorhandlers *handlers);
+
+int c4s_checkfile(const char *filename, struct c4s_errorhandlers *handlers);
+int c4s_checkstring(const char *script, struct c4s_errorhandlers *handlers);
 
 #ifdef __cplusplus
 }
