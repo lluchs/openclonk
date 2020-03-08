@@ -1333,15 +1333,18 @@ if(MSVC)
 			endif()
 		endforeach()
 	endfunction()
-	oc_set_target_names(openclonk)
+
 	oc_set_target_names(openclonk-server)
 	oc_set_target_names(c4group)
 	oc_set_target_names(c4script)
 
-	# cmake does not support embedding arbitrary manifests,
-	# so we add it to the resource file ourselves and tell
-	# MSVC not to create its own.
-	set_property(TARGET openclonk APPEND PROPERTY LINK_FLAGS "/MANIFEST:NO")
+	if(NOT HEADLESS_ONLY)
+		oc_set_target_names(openclonk)
+		# cmake does not support embedding arbitrary manifests,
+		# so we add it to the resource file ourselves and tell
+		# MSVC not to create its own.
+		set_property(TARGET openclonk APPEND PROPERTY LINK_FLAGS "/MANIFEST:NO")
+	endif()
 endif()
 
 ############################################################################
@@ -1349,7 +1352,11 @@ endif()
 ############################################################################
 if(HAVE_PRECOMPILED_HEADERS)
 	if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
-		get_property(OC_SOURCES TARGET openclonk PROPERTY SOURCES)
+		if(HEADLESS_ONLY)
+			get_property(OC_SOURCES TARGET openclonk-server PROPERTY SOURCES)
+		else()
+			get_property(OC_SOURCES TARGET openclonk PROPERTY SOURCES)
+		endif()
 		foreach(FILE ${OC_SOURCES})
 			get_filename_component(FILE_EXT ${FILE} EXT)
 			get_filename_component(FILE_NAME_WE ${FILE} NAME_WE)
