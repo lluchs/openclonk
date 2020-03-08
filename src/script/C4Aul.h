@@ -37,6 +37,32 @@ enum class C4AulWarningId
 extern const char *C4AulWarningIDs[];
 extern const char *C4AulWarningMessages[];
 
+// Position of error in a script.
+class C4AulDiagnosticPosition
+{
+	std::string file, function;
+	uint64_t line, column;
+	uint64_t length;
+	bool valid;
+public:
+	C4AulDiagnosticPosition() : valid(false) { }
+	C4AulDiagnosticPosition(std::string file, std::string function = "", uint64_t line = 0, uint64_t column = 0, uint64_t length = 0)
+		: file(std::move(file)), function(std::move(function)), line(line), column(column), length(length), valid(true)
+	{ }
+
+	C4AulDiagnosticPosition(const C4AulDiagnosticPosition &) = default;
+	C4AulDiagnosticPosition(C4AulDiagnosticPosition &&) = default;
+	C4AulDiagnosticPosition &operator=(const C4AulDiagnosticPosition &) = default;
+	C4AulDiagnosticPosition &operator=(C4AulDiagnosticPosition &&) = default;
+
+	bool IsValid() const { return valid; }
+	const std::string &GetFile() const { return file; }
+	const std::string &GetFunction() const { return function; }
+	uint64_t GetLine() const { return line; }
+	uint64_t GetColumn() const { return column; }
+	uint64_t GetLength() const { return length; }
+};
+
 // generic C4Aul error class
 class C4AulError : public std::exception
 {
@@ -44,6 +70,8 @@ protected:
 	StdCopyStrBuf sMessage;
 
 public:
+	C4AulDiagnosticPosition position;
+
 	~C4AulError() override = default; // destructor
 	const char *what() const noexcept override;
 };
@@ -53,9 +81,9 @@ class C4AulParseError : public C4AulError
 {
 	C4AulParseError() = default;
 public:
-	C4AulParseError(C4ScriptHost *pScript, const char *pMsg); // constructor
+	C4AulParseError(C4ScriptHost *pScript, const char *pMsg, C4AulDiagnosticPosition position = C4AulDiagnosticPosition()); // constructor
 	C4AulParseError(class C4AulParse * state, const char *pMsg); // constructor
-	C4AulParseError(C4AulScriptFunc * Fn, const char *SPos, const char *pMsg);
+	C4AulParseError(C4AulScriptFunc * Fn, const char *SPos, const char *pMsg); // also appears to be a constructor
 };
 
 // execution error
@@ -105,8 +133,8 @@ class C4AulErrorHandler
 {
 public:
 	virtual ~C4AulErrorHandler();
-	virtual void OnError(const char *msg) = 0;
-	virtual void OnWarning(const char *msg) = 0;
+	virtual void OnError(const char *msg, const C4AulDiagnosticPosition &pos) = 0;
+	virtual void OnWarning(const char *msg, const C4AulDiagnosticPosition &pos) = 0;
 };
 
 // holds all C4AulScripts

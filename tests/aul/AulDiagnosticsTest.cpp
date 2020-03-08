@@ -36,7 +36,7 @@ protected:
 	EXPECT_WARNING_DETAIL(__COUNTER__); /* setup scope guard to clear _e at the end of scope */ \
 	if (!_e) _e = std::make_unique<ErrorHandler>(); /* register new error handler if none is set */ \
 	(void)C4AulWarningId::id; /* make sure the warning ID exists */ \
-	EXPECT_CALL(*_e, OnWarning(::testing::EndsWith("[" #id "]")))
+	EXPECT_CALL(*_e, OnWarning(::testing::EndsWith("[" #id "]"), ::testing::_))
 
 // Tests begin here
 TEST_F(AulDiagnosticsTest, arg_type_mismatch)

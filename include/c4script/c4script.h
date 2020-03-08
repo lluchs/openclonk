@@ -16,11 +16,20 @@
 #ifndef C4SCRIPTSTANDALONE_H
 #define C4SCRIPTSTANDALONE_H
 
+#include <inttypes.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-typedef void (*c4s_errorhandlerfn)(void *ctx, const char *);
+struct c4s_diagnostic_position
+{
+	const char *file, *function;
+	uint64_t line, column, length;
+	int valid;
+};
+
+typedef void (*c4s_errorhandlerfn)(void *ctx, const char *, struct c4s_diagnostic_position);
 
 struct c4s_errorhandlers
 {

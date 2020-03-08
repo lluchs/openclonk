@@ -138,6 +138,7 @@ void SWordWrap(char *szText, char cSpace, char cSepa, int iMaxLine);
 int  SClearFrontBack(char *szString, char cClear=' ');
 
 int SGetLine(const char *szText, const char *cpPosition);
+int SLineGetCharacterBytes(const char *szText, const char *cpPosition);
 int SLineGetCharacters(const char *szText, const char *cpPosition);
 
 // case sensitive wildcard match with some extra functionality

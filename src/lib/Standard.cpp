@@ -488,6 +488,22 @@ int SGetLine(const char *szText, const char *cpPosition)
 	return iLines;
 }
 
+// Like SLineGetCharacters, but count \t as 1
+int SLineGetCharacterBytes(const char *szText, const char *cpPosition)
+{
+	if (!szText || !cpPosition) return 0;
+	int iChars = 1;
+	while (*szText && (szText<cpPosition))
+	{
+		if (*szText == 0x0A)
+			iChars = 1;
+		else
+			iChars++;
+		szText++;
+	}
+	return iChars;
+}
+
 int SLineGetCharacters(const char *szText, const char *cpPosition)
 {
 	if (!szText || !cpPosition) return 0;

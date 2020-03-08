@@ -453,7 +453,7 @@ int C4Effect::CallTimer(int time)
 	{
 		// Script error: remove the timer.
 		// TODO: The error message is printed after the stack trace. No way around that currently.
-		::ScriptEngine.GetErrorHandler()->OnError(e.what());
+		::ScriptEngine.GetErrorHandler()->OnError(e.what(), e.position);
 		// => Removing effect { ... }
 		DebugLogF(" Removing %s", C4Value(this).GetDataString(3).getData());
 	}

@@ -97,6 +97,7 @@ private:
 	void Warn(C4AulWarningId warning, ...);
 	bool IsWarningEnabled(const char *pos, C4AulWarningId warning) const;
 	void Error(const char *pMsg, ...) GNUC_FORMAT_ATTRIBUTE_O;
+	C4AulDiagnosticPosition GetPosition();
 	void AppendPosition(StdStrBuf & Buf);
 
 	friend class C4AulParseError;

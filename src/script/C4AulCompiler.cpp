@@ -54,12 +54,15 @@ static ScriptLinkType GetScriptLinkType(const C4ScriptHost *source_host, const C
 	return ScriptLinkType::Same;
 }
 
-static std::string FormatCodePosition(const C4ScriptHost *source_host, const char *pos, const C4ScriptHost *target_host = nullptr, const C4AulScriptFunc *func = nullptr)
+static std::tuple<std::string, C4AulDiagnosticPosition> FormatCodePosition(const C4ScriptHost *source_host, const char *pos, const C4ScriptHost *target_host = nullptr, const C4AulScriptFunc *func = nullptr)
 {
 	std::string s;
+	std::string filename, funcname;
+	uint64_t line = 0, column = 0;
 	if (func && func->GetFullName())
 	{
-		s += strprintf(" (in %s", func->GetFullName().getData());
+		funcname = func->GetFullName().getData();
+		s += strprintf(" (in %s", funcname.c_str());
 		if (source_host && pos)
 			s += ", ";
 		else
@@ -67,13 +70,16 @@ static std::string FormatCodePosition(const C4ScriptHost *source_host, const cha
 	}
 	if (source_host && pos)
 	{
-		if (!func || !func->GetFullName())
+		if (funcname.empty())
 			s += " (";
 
-		int line = SGetLine(source_host->GetScript(), pos);
-		int col = SLineGetCharacters(source_host->GetScript(), pos);
+		line = SGetLine(source_host->GetScript(), pos);
+		column = SLineGetCharacterBytes(source_host->GetScript(), pos);
+		int col_msg = SLineGetCharacters(source_host->GetScript(), pos);
+		if (source_host->GetFilePath())
+			filename = source_host->GetFilePath();
 
-		s += strprintf("%s:%d:%d)", source_host->GetFilePath(), line, col);
+		s += strprintf("%s:%d:%d)", filename.c_str(), line, col_msg);
 	}
 	if (target_host && source_host != target_host)
 	{
@@ -82,7 +88,7 @@ static std::string FormatCodePosition(const C4ScriptHost *source_host, const cha
 		else
 			s += strprintf(" (appended to %s)", target_host->ScriptName.getData());
 	}
-	return s;
+	return std::make_tuple(s, C4AulDiagnosticPosition(filename, funcname, line, column));
 }
 
 #pragma GCC diagnostic push
@@ -111,13 +117,16 @@ static void Warn(const C4ScriptHost *target_host, const C4ScriptHost *host, cons
 	}
 	const char *msg = C4AulWarningMessages[static_cast<size_t>(warning)];
 	std::string message = sizeof...(T) > 0 ? strprintf(msg, std::forward<T>(args)...) : msg;
-	message += FormatCodePosition(host, SPos, target_host, func);
+	std::string pos_str;
+	C4AulDiagnosticPosition pos;
+	std::tie(pos_str, pos) = FormatCodePosition(host, SPos, target_host, func);
+	message += pos_str;
 
 	message += " [";
 	message += C4AulWarningIDs[static_cast<size_t>(warning)];
 	message += ']';
 
-	::ScriptEngine.GetErrorHandler()->OnWarning(message.c_str());
+	::ScriptEngine.GetErrorHandler()->OnWarning(message.c_str(), pos);
 }
 
 template<class... T>
@@ -136,8 +145,11 @@ static C4AulParseError Error(const C4ScriptHost *target_host, const C4ScriptHost
 {
 	std::string message = sizeof...(T) > 0 ? strprintf(msg, std::forward<T>(args)...) : msg;
 
-	message += FormatCodePosition(host, SPos, target_host, func);
-	return C4AulParseError(static_cast<C4ScriptHost*>(nullptr), message.c_str());
+	std::string pos_str;
+	C4AulDiagnosticPosition pos;
+	std::tie(pos_str, pos) = FormatCodePosition(host, SPos, target_host, func);
+	message += pos_str;
+	return C4AulParseError(static_cast<C4ScriptHost*>(nullptr), message.c_str(), std::move(pos));
 }
 
 template<class... T>
@@ -252,7 +264,7 @@ class C4AulCompiler::CodegenAstVisitor : public ::aul::DefaultRecursiveVisitor
 		}
 		if (target_host) // target_host may be nullptr for DirectExec scripts
 		{
-			target_host->Engine->ErrorHandler->OnError(e.what());
+			target_host->Engine->ErrorHandler->OnError(e.what(), e.position);
 		}
 	}
 
@@ -692,7 +704,7 @@ void C4AulCompiler::PreparseAstVisitor::visit(const::aul::ast::Script * n)
 		}
 		catch (C4AulParseError &e)
 		{
-			target_host->Engine->GetErrorHandler()->OnError(e.what());
+			target_host->Engine->GetErrorHandler()->OnError(e.what(), e.position);
 		}
 	}
 }
@@ -1825,7 +1837,7 @@ C4Value C4AulCompiler::ConstexprEvaluator::eval(C4ScriptHost *host, const ::aul:
 	catch (C4AulParseError &e)
 	{
 		if ((flags & SuppressErrors) == 0)
-			host->Engine->ErrorHandler->OnError(e.what());
+			host->Engine->ErrorHandler->OnError(e.what(), e.position);
 		return C4VNull;
 	}
 }
@@ -1843,7 +1855,7 @@ C4Value C4AulCompiler::ConstexprEvaluator::eval_static(C4ScriptHost *host, C4Pro
 	catch (C4AulParseError &e)
 	{
 		if ((flags & SuppressErrors) == 0)
-			host->Engine->ErrorHandler->OnError(e.what());
+			host->Engine->ErrorHandler->OnError(e.what(), e.position);
 		return C4VNull;
 	}
 }
@@ -2148,7 +2160,7 @@ void C4AulCompiler::ConstantResolver::visit(const::aul::ast::Script *n)
 		}
 		catch (C4AulParseError &e)
 		{
-			host->Engine->GetErrorHandler()->OnError(e.what());
+			host->Engine->GetErrorHandler()->OnError(e.what(), e.position);
 		}
 	}
 }
@@ -2179,7 +2191,7 @@ void C4AulCompiler::ConstantResolver::visit(const ::aul::ast::VarDecl *n)
 				catch (C4AulParseError &e)
 				{
 					if (!quiet)
-						host->Engine->ErrorHandler->OnError(e.what());
+						host->Engine->ErrorHandler->OnError(e.what(), e.position);
 				}
 			}
 			break;
@@ -2187,7 +2199,10 @@ void C4AulCompiler::ConstantResolver::visit(const ::aul::ast::VarDecl *n)
 			if ((dec.init != nullptr) != n->constant)
 			{
 				if (!quiet)
-					host->Engine->ErrorHandler->OnError(Error(host, host, n->loc, nullptr, "global variable must be either constant or uninitialized: %s", cname).what());
+				{
+					auto err = Error(host, host, n->loc, nullptr, "global variable must be either constant or uninitialized: %s", cname);
+					host->Engine->ErrorHandler->OnError(err.what(), err.position);
+				}
 			}
 			else if (dec.init)
 			{
@@ -2203,7 +2218,7 @@ void C4AulCompiler::ConstantResolver::visit(const ::aul::ast::VarDecl *n)
 				catch (C4AulParseError &e)
 				{
 					if (!quiet)
-						host->Engine->ErrorHandler->OnError(e.what());
+						host->Engine->ErrorHandler->OnError(e.what(), e.position);
 				}
 			}
 			break;

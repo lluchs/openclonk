@@ -126,7 +126,7 @@ void C4ScriptHost::Warn(const char *pMsg, ...)
 	va_list args; va_start(args, pMsg);
 	StdStrBuf Buf = FormatStringV(pMsg, args);
 	Buf.AppendFormat(" (%s)", ScriptName.getData());
-	Engine->GetErrorHandler()->OnWarning(Buf.getData());
+	Engine->GetErrorHandler()->OnWarning(Buf.getData(), C4AulDiagnosticPosition(ScriptName.getData()));
 	va_end(args);
 }
 
@@ -138,7 +138,7 @@ void C4AulParse::Warn(C4AulWarningId warning, ...)
 	StdStrBuf Buf = FormatStringV(C4AulWarningMessages[static_cast<size_t>(warning)], args);
 	AppendPosition(Buf);
 	Buf.AppendFormat(" [%s]", C4AulWarningIDs[static_cast<size_t>(warning)]);
-	Engine->GetErrorHandler()->OnWarning(Buf.getData());
+	Engine->GetErrorHandler()->OnWarning(Buf.getData(), GetPosition());
 	va_end(args);
 }
 
@@ -162,6 +162,24 @@ void C4AulParse::Error(const char *pMsg, ...)
 	Buf.FormatV(pMsg, args);
 
 	throw C4AulParseError(this, Buf.getData());
+}
+
+C4AulDiagnosticPosition C4AulParse::GetPosition()
+{
+	if (Fn && Fn->GetName())
+	{
+		auto line = SGetLine(Fn->pOrgScript->GetScript(), TokenSPos);
+		auto column = SLineGetCharacterBytes(Fn->pOrgScript->GetScript(), TokenSPos);
+		return C4AulDiagnosticPosition(Fn->pOrgScript->ScriptName.getData(), Fn->GetName(), line, column);
+	}
+	else if (pOrgScript)
+	{
+		const char *name = pOrgScript->ScriptName.getData();
+		return C4AulDiagnosticPosition(name ? name : "", "",
+									   SGetLine(pOrgScript->GetScript(), TokenSPos),
+									   SLineGetCharacterBytes(pOrgScript->GetScript(), TokenSPos));
+	}
+	return C4AulDiagnosticPosition();
 }
 
 void C4AulParse::AppendPosition(StdStrBuf & Buf)
@@ -198,10 +216,12 @@ C4AulParseError::C4AulParseError(C4AulParse * state, const char *pMsg)
 	// compose error string
 	sMessage.Copy(pMsg);
 	state->AppendPosition(sMessage);
+	position = state->GetPosition();
 }
 
-C4AulParseError::C4AulParseError(C4ScriptHost *pScript, const char *pMsg)
+C4AulParseError::C4AulParseError(C4ScriptHost *pScript, const char *pMsg, C4AulDiagnosticPosition pos)
 {
+	position = std::move(pos);
 	// compose error string
 	sMessage.Copy(pMsg);
 	if (pScript)
@@ -209,6 +229,8 @@ C4AulParseError::C4AulParseError(C4ScriptHost *pScript, const char *pMsg)
 		// Script name
 		sMessage.AppendFormat(" (%s)",
 		                      pScript->ScriptName.getData());
+		if (!position.IsValid())
+			position = C4AulDiagnosticPosition(pScript->ScriptName.getData(), "", 0, 0);
 	}
 }
 
@@ -955,7 +977,7 @@ std::unique_ptr<::aul::ast::Script> C4AulParse::Parse_Script(C4ScriptHost * scri
 		if (first_error)
 		{
 			++Engine->errCnt;
-			::ScriptEngine.ErrorHandler->OnError(err.what());
+			::ScriptEngine.ErrorHandler->OnError(err.what(), err.position);
 		}
 		first_error = false;
 	}

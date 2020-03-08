@@ -45,17 +45,36 @@ struct ForwardToCErrorHandler : public C4AulErrorHandler
 
 	virtual ~ForwardToCErrorHandler() { }
 
-	void OnError(const char *msg)
+	c4s_diagnostic_position AdaptPosition(const C4AulDiagnosticPosition &pos)
+	{
+		c4s_diagnostic_position p;
+		if (pos.IsValid())
+		{
+			p.valid = true;
+			p.file = pos.GetFile().c_str();
+			p.function = pos.GetFunction().c_str();
+			p.line = pos.GetLine();
+			p.column = pos.GetColumn();
+			p.length = pos.GetLength();
+		}
+		else
+		{
+			p.valid = false;
+		}
+		return p;
+	}
+
+	void OnError(const char *msg, const C4AulDiagnosticPosition &pos)
 	{
 		if (handlers->errors)
-			handlers->errors(handlers->ctx, msg);
+			handlers->errors(handlers->ctx, msg, AdaptPosition(pos));
 		++::ScriptEngine.errCnt;
 	}
 
-	void OnWarning(const char *msg)
+	void OnWarning(const char *msg, const C4AulDiagnosticPosition &pos)
 	{
 		if (handlers->warnings)
-			handlers->warnings(handlers->ctx, msg);
+			handlers->warnings(handlers->ctx, msg, AdaptPosition(pos));
 		++::ScriptEngine.warnCnt;
 	}
 };

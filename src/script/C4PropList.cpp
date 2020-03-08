@@ -845,7 +845,7 @@ C4Value C4PropList::Call(const char * s, C4AulParSet *Pars, bool fPassErrors)
 			C4AulExecError err(FormatString("Undefined function: %s", s).getData());
 			if (fPassErrors)
 				throw err;
-			::ScriptEngine.GetErrorHandler()->OnError(err.what());
+			::ScriptEngine.GetErrorHandler()->OnError(err.what(), err.position);
 		}
 		return C4Value();
 	}

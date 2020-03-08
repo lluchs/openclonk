@@ -44,12 +44,13 @@ static_assert(std::extent<decltype(C4AulWarningIDs), 0>::value - 1 == static_cas
 static class DefaultErrorHandler : public C4AulErrorHandler
 {
 public:
-	void OnError(const char *msg) override
+	void OnError(const char *msg, const C4AulDiagnosticPosition &pos) override
 	{
+		// TODO: Add pos to message if valid
 		DebugLogF("ERROR: %s", msg);
 		++::ScriptEngine.errCnt;
 	}
-	void OnWarning(const char *msg) override
+	void OnWarning(const char *msg, const C4AulDiagnosticPosition &pos) override
 	{
 		DebugLogF("WARNING: %s", msg);
 		++::ScriptEngine.warnCnt;
