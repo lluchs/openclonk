@@ -16,7 +16,7 @@
 #ifndef C4SCRIPTSTANDALONE_H
 #define C4SCRIPTSTANDALONE_H
 
-#include <inttypes.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
