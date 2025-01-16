@@ -470,6 +470,10 @@ int main(int argc, char *argv[])
 				break;
 				// Execute at end
 			case 'x': SCopy(argv[i] + 3, strExecuteAtEnd, _MAX_PATH); break;
+				// Set directory for temporary files
+			case 'T':
+				C4Group_SetTempPath(argv[i] + 3);
+				break;
 				// Show licenses
 			case 'L':
 			{
@@ -555,6 +559,7 @@ int main(int argc, char *argv[])
 		printf("Options:  -v Verbose -r Recursive\n");
 		printf("          -i Register shell -u Unregister shell\n");
 		printf("          -x:<command> Execute shell command when done\n");
+		printf("          -T:<path> Set directory for temporary files\n");
 		printf("          -L Show licenses and exit\n");
 		printf("\n");
 		printf("Examples: c4group pack.ocg -x\n");
