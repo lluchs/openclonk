@@ -20,9 +20,9 @@
 #include "C4Version.h"
 #include "game/C4Application.h"
 
-#include <miniupnpc.h>
-#include <upnpcommands.h>
-#include <upnperrors.h>
+#include <miniupnpc/miniupnpc.h>
+#include <miniupnpc/upnpcommands.h>
+#include <miniupnpc/upnperrors.h>
 
 #include <future>
 
