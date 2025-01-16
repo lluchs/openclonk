@@ -1,4 +1,4 @@
-{ pkgs ? import <nixpkgs> {} , withEditor ? false }:
+{ pkgs ? import <nixpkgs> {} , withEditor ? false , withMape ? false }:
 
 pkgs.stdenv.mkDerivation {
   name = "openclonk";
@@ -14,7 +14,7 @@ pkgs.stdenv.mkDerivation {
 
   enableParallelInstalling = false;
 
-  nativeBuildInputs = with pkgs; [ cmake pkg-config ];
+  nativeBuildInputs = with pkgs; [ meson ninja pkg-config ];
 
   dontStrip = true;
 
@@ -25,7 +25,6 @@ pkgs.stdenv.mkDerivation {
     libjpeg
     libpng
     freetype
-    glew
     tinyxml
     openal
     freealut
@@ -33,9 +32,8 @@ pkgs.stdenv.mkDerivation {
     curl
     readline
     miniupnpc
-  ] ++ pkgs.lib.optional withEditor qt5.full;
-
-  cmakeFlags = [ "-DCMAKE_AR=${pkgs.gcc-unwrapped}/bin/gcc-ar" "-DCMAKE_RANLIB=${pkgs.gcc-unwrapped}/bin/gcc-ranlib" ];
+  ] ++ pkgs.lib.optional withEditor qt5.full
+    ++ pkgs.lib.optionals withMape [ gtk3 gtksourceview ];
 
   preConfigure = ''
     sed s/REVGOESHERE/''${gitRef:0:12}/ > cmake/GitGetChangesetID.cmake <<EOF
@@ -45,11 +43,10 @@ pkgs.stdenv.mkDerivation {
     EOF
   '';
 
-  cmakeBuildType = "RelWithDebInfo";
-
-  postInstall = ''
-    mv -v $out/games/openclonk $out/bin/
-  '';
+  mesonFlags = [
+    (pkgs.lib.strings.mesonBool "editor" withEditor)
+    (pkgs.lib.strings.mesonBool "mape" withMape)
+  ];
 
   meta = with pkgs.lib; {
     description = "A free multiplayer action game about mining, settling and fast-paced melees";

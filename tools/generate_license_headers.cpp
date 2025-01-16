@@ -96,7 +96,7 @@ void mein(int argc, char ** argv) {
 		std::stringstream buf;
 		buf << input_file.rdbuf();
 		buf.str(lendings(buf.str()));
-		if (std::regex_match(input.first, std::regex(".*COPYING|.*TRADEMARK|licenses/.*|.*LICENSE(\\.txt)?")));
+		if (std::regex_match(input.first, std::regex(".*COPYING|.*TRADEMARK|.*/licenses/.*|.*LICENSE(\\.txt)?")));
 		else if (std::regex_match(input.first, std::regex(".*(\\.hpp|\\.h)")))
 			buf.str(extract_comment(buf.str()));
 		else if (std::regex_match(input.first, std::regex(".*/README\\.rst")))

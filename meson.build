@@ -97,8 +97,10 @@ oc_clonk_sources = [
 	'src/gui/C4ScriptGuiWindow.cpp', 'src/gui/C4ScriptGuiWindow.h',
 	'src/gui/C4Startup.cpp', 'src/gui/C4Startup.h',
 	'src/gui/C4StartupAboutDlg.cpp', 'src/gui/C4StartupAboutDlg.h',
+	'src/gui/C4StartupLegalDlg.cpp', 'src/gui/C4StartupLegalDlg.h',
 	'src/gui/C4StartupMainDlg.cpp', 'src/gui/C4StartupMainDlg.h',
 	'src/gui/C4StartupNetDlg.cpp', 'src/gui/C4StartupNetDlg.h',
+	'src/gui/C4StartupModsDlg.cpp', 'src/gui/C4StartupModsDlg.h',
 	'src/gui/C4StartupOptionsDlg.cpp', 'src/gui/C4StartupOptionsDlg.h',
 	'src/gui/C4StartupPlrSelDlg.cpp', 'src/gui/C4StartupPlrSelDlg.h',
 	'src/gui/C4StartupScenSelDlg.cpp', 'src/gui/C4StartupScenSelDlg.h',
@@ -251,6 +253,7 @@ libopenclonk_sources = [
 	'src/lib/C4Stat.cpp', 'src/lib/C4Stat.h',
 	'src/lib/StdMeshMath.cpp', 'src/lib/StdMeshMath.h',
 	'src/network/C4Network2Discover.cpp', 'src/network/C4Network2Discover.h',
+	'src/network/C4HTTP.cpp', 'src/network/C4HTTP.h',
 	'src/object/C4Action.cpp',
 	'src/object/C4FindObject.cpp', 'src/object/C4FindObject.h',
 	'src/object/C4Id.cpp', 'src/object/C4Id.h',
@@ -447,8 +450,6 @@ check_headers = {
 foreach def, hdr : check_headers 
 	conf.set('HAVE_@0@'.format(def), cpp.check_header(hdr), description: hdr)	
 endforeach
-conf.set('HAVE_X11_EXTENSIONS_XRANDR_H',
-	cpp.check_header('X11/extensions/Xrandr.h') and cpp.check_header('X11/Xlib.h'))
 conf.set('HAVE_GETOPT_H', cpp.compiles('''
 #include <getopt.h>
 int main(int argc, char * argv[]) { 
@@ -475,6 +476,7 @@ endif
 zlib = dependency('zlib', version : '>=1.2.8', fallback: ['zlib', 'zlib_dep'], static: static)
 png = dependency('libpng', fallback: ['libpng', 'png_dep'], static: static)
 jpeg = dependency('libjpeg', fallback: ['libjpeg', 'jpeg_dep'], static: static)
+curl = dependency('libcurl', static: static)
 readline = dependency('readline', fallback: ['readline', 'readline_dep'], required: get_option('readline'), static: static)
 conf.set('HAVE_LIBREADLINE', readline.found())
 
@@ -506,6 +508,24 @@ c4versionh = vcs_tag(input:
 	output: 'C4Version.h',
 )
 
+oc_license_list = [
+	'@SOURCE_ROOT@/TRADEMARK', 'Clonk Trademark',
+	'@SOURCE_ROOT@/COPYING', 'OpenClonk Engine Engine License',
+	'@SOURCE_ROOT@/planet/COPYING', 'OpenClonk Game Content License',
+	'@SOURCE_ROOT@/licenses/xiph.txt', 'OGG Library',
+	'@SOURCE_ROOT@/licenses/getopt.txt', 'Getopt Library',
+	'@SOURCE_ROOT@/licenses/apache.txt', 'Various Libraries',
+	'@SOURCE_ROOT@/licenses/LGPL.txt', 'Various Libraries',
+	'@SOURCE_ROOT@/thirdparty/pcg/pcg_random.hpp', 'PCG Random number generator',
+	'@SOURCE_ROOT@/thirdparty/timsort/README.rst', 'Timsort',
+]
+
+generate_license_headers = executable('generate_license_headers', sources: ['tools/generate_license_headers.cpp'], native: true)
+oc_licenses = custom_target(
+	output: 'OCLicenses.cpp',
+	command: [generate_license_headers, '@OUTPUT@'] + oc_license_list,
+)
+
 # source files specific to an operating system
 if target_machine.system() == 'windows'
 	oc_system_sources += ['src/platform/C4CrashHandlerWin32.cpp', 'src/game/ClonkMain.cpp']
@@ -526,15 +546,13 @@ endif
 if get_option('gui')
 	deps = [
 		dependency('freetype2', static: static),
-		dependency('gl', static: static),
-		dependency('glew', fallback: ['glew', 'glew_dep'], static: static),
+		dependency('epoxy', static: static),
 		dependency('sdl2', fallback: ['sdl2', 'sdl2_dep'], static: static), # Technically speaking optional, except under linux. But required for gamepads, so…
 	]
 	defs = ['-DHAVE_SDL']
 	if target_machine.system() == 'linux'
 		oc_gui_sources += ['src/platform/C4AppSDL.cpp', 'src/platform/C4WindowSDL.cpp']
 		defs += ['-DUSE_SDL_MAINLOOP']
-		deps += [dependency('x11', static: static), dependency('xrandr', static: static)]
 	elif target_machine.system() == 'windows'
 		oc_gui_sources += ['src/platform/C4WindowWin32.cpp']
 	elif target_machine.system() == 'darwin'
@@ -592,7 +610,7 @@ if get_option('gui')
 			moc_extra_arguments: defs
 		) + qt_editor
 	endif
-	guidep = declare_dependency(dependencies: deps, compile_args: defs, static: static)
+	guidep = declare_dependency(dependencies: deps, compile_args: defs)
 else
 	if get_option('automatic_update') or get_option('audio') != 'none' or get_option('editor')
 		error('configuration clash? no gui? no editor, audio, or automatic_update!')
@@ -600,24 +618,24 @@ else
 	guidep = disabler()
 endif
 
-upnp = false
+upnp = declare_dependency()
+upnp_source = 'src/network/C4Network2UPnPDummy.cpp'
 if get_option('upnp').enabled() or get_option('upnp').auto()
 	if target_machine.system() == 'windows'
 		if not cpp.check_header('natupnp.h')
 			upnp = declare_dependency(include_directories: include_directories('thirdparty/natupnp'))
 		endif
-		oc_system_sources += 'src/network/C4Network2UPnPWin32.cpp'
+		upnp_source = 'src/network/C4Network2UPnPWin32.cpp'
 	elif target_machine.system() == 'linux'
-		upnp = dependency('miniupnpc', static: static)
-		oc_system_sources += 'src/network/C4Network2UPnPLinux.cpp'
+		upnp = dependency('miniupnpc', required: get_option('upnp').enabled(), static: static)
+		if upnp.found()
+			upnp_source = 'src/network/C4Network2UPnPLinux.cpp'
+		endif
 	elif get_option('upnp').enabled()
 		error('upnp enabled but not available on this system')
 	endif
 endif
-if upnp == false
-	upnp = declare_dependency()
-	oc_system_sources += 'src/network/C4Network2UPnPDummy.cpp'
-endif
+oc_system_sources += upnp_source
 
 allinc = declare_dependency(
 	include_directories: [
@@ -629,7 +647,7 @@ allinc = declare_dependency(
 )
 no_check_console = declare_dependency(compile_args: '-DCOMPILED_AS_C4LIBRARY') # will make compilation error if USE_CONSOLE is checked
 
-libmisc = static_library('libmisc', dependencies: [allinc, no_check_console] , sources: [misc_sources, c4versionh], cpp_pch: pch_sources)
+libmisc = static_library('libmisc', dependencies: [allinc, no_check_console] , sources: [misc_sources, c4versionh, oc_licenses], cpp_pch: pch_sources)
 libmiscdep = declare_dependency(link_with: libmisc, dependencies: zlib)
 
 c4group = executable('c4group', dependencies: [allinc, libmiscdep, zlib], sources: ['src/c4group/C4GroupMain.cpp', c4versionh], cpp_pch: pch_sources)
@@ -644,7 +662,7 @@ c4script = executable('c4script', dependencies: [allinc, libc4scriptdep], cpp_pc
 	'src/script/C4ScriptStandaloneStubs.cpp',
 ])
 
-libopenclonk = static_library('openclonk', dependencies: [allinc, no_check_console, png], sources: [libopenclonk_sources, c4versionh], cpp_pch: pch_sources)
+libopenclonk = static_library('openclonk', dependencies: [allinc, no_check_console, png, curl], sources: [libopenclonk_sources, c4versionh], cpp_pch: pch_sources)
 libopenclonkdep = declare_dependency(link_with: libopenclonk, dependencies: [png, jpeg, libc4scriptdep, tinyxml, threads, upnp]) 
 
 executable('openclonk-server',
@@ -718,9 +736,9 @@ c4groups_sources = [
 ]
 foreach grp : c4groups_sources
 	custom_target(grp,
-		input: join_paths('planet', grp),
+		build_always_stale: true,
 		output: grp,
-		command: [c4group, '@INPUT@', '-t', '@OUTPUT@'],
+		command: [c4group, '-T:@PRIVATE_DIR@', join_paths('@SOURCE_ROOT@', 'planet', grp), '-t', '@OUTPUT@'],
 		install: true,
 		install_dir: 'share/games/openclonk'
 	)
