@@ -339,7 +339,7 @@ libc4script_sources = [
 	'src/script/C4ValueArray.cpp', 'src/script/C4ValueArray.h',
 	'src/script/C4ValueMap.cpp', 'src/script/C4ValueMap.h',
 ]
-pch_sources = ['src/C4IncludeInclude.h', 'src/C4Include.cpp']
+pch_sources = 'src/C4IncludeInclude.h'
 mape_sources = [
 	'src/C4Include.cpp',
 	'src/landscape/C4MapCreatorS2.cpp',
