@@ -21,8 +21,8 @@
 #include "game/C4Application.h"
 
 #ifdef HAVE_LIBREADLINE
-#include <readline.h>
-#include <history.h>
+#include <readline/readline.h>
+#include <readline/history.h>
 
 static void readline_callback (char * line)
 {
