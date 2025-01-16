@@ -27,12 +27,6 @@
 #include "graphics/C4DrawGL.h"
 #include "gui/C4Gui.h"
 
-#ifdef SDL_VIDEO_DRIVER_X11
-#include <X11/Xlib.h>
-#include <X11/Xutil.h>
-#include <SDL_syswm.h>
-#endif
-
 /* C4Window */
 
 C4Window::C4Window ():
@@ -180,37 +174,9 @@ void C4Window::RequestUpdate()
 	PerformUpdate();
 }
 
-static void SetUrgencyHint(SDL_Window *window, bool urgency_hint)
-{
-#ifdef SDL_VIDEO_DRIVER_X11
-	SDL_SysWMinfo wminfo;
-	SDL_VERSION(&wminfo.version);
-	if (!SDL_GetWindowWMInfo(window, &wminfo))
-	{
-		LogF("FlashWindow SDL: %s", SDL_GetError());
-		return;
-	}
-
-	if (wminfo.subsystem == SDL_SYSWM_X11)
-	{
-		auto x11 = wminfo.info.x11;
-		XWMHints *wmhints = XGetWMHints(x11.display, x11.window);
-		if (wmhints == nullptr)
-			wmhints = XAllocWMHints();
-		// Set the window's urgency hint.
-		if (urgency_hint)
-			wmhints->flags |= XUrgencyHint;
-		else
-			wmhints->flags &= ~XUrgencyHint;
-		XSetWMHints(x11.display, x11.window, wmhints);
-		XFree(wmhints);
-	}
-#endif
-}
-
 void C4Window::FlashWindow()
 {
-	SetUrgencyHint(window, true);
+	SDL_FlashWindow(window, SDL_FLASH_UNTIL_FOCUSED);
 }
 
 void C4Window::GrabMouse(bool grab)
@@ -222,9 +188,6 @@ void C4Window::HandleSDLEvent(SDL_WindowEvent &e)
 {
 	switch (e.event)
 	{
-	case SDL_WINDOWEVENT_FOCUS_GAINED:
-		SetUrgencyHint(window, false);
-		break;
 	case SDL_WINDOWEVENT_RESIZED:
 	case SDL_WINDOWEVENT_SIZE_CHANGED:
 		Application.OnResolutionChanged(e.data1, e.data2);
