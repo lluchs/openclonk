@@ -16,14 +16,7 @@
 #include "C4Include.h"
 #include "script/C4ScriptLibraries.h"
 
-#ifdef _MSC_VER
-#	pragma warning(push)
-#	pragma warning(disable: 4804)	// 'operation' : unsafe use of type 'bool' in operation
-#endif
-#include "blake2.h"
-#ifdef _MSC_VER
-#	pragma warning(pop)
-#endif
+#include <blake2.h>
 
 #include "script/C4Aul.h"
 #include "script/C4AulDefFunc.h"
@@ -183,7 +176,7 @@ class C4ScriptLibraryCrypto : public C4ScriptLibrary
 		const int data_length = input->GetData().getLength();
 
 		auto hash_output = std::make_unique<unsigned char[]>(raw_output_length);
-		if (blake2b(hash_output.get(), raw_output_length, data, data_length, nullptr, 0) != 0)
+		if (blake2b(hash_output.get(), data, nullptr, raw_output_length, data_length, 0) != 0)
 		{
 			throw C4AulExecError("internal error: blake2b call failed");
 		}

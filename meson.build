@@ -483,7 +483,7 @@ conf.set('HAVE_LIBREADLINE', readline.found())
 conf.set('HAVE_MAKE_UNIQUE', true)
 configure_file(configuration: conf, output: 'config.h')
 
-blake2 = dependency('blake2', fallback: ['blake2', 'blake2_dep'],  static: static) # TODO: SSE
+b2 = dependency('libb2', static: static)
 tinyxml = dependency('tinyxml', fallback: ['tinyxml', 'tinyxml_dep'], static: static)
 
 # TODO: consolidate into one file with Version.txt
@@ -652,7 +652,7 @@ libmiscdep = declare_dependency(link_with: libmisc, dependencies: zlib)
 
 c4group = executable('c4group', dependencies: [allinc, libmiscdep, zlib], sources: ['src/c4group/C4GroupMain.cpp', c4versionh], cpp_pch: pch_sources)
 
-libc4script = static_library('c4script', dependencies: [allinc, libmiscdep, blake2, no_check_console], sources: [libc4script_sources, c4versionh], cpp_pch: pch_sources)
+libc4script = static_library('c4script', dependencies: [allinc, libmiscdep, b2, no_check_console], sources: [libc4script_sources, c4versionh], cpp_pch: pch_sources)
 libc4scriptdep = declare_dependency(link_with: libc4script, dependencies: libmiscdep)
 
 c4script = executable('c4script', dependencies: [allinc, libc4scriptdep], cpp_pch: pch_sources, sources: [

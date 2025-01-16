@@ -24,6 +24,7 @@ pkgs.stdenv.mkDerivation {
     libogg
     libjpeg
     libpng
+    libb2
     freetype
     tinyxml
     openal
