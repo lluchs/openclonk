@@ -14,6 +14,7 @@ project('openclonk', 'c', 'cpp',
 	version : '9.0-alpha',
 	default_options : ['c_std=gnu11', 'cpp_std=c++14', 'buildtype=debugoptimized'],
 	subproject_dir: 'thirdparty/wrap',
+	meson_version: '>=1.1',
 )
 
 # oc_clonk_sources: Sources for OpenClonk hat are needed by every build.
