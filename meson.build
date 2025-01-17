@@ -447,12 +447,24 @@ check_headers = {
 foreach def, hdr : check_headers 
 	conf.set('HAVE_@0@'.format(def), cpp.check_header(hdr), description: hdr)	
 endforeach
-conf.set('HAVE_GETOPT_H', cpp.compiles('''
+
+getopt = declare_dependency()
+have_getopt = cpp.compiles('''
 #include <getopt.h>
 int main(int argc, char * argv[]) { 
 	getopt_long(argc, argv, "", 0, 0);
 }
-''', name: 'getopt_long test'))
+''', name: 'getopt_long test')
+if not have_getopt
+	getopt = declare_dependency(
+		sources: [
+			'thirdparty/getopt/getopt.c',
+			'thirdparty/getopt/getopt_long.c',
+		],
+		include_directories: 'thirdparty/getopt',
+	)
+endif
+
 audio_tk_id_none = 0
 audio_tk_id_openal = 1
 audio_tk_id_sdl = 3
@@ -652,7 +664,7 @@ c4group = executable('c4group', dependencies: [allinc, libmiscdep, zlib], source
 libc4script = static_library('c4script', dependencies: [allinc, libmiscdep, b2, no_check_console], sources: [libc4script_sources, c4versionh], cpp_pch: pch_sources)
 libc4scriptdep = declare_dependency(link_with: libc4script, dependencies: libmiscdep)
 
-c4script = executable('c4script', dependencies: [allinc, libc4scriptdep], cpp_pch: pch_sources, sources: [
+c4script = executable('c4script', dependencies: [allinc, libc4scriptdep, getopt], cpp_pch: pch_sources, sources: [
 	'include/c4script/c4script.h',
 	'src/script/C4ScriptMain.cpp',
 	'src/script/C4ScriptStandalone.cpp',
@@ -664,7 +676,7 @@ libopenclonkdep = declare_dependency(link_with: libopenclonk, dependencies: [png
 
 executable('openclonk-server',
 	cpp_args: ['-DUSE_CONSOLE'],
-	dependencies: [allinc, libopenclonkdep, readline], 
+	dependencies: [allinc, libopenclonkdep, readline, getopt], 
 	sources: oc_clonk_sources + oc_system_sources + [
 		'src/platform/C4AppT.cpp',
 		'src/platform/C4StdInProc.cpp',
@@ -675,7 +687,7 @@ executable('openclonk-server',
 	install: true,
 )
 executable('openclonk',
-	dependencies: [allinc, libopenclonkdep, guidep], 
+	dependencies: [allinc, libopenclonkdep, guidep, getopt], 
 	sources: oc_clonk_sources + oc_system_sources + oc_gui_sources + [c4versionh],
 	cpp_pch: pch_sources,
 	install: true,
