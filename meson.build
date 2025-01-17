@@ -430,13 +430,9 @@ endif
 
 # TODO: should we get rid of this and make sure the build does not change based on wich files exist in the include path?
 check_headers = {
-	'DIRECT_H': 'direct.h',
 	'IO_H': 'io.h',
-	'LOCALE_H': 'locale.h',
 	'SHARE_H': 'share.h',
 	'SIGNAL_H': 'signal.h',
-	'STDINT_H': 'stdint.h',
-	'INTTYPES_H': 'inttypes.h',
 	'SYS_STAT_H': 'sys/stat.h',
 	'SYS_TYPES_H': 'sys/types.h',
 	'UNISTD_H': 'unistd.h',
