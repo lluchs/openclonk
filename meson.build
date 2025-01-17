@@ -674,6 +674,10 @@ c4script = executable('c4script', dependencies: [allinc, libc4scriptdep, getopt]
 libopenclonk = static_library('openclonk', dependencies: [allinc, no_check_console, png, curl], sources: [libopenclonk_sources, c4versionh], cpp_pch: pch_sources)
 libopenclonkdep = declare_dependency(link_with: libopenclonk, dependencies: [png, jpeg, libc4scriptdep, tinyxml, threads, upnp]) 
 
+if get_option('tests').allowed()
+	subdir('tests')
+endif
+
 executable('openclonk-server',
 	cpp_args: ['-DUSE_CONSOLE'],
 	dependencies: [allinc, libopenclonkdep, readline, getopt], 

@@ -10,6 +10,7 @@ option('audio', type: 'combo', choices: ['none', 'openal', 'sdl'], value: 'opena
 option('static', type: 'boolean', value: false)
 # Note: I'd like to get away from our current, highly customizable build system.
 # For libraries that are annoying to obtain, we can use wrap files.
+option('tests', type: 'feature', value: 'auto')
 option('readline', type: 'feature', value: 'enabled')
 option('upnp', type: 'feature', value: 'enabled')
 

@@ -1,4 +1,4 @@
-{ pkgs ? import <nixpkgs> {} , withEditor ? false , withMape ? false }:
+{ pkgs ? import <nixpkgs> {} , withEditor ? false , withMape ? false , withTests ? false }:
 
 pkgs.stdenv.mkDerivation {
   name = "openclonk";
@@ -34,7 +34,8 @@ pkgs.stdenv.mkDerivation {
     readline
     miniupnpc
   ] ++ pkgs.lib.optional withEditor qt5.full
-    ++ pkgs.lib.optionals withMape [ gtk3 gtksourceview ];
+    ++ pkgs.lib.optionals withMape [ gtk3 gtksourceview ]
+    ++ pkgs.lib.optionals withTests [ gtest ];
 
   preConfigure = ''
     sed s/REVGOESHERE/''${gitRef:0:12}/ > cmake/GitGetChangesetID.cmake <<EOF
