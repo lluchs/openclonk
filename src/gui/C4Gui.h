@@ -2698,7 +2698,7 @@ namespace C4GUI
 
 	public:
 		// ctor
-		CBMenuHandler<CBClass>(CBClass *pCBTarget, typename DlgCallback<CBClass>::ContextClickFunc pCallbackFn, int32_t iaExtra=0)
+		CBMenuHandler(CBClass *pCBTarget, typename DlgCallback<CBClass>::ContextClickFunc pCallbackFn, int32_t iaExtra=0)
 				: MenuHandler(), pCBTarget(pCBTarget), pCallbackFn(pCallbackFn) { }
 
 		void OnOK(Element *pTargetElement) override
@@ -2718,9 +2718,9 @@ namespace C4GUI
 		TEx Extra;  // extra data
 	public:
 		// ctor
-		CBMenuHandlerEx<CBClass, TEx>(CBClass *pCBTarget, typename DlgCallbackEx<CBClass, const TEx &>::ContextClickFunc pCallbackFn, TEx aExtra)
+		CBMenuHandlerEx(CBClass *pCBTarget, typename DlgCallbackEx<CBClass, const TEx &>::ContextClickFunc pCallbackFn, TEx aExtra)
 				: MenuHandler(), pCBTarget(pCBTarget), pCallbackFn(pCallbackFn), Extra(std::move(aExtra)) { }
-		CBMenuHandlerEx<CBClass, TEx>(CBClass *pCBTarget, typename DlgCallbackEx<CBClass, const TEx &>::ContextClickFunc pCallbackFn)
+		CBMenuHandlerEx(CBClass *pCBTarget, typename DlgCallbackEx<CBClass, const TEx &>::ContextClickFunc pCallbackFn)
 				: MenuHandler(), pCBTarget(pCBTarget), pCallbackFn(pCallbackFn), Extra() { }
 
 		const TEx &GetExtra() const { return Extra; }
@@ -2743,7 +2743,7 @@ namespace C4GUI
 
 	public:
 		// ctor
-		CBContextHandler<CBClass>(CBClass *pCBTarget, typename DlgCallback<CBClass>::ContextFunc pCallbackFn)
+		CBContextHandler(CBClass *pCBTarget, typename DlgCallback<CBClass>::ContextFunc pCallbackFn)
 				: ContextHandler(), pCBTarget(pCBTarget), pCallbackFn(pCallbackFn) { }
 
 		bool OnContext(Element *pOnElement, int32_t iX, int32_t iY) override
