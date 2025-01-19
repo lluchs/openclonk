@@ -428,6 +428,53 @@ if static
 	link_args += ['-static']
 endif
 
+if cpp.get_id() == 'msvc'
+	add_project_arguments(
+		# Enable multi-core builds
+		'/MP',
+		# Suppress warnings about "non-secure" functions
+		'/D_CRT_SECURE_NO_WARNINGS', '/D_SCL_SECURE_NO_WARNINGS', '/D_CRT_NONSTDC_NO_WARNINGS',
+		# Disable warning C4244: 'conversion' conversion from 'type1' to 'type2', possible loss of data
+		'/wd4244',
+		# Disable warning C4267: 'var' : conversion from 'size_t' to 'type', possible loss of data (64 bit build only)
+		'/wd4267',
+		language: 'cpp',
+	)
+elif cpp.get_id() == 'clang'
+	add_project_arguments(
+		'-Wall',
+		'-Wextra',
+		'-Wextra-tokens',
+		'-Wpointer-arith',
+		'-Wno-cast-align',
+		'-Wno-reorder',
+		'-Wno-unused-parameter',
+		'-Wnon-virtual-dtor',
+		'-Woverloaded-virtual',
+		language: 'cpp',
+	)
+elif cpp.get_id() == 'gcc'
+	add_project_arguments(
+		'-Wall',
+		'-Wextra',
+		'-Wredundant-decls',
+		'-Wendif-labels',
+		'-Wpointer-arith',
+		'-Wcast-qual',
+		'-Wcast-align',
+		'-Wwrite-strings',
+		'-Winit-self',
+		'-Wsign-promo',
+		'-Wno-reorder',
+		'-Wno-unused-parameter',
+		'-Wnon-virtual-dtor',
+		'-Woverloaded-virtual',
+		'-Wformat-security',
+		language: 'cpp',
+	)
+endif
+
+
 # TODO: should we get rid of this and make sure the build does not change based on wich files exist in the include path?
 check_headers = {
 	'IO_H': 'io.h',
