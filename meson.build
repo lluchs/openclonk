@@ -12,7 +12,12 @@
 # for the above references.
 project('openclonk', 'c', 'cpp',
 	version : '9.0-alpha',
-	default_options : ['c_std=gnu11', 'cpp_std=c++17', 'buildtype=debugoptimized'],
+	default_options : [
+		'c_std=gnu11',
+		'cpp_std=c++17',
+		'buildtype=debugoptimized',
+		'warning_level=2',
+	],
 	subproject_dir: 'thirdparty/wrap',
 	meson_version: '>=1.1',
 )
@@ -442,8 +447,6 @@ if cpp.get_id() == 'msvc'
 	)
 elif cpp.get_id() == 'clang'
 	add_project_arguments(
-		'-Wall',
-		'-Wextra',
 		'-Wextra-tokens',
 		'-Wpointer-arith',
 		'-Wno-cast-align',
@@ -455,8 +458,6 @@ elif cpp.get_id() == 'clang'
 	)
 elif cpp.get_id() == 'gcc'
 	add_project_arguments(
-		'-Wall',
-		'-Wextra',
 		'-Wredundant-decls',
 		'-Wendif-labels',
 		'-Wpointer-arith',
