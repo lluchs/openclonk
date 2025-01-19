@@ -28,6 +28,7 @@
 //#define QT_OPENGL_ES
 //#define QT_NO_OPENGL_ES
 #include <QtWidgets>
+#include <QtOpenGLWidgets>
 #include <qabstractitemmodel.h>
 #include <QAbstractTableModel>
 

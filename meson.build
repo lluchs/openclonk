@@ -12,7 +12,7 @@
 # for the above references.
 project('openclonk', 'c', 'cpp',
 	version : '9.0-alpha',
-	default_options : ['c_std=gnu11', 'cpp_std=c++14', 'buildtype=debugoptimized'],
+	default_options : ['c_std=gnu11', 'cpp_std=c++17', 'buildtype=debugoptimized'],
 	subproject_dir: 'thirdparty/wrap',
 	meson_version: '>=1.1',
 )
@@ -656,9 +656,9 @@ if get_option('gui')
 	endif
 	if get_option('editor')
 		defs += '-DWITH_QT_EDITOR'
-		deps += dependency('qt5', modules : 'Widgets', static: static)
-		qt5_mod = import('qt5')
-		oc_gui_sources += qt5_mod.preprocess(
+		deps += dependency('qt6', modules: ['Widgets', 'OpenGL', 'OpenGLWidgets'], static: static)
+		qt6_mod = import('qt6')
+		oc_gui_sources += qt6_mod.preprocess(
 			moc_headers: qt_editor_moc_hdr, 
 			moc_sources: [],
 			ui_files   : qt_editor_ui,

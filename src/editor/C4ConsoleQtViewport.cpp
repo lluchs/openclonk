@@ -62,14 +62,7 @@ bool C4ConsoleQtViewportView::IsPlayViewport() const
 // still work with device pixels, so we have to adjust coordinates from Qt events.
 qreal C4ConsoleQtViewportView::GetDevicePixelRatio()
 {
-	// Find the screen the viewport is on to get its pixel ratio.
-	auto desktop = QApplication::desktop();
-	auto screenNumber = desktop->screenNumber(this);
-	// This can happen while moving to a different screen.
-	if (screenNumber == -1)
-		return 1;
-	auto screen = QApplication::screens()[screenNumber];
-	return screen->devicePixelRatio();
+	return devicePixelRatioF();
 }
 
 void C4ConsoleQtViewportView::AddSelectObjectContextEntry(C4Object *obj, QMenu *menu)
@@ -264,12 +257,13 @@ void C4ConsoleQtViewportView::wheelEvent(QWheelEvent *event)
 {
 	if (IsPlayViewport())
 	{
-		int delta = event->delta() / 8;
-		if (!delta) delta = event->delta(); // abs(delta)<8?
+		int delta = event->angleDelta().y() / 8;
+		if (!delta) delta = event->angleDelta().y(); // abs(delta)<8?
 		uint32_t shift = (delta>0) ? (delta<<16) : uint32_t(delta<<16);
 		shift += GetShiftWParam();
 		auto pr = GetDevicePixelRatio();
-		C4GUI::MouseMove(C4MC_Button_Wheel, event->x() * pr, event->y() * pr, shift, cvp);
+		auto pos = event->position();
+		C4GUI::MouseMove(C4MC_Button_Wheel, pos.x() * pr, pos.y() * pr, shift, cvp);
 	}
 	else
 	{
@@ -404,7 +398,7 @@ void C4ConsoleQtViewportView::keyReleaseEvent(QKeyEvent * event)
 	event->setAccepted(handled);
 }
 
-void C4ConsoleQtViewportView::enterEvent(QEvent *)
+void C4ConsoleQtViewportView::enterEvent(QEnterEvent *)
 {
 	// TODO: This should better be managed by the viewport
 	// looks weird when there's multiple viewports open

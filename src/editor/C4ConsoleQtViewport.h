@@ -48,7 +48,7 @@ protected:
 	void wheelEvent(QWheelEvent *event) override;
 	void keyPressEvent(QKeyEvent * event) override;
 	void keyReleaseEvent(QKeyEvent * event) override;
-	void enterEvent(QEvent *) override;
+	void enterEvent(QEnterEvent *) override;
 	void leaveEvent(QEvent *) override;
 
 public:

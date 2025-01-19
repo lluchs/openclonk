@@ -33,7 +33,7 @@ pkgs.stdenv.mkDerivation {
     curl
     readline
     miniupnpc
-  ] ++ pkgs.lib.optional withEditor qt5.full
+  ] ++ pkgs.lib.optional withEditor qt6.full
     ++ pkgs.lib.optionals withMape [ gtk3 gtksourceview ]
     ++ pkgs.lib.optionals withTests [ gtest ];
 
